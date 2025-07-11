@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform, Alert, Image } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useState } from 'react';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useRecordType } from '../../../components/RecordTypeContext';
+import { useBarangay } from '../../../components/RoleContext';
+import { fetchFertilizerLogs, uploadFertilizerLog } from '../../../services/fertilizerLogService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -13,14 +16,28 @@ export default function FertilizerLogsScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { barangay } = useBarangay();
+  const { setRecordType } = useRecordType();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [suffix, setSuffix] = useState('');
   const [birthday, setBirthday] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [voucherValue, setVoucherValue] = useState('');
+  const [logs, setLogs] = useState<any[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
 
-  const handleSave = () => {
+  // Auto-load records for Viewers and Admins
+  React.useEffect(() => {
+    if (profile.role === 'Viewer') {
+      router.push('/monitoring/fertilizer-logs-records');
+    } else if (profile.role === 'Admin') {
+      setRecordType('fertilizer-logs');
+      router.push('/barangay-select-records');
+    }
+  }, [profile.role]);
+
+  const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim() || !contactNumber.trim()) {
       Alert.alert('Required Fields', 'Please fill in First Name, Last Name, and Contact Number');
       return;
@@ -31,7 +48,27 @@ export default function FertilizerLogsScreen() {
       return;
     }
 
-    Alert.alert('Success', 'Fertilizer/Pesticide log saved successfully!');
+    if (!barangay) {
+      Alert.alert('Barangay not set', 'Please select your barangay.');
+      return;
+    }
+
+    try {
+      await uploadFertilizerLog({
+        firstName,
+        lastName,
+        suffix,
+        birthday,
+        contactNumber,
+        voucherValue,
+        barangay,
+        timestamp: Date.now(),
+      });
+      Alert.alert('Success', 'Fertilizer/Pesticide log saved successfully!');
+      handleClear();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save fertilizer/pesticide log.');
+    }
   };
 
   const handleClear = () => {
@@ -43,8 +80,14 @@ export default function FertilizerLogsScreen() {
     setVoucherValue('');
   };
 
-  const handleViewRecords = () => {
-    Alert.alert('View Records', 'This will show all saved fertilizer/pesticide logs');
+  const handleViewRecords = async () => {
+    try {
+      const data = await fetchFertilizerLogs(barangay || undefined);
+      setLogs(data);
+      setModalVisible(true);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to fetch fertilizer/pesticide logs.');
+    }
   };
 
   return (
@@ -60,113 +103,124 @@ export default function FertilizerLogsScreen() {
         <Image source={{ uri: profile.profileImage }} style={styles.profileImg} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.formContainer}>
-          {/* Personal Information Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="account-details" size={24} color={GREEN} />
-              <Text style={styles.sectionTitle}>Personal Information</Text>
-            </View>
-            
-            <View style={styles.row}>
-              <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.label}>First Name *</Text>
+      {/* Show form for non-Viewers, records for Viewers */}
+      {profile.role !== 'Viewer' ? (
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.formContainer}>
+            {/* Personal Information Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialCommunityIcons name="account-details" size={24} color={GREEN} />
+                <Text style={styles.sectionTitle}>Personal Information</Text>
+              </View>
+              
+              <View style={styles.row}>
+                <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
+                  <Text style={styles.label}>First Name *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter first name"
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
+                  <Text style={styles.label}>Last Name *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter last name"
+                    value={lastName}
+                    onChangeText={setLastName}
+                    placeholderTextColor="#999"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Suffix (Jr./Sr.)</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter first name"
-                  value={firstName}
-                  onChangeText={setFirstName}
+                  placeholder="Jr. or Sr. (optional)"
+                  value={suffix}
+                  onChangeText={setSuffix}
                   placeholderTextColor="#999"
                 />
               </View>
-              <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
-                <Text style={styles.label}>Last Name *</Text>
+
+              <View style={styles.row}>
+                <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
+                  <Text style={styles.label}>Birthday</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="MM/DD/YYYY"
+                    value={birthday}
+                    onChangeText={setBirthday}
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
+                  <Text style={styles.label}>Contact Number *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter contact number"
+                    value={contactNumber}
+                    onChangeText={setContactNumber}
+                    keyboardType="phone-pad"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Voucher Information Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialCommunityIcons name="ticket-percent" size={24} color={GREEN} />
+                <Text style={styles.sectionTitle}>Voucher Information</Text>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Voucher Value</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter last name"
-                  value={lastName}
-                  onChangeText={setLastName}
+                  placeholder="Enter voucher amount"
+                  value={voucherValue}
+                  onChangeText={setVoucherValue}
+                  keyboardType="numeric"
                   placeholderTextColor="#999"
                 />
               </View>
             </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Suffix (Jr./Sr.)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Jr. or Sr. (optional)"
-                value={suffix}
-                onChangeText={setSuffix}
-                placeholderTextColor="#999"
-              />
-            </View>
+            {/* Action Buttons */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSave}>
+                <Ionicons name="save" size={20} color={WHITE} />
+                <Text style={styles.buttonText}>Save</Text>
+              </TouchableOpacity>
 
-            <View style={styles.row}>
-              <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.label}>Birthday</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="MM/DD/YYYY"
-                  value={birthday}
-                  onChangeText={setBirthday}
-                  placeholderTextColor="#999"
-                />
-              </View>
-              <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
-                <Text style={styles.label}>Contact Number *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter contact number"
-                  value={contactNumber}
-                  onChangeText={setContactNumber}
-                  keyboardType="phone-pad"
-                  placeholderTextColor="#999"
-                />
-              </View>
+              <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClear}>
+                <Ionicons name="refresh" size={20} color={GREEN} />
+                <Text style={[styles.buttonText, { color: GREEN }]}>Clear</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.button, styles.viewButton]} onPress={handleViewRecords}>
+                <MaterialCommunityIcons name="file-document-outline" size={20} color={WHITE} />
+                <Text style={styles.buttonText}>View Records</Text>
+              </TouchableOpacity>
             </View>
           </View>
-
-          {/* Voucher Information Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="ticket-percent" size={24} color={GREEN} />
-              <Text style={styles.sectionTitle}>Voucher Information</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Voucher Value</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter voucher amount"
-                value={voucherValue}
-                onChangeText={setVoucherValue}
-                keyboardType="numeric"
-                placeholderTextColor="#999"
-              />
-            </View>
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSave}>
-              <Ionicons name="save" size={20} color={WHITE} />
-              <Text style={styles.buttonText}>Save</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClear}>
-              <Ionicons name="refresh" size={20} color={GREEN} />
-              <Text style={[styles.buttonText, { color: GREEN }]}>Clear</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.button, styles.viewButton]} onPress={handleViewRecords}>
-              <MaterialCommunityIcons name="file-document-outline" size={20} color={WHITE} />
-              <Text style={styles.buttonText}>View Records</Text>
-            </TouchableOpacity>
-          </View>
+        </ScrollView>
+      ) : (
+        // Redirect Viewers to dedicated records page
+        <View style={{ flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+            Redirecting to records...
+          </Text>
         </View>
-      </ScrollView>
+      )}
+      {/* Modal or Section to display fetched logs remains for non-Viewers */}
     </View>
   );
 }

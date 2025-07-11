@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, Image } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useBarangay } from '../../../components/RoleContext';
+import { fetchForecastEntries } from '../../../services/forecastService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -18,8 +20,23 @@ export default function ForecastToolsScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { barangay } = useBarangay();
   const [selectedCrop, setSelectedCrop] = useState('rice');
   const [selectedSeason, setSelectedSeason] = useState('current');
+  const [forecastEntries, setForecastEntries] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadForecastEntries();
+  }, [barangay]);
+
+  const loadForecastEntries = async () => {
+    try {
+      const data = await fetchForecastEntries(barangay || undefined);
+      setForecastEntries(data);
+    } catch (error) {
+      setForecastEntries([]);
+    }
+  };
 
   // Crop data with planting and harvesting windows
   const cropData = {
@@ -128,11 +145,14 @@ export default function ForecastToolsScreen() {
     }
   };
 
+  // Use forecastEntries if available, otherwise fallback to sample recommendations
   const getCurrentRecommendations = () => {
+    if (forecastEntries.length > 0) {
+      return forecastEntries;
+    }
     const currentMonth = new Date().getMonth(); // 0-11
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentMonthName = monthNames[currentMonth];
-    
     const recommendations: Array<{
       crop: string;
       action: string;
@@ -233,6 +253,10 @@ export default function ForecastToolsScreen() {
               <Text style={styles.sectionTitle}>Current Month Recommendations</Text>
             </View>
             
+            {/* Show message if no forecast data for barangay */}
+            {forecastEntries.length === 0 && (
+              <Text style={{ color: '#888', marginBottom: 16 }}>No forecast data found for your barangay. Showing sample recommendations.</Text>
+            )}
             <View style={styles.recommendationsContainer}>
               {getCurrentRecommendations().map((rec, index) => (
                 <View key={index} style={styles.recommendationCard}>

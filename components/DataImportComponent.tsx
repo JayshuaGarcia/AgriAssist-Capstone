@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView, StyleSheet } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import React, { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import XLSX from 'xlsx';
 import { DataImportService, XLRowData } from '../services/dataImportService';
-import { ThemedView } from './ThemedView';
 import { ThemedText } from './ThemedText';
+import { ThemedView } from './ThemedView';
 
 interface ImportResult {
   farmersImported: number;
@@ -44,128 +45,119 @@ export const DataImportComponent: React.FC = () => {
     }
   };
 
+  // Replace parseExcelFile with XLSX-based parsing
   const parseExcelFile = async (fileUri: string): Promise<XLRowData[]> => {
     try {
-      // Read the file content
-      const content = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.UTF8,
+      // Read file as base64
+      const b64 = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
-
-      // Simple CSV parsing (you might want to use a proper Excel parser)
-      const lines = content.split('\n');
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-      const data: XLRowData[] = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim()) {
-          const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-          const row: XLRowData = {};
-          
-          headers.forEach((header, index) => {
-            row[header] = values[index] || '';
-          });
-          
-          data.push(row);
-        }
-      }
-
+      // Parse workbook
+      const workbook = XLSX.read(b64, { type: 'base64' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data: XLRowData[] = XLSX.utils.sheet_to_json(worksheet);
       return data;
     } catch (error) {
-      throw new Error(`Failed to parse file: ${error}`);
+      throw new Error(`Failed to parse Excel file: ${error}`);
     }
   };
 
   const importData = async () => {
-    if (!selectedFiles.farmers && !selectedFiles.crops && !selectedFiles.livestock) {
-      Alert.alert('Error', 'Please select at least one file to import');
-      return;
-    }
-
-    setImporting(true);
-    setImportResult(null);
-
     try {
-      const farmersData: XLRowData[] = [];
-      const cropsData: XLRowData[] = [];
-      const livestockData: XLRowData[] = [];
-
-      // Parse farmers file
-      if (selectedFiles.farmers) {
-        try {
-          const data = await parseExcelFile(selectedFiles.farmers);
-          farmersData.push(...data);
-        } catch (error) {
-          Alert.alert('Error', `Failed to parse farmers file: ${error}`);
-          setImporting(false);
-          return;
-        }
-      }
-
-      // Parse crops file
-      if (selectedFiles.crops) {
-        try {
-          const data = await parseExcelFile(selectedFiles.crops);
-          cropsData.push(...data);
-        } catch (error) {
-          Alert.alert('Error', `Failed to parse crops file: ${error}`);
-          setImporting(false);
-          return;
-        }
-      }
-
-      // Parse livestock file
-      if (selectedFiles.livestock) {
-        try {
-          const data = await parseExcelFile(selectedFiles.livestock);
-          livestockData.push(...data);
-        } catch (error) {
-          Alert.alert('Error', `Failed to parse livestock file: ${error}`);
-          setImporting(false);
-          return;
-        }
-      }
-
-      // Validate data
-      const farmersValidation = DataImportService.validateXLData(farmersData, ['name']);
-      const cropsValidation = DataImportService.validateXLData(cropsData, ['crop_name']);
-      const livestockValidation = DataImportService.validateXLData(livestockData, ['animal_type']);
-
-      if (!farmersValidation.isValid || !cropsValidation.isValid || !livestockValidation.isValid) {
-        const allErrors = [
-          ...farmersValidation.errors,
-          ...cropsValidation.errors,
-          ...livestockValidation.errors
-        ];
-        Alert.alert('Validation Error', `Data validation failed:\n${allErrors.join('\n')}`);
-        setImporting(false);
+      console.log('importData called');
+      console.log('Start Import pressed');
+      Alert.alert('Debug', 'Start Import pressed');
+      if (!selectedFiles.farmers && !selectedFiles.crops && !selectedFiles.livestock) {
+        Alert.alert('Error', 'Please select at least one file to import');
         return;
       }
-
-      // Import data
-      const result = await DataImportService.importCompleteDataset(
-        farmersData,
-        cropsData,
-        livestockData
-      );
-
-      setImportResult(result);
-
-      if (result.errors.length > 0) {
-        Alert.alert(
-          'Import Completed with Errors',
-          `Imported: ${result.farmersImported} farmers, ${result.cropsImported} crops, ${result.livestockImported} livestock\n\nErrors: ${result.errors.join('\n')}`
+      setImporting(true);
+      setImportResult(null);
+      try {
+        const farmersData: XLRowData[] = [];
+        const cropsData: XLRowData[] = [];
+        const livestockData: XLRowData[] = [];
+        // Parse farmers file
+        if (selectedFiles.farmers) {
+          try {
+            Alert.alert('Debug', 'Parsing Farmers Profile File...');
+            const data = await parseExcelFile(selectedFiles.farmers);
+            farmersData.push(...data);
+            console.log('Farmers data:', data);
+          } catch (error) {
+            Alert.alert('Error', `Failed to parse farmers file: ${error}`);
+            setImporting(false);
+            return;
+          }
+        }
+        // Parse crops file
+        if (selectedFiles.crops) {
+          try {
+            Alert.alert('Debug', 'Parsing Planting File...');
+            const data = await parseExcelFile(selectedFiles.crops);
+            cropsData.push(...data);
+            console.log('Planting data:', data);
+          } catch (error) {
+            Alert.alert('Error', `Failed to parse planting file: ${error}`);
+            setImporting(false);
+            return;
+          }
+        }
+        // Parse livestock file
+        if (selectedFiles.livestock) {
+          try {
+            Alert.alert('Debug', 'Parsing Livestock File...');
+            const data = await parseExcelFile(selectedFiles.livestock);
+            livestockData.push(...data);
+            console.log('Livestock data:', data);
+          } catch (error) {
+            Alert.alert('Error', `Failed to parse livestock file: ${error}`);
+            setImporting(false);
+            return;
+          }
+        }
+        // Validate data
+        const farmersValidation = DataImportService.validateXLData(farmersData, ['name']);
+        const cropsValidation = DataImportService.validateXLData(cropsData, ['crop_name']);
+        const livestockValidation = DataImportService.validateXLData(livestockData, ['animal_type']);
+        if (!farmersValidation.isValid || !cropsValidation.isValid || !livestockValidation.isValid) {
+          const allErrors = [
+            ...farmersValidation.errors,
+            ...cropsValidation.errors,
+            ...livestockValidation.errors
+          ];
+          Alert.alert('Validation Error', `Data validation failed:\n${allErrors.join('\n')}`);
+          setImporting(false);
+          return;
+        }
+        Alert.alert('Debug', 'Importing data to Firebase...');
+        const result = await DataImportService.importCompleteDataset(
+          farmersData,
+          cropsData,
+          livestockData
         );
-      } else {
-        Alert.alert(
-          'Import Successful',
-          `Successfully imported:\n- ${result.farmersImported} farmers\n- ${result.cropsImported} crops\n- ${result.livestockImported} livestock`
-        );
+        console.log('Import result:', result);
+        setImportResult(result);
+        if (result.errors.length > 0) {
+          Alert.alert(
+            'Import Completed with Errors',
+            `Imported: ${result.farmersImported} farmers, ${result.cropsImported} planting, ${result.livestockImported} livestock\n\nErrors: ${result.errors.join('\n')}`
+          );
+        } else {
+          Alert.alert(
+            'Import Successful',
+            `Successfully imported:\n- ${result.farmersImported} farmers\n- ${result.cropsImported} planting\n- ${result.livestockImported} livestock`
+          );
+        }
+      } catch (error) {
+        Alert.alert('Import Error', `Failed to import data: ${error}`);
+      } finally {
+        setImporting(false);
       }
-
-    } catch (error) {
-      Alert.alert('Import Error', `Failed to import data: ${error}`);
-    } finally {
-      setImporting(false);
+    } catch (err) {
+      console.error('Top-level importData error:', err);
+      Alert.alert('Critical Error', String(err));
     }
   };
 
@@ -174,6 +166,7 @@ export const DataImportComponent: React.FC = () => {
     setSelectedFiles({});
   };
 
+  console.log('Button rendered');
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -192,7 +185,7 @@ export const DataImportComponent: React.FC = () => {
             onPress={() => pickDocument('farmers')}
           >
             <ThemedText style={styles.fileButtonText}>
-              {selectedFiles.farmers ? '✓ Farmers File Selected' : 'Select Farmers File'}
+              {selectedFiles.farmers ? '✓ Farmers Profile File Selected' : 'Select Farmers Profile File'}
             </ThemedText>
           </TouchableOpacity>
 
@@ -201,7 +194,7 @@ export const DataImportComponent: React.FC = () => {
             onPress={() => pickDocument('crops')}
           >
             <ThemedText style={styles.fileButtonText}>
-              {selectedFiles.crops ? '✓ Crops File Selected' : 'Select Crops File'}
+              {selectedFiles.crops ? '✓ Planting File Selected' : 'Select Planting File'}
             </ThemedText>
           </TouchableOpacity>
 
@@ -218,7 +211,10 @@ export const DataImportComponent: React.FC = () => {
         {/* Import Button */}
         <TouchableOpacity
           style={[styles.importButton, importing && styles.importButtonDisabled]}
-          onPress={importData}
+          onPress={() => { 
+            console.log('Calling importData...');
+            importData();
+          }}
           disabled={importing}
         >
           <ThemedText style={styles.importButtonText}>

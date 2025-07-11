@@ -1,5 +1,5 @@
-import React, { ReactNode } from 'react';
-import { View, TextInput, Image, StyleSheet, Platform } from 'react-native';
+import { ReactNode } from 'react';
+import { Image, Platform, StyleSheet, TextInput, View } from 'react-native';
 
 interface CategoryLayoutProps {
   children: ReactNode;

@@ -15,7 +15,7 @@ export interface AuthUser {
 
 export class FirebaseAuthService {
   // Sign up with email and password
-  static async signUp(email: string, password: string, role: string): Promise<any> {
+  static async signUp(email: string, password: string, role: string, barangay: string): Promise<any> {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       // Save user profile to Firestore
@@ -23,7 +23,8 @@ export class FirebaseAuthService {
         name: userCredential.user.displayName || '',
         email: userCredential.user.email,
         role,
-        approved: role === 'Admin' // Only Admin auto-approved
+        approved: role === 'Admin', // Only Admin auto-approved
+        barangay: role === 'Admin' ? '' : barangay // Admin doesn't need barangay
       });
       return userCredential;
     } catch (error: any) {

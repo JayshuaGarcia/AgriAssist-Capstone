@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Image, Dimensions, Text } from 'react-native';
-import { useRouter } from 'expo-router';
+import Redirect from 'expo-router/build/link/Redirect';
+import { Dimensions, StyleSheet } from 'react-native';
 
 const GREEN = '#16543a';
 const BUTTON_GREEN = '#39796b';
@@ -8,37 +7,7 @@ const BUTTON_RADIUS = 32;
 const { width } = Dimensions.get('window');
 
 export default function LandingScreen() {
-  const router = useRouter();
-
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#fff' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      {/* Top green rounded rectangle */}
-      <View style={styles.topGreen} />
-      <View style={styles.container}>
-        <Image source={require('../assets/images/Logo 2.png')} style={styles.logoImg} resizeMode="contain" />
-        <View style={{ height: 32 }} />
-        <TouchableOpacity 
-          style={styles.button} 
-          onPress={() => router.push('/login')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.buttonText}>Log In</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.button, { marginTop: 24 }]} 
-          onPress={() => router.push('/signup')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.buttonText}>Sign Up</Text>
-        </TouchableOpacity>
-      </View>
-      {/* Bottom green rounded rectangle */}
-      <View style={styles.bottomGreen} />
-    </KeyboardAvoidingView>
-  );
+  return <Redirect href="/role-select" />;
 }
 
 const RECT_HEIGHT = 80;

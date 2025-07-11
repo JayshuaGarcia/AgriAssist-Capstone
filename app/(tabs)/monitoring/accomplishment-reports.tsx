@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform, Alert, Image } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useState } from 'react';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useRecordType } from '../../../components/RecordTypeContext';
+import { useBarangay } from '../../../components/RoleContext';
+import { fetchAccomplishmentReports, uploadAccomplishmentReport } from '../../../services/accomplishmentReportService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -13,17 +16,46 @@ export default function AccomplishmentReportsScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { barangay } = useBarangay();
+  const { setRecordType } = useRecordType();
   const [date, setDate] = useState('');
   const [accomplishment, setAccomplishment] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [reports, setReports] = useState<any[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
 
-  const handleSave = () => {
+  // Auto-load records for Viewers and Admins
+  React.useEffect(() => {
+    if (profile.role === 'Viewer') {
+      router.push('/monitoring/accomplishment-reports-records');
+    } else if (profile.role === 'Admin') {
+      setRecordType('accomplishment-reports');
+      router.push('/barangay-select-records');
+    }
+  }, [profile.role]);
+
+  const handleSave = async () => {
     if (!date.trim() || !accomplishment.trim()) {
       Alert.alert('Required Fields', 'Please fill in Date and Accomplishment');
       return;
     }
-
-    Alert.alert('Success', 'Accomplishment report saved successfully!');
+    if (!barangay) {
+      Alert.alert('Barangay not set', 'Please select your barangay.');
+      return;
+    }
+    try {
+      await uploadAccomplishmentReport({
+        date,
+        accomplishment,
+        remarks,
+        barangay,
+        timestamp: Date.now(),
+      });
+      Alert.alert('Success', 'Accomplishment report saved successfully!');
+      handleClear();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save accomplishment report.');
+    }
   };
 
   const handleClear = () => {
@@ -32,8 +64,14 @@ export default function AccomplishmentReportsScreen() {
     setRemarks('');
   };
 
-  const handleViewRecords = () => {
-    Alert.alert('View Records', 'This will show all saved accomplishment reports');
+  const handleViewRecords = async () => {
+    try {
+      const data = await fetchAccomplishmentReports(barangay || undefined);
+      setReports(data);
+      setModalVisible(true);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to fetch accomplishment reports.');
+    }
   };
 
   return (
@@ -49,74 +87,85 @@ export default function AccomplishmentReportsScreen() {
         <Image source={{ uri: profile.profileImage }} style={styles.profileImg} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.formContainer}>
-          {/* Report Information Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="clipboard-check" size={24} color={GREEN} />
-              <Text style={styles.sectionTitle}>Report Information</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Date *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="MM/DD/YYYY"
-                value={date}
-                onChangeText={setDate}
-                placeholderTextColor="#999"
-              />
+      {/* Show form for non-Viewers, records for Viewers */}
+      {profile.role !== 'Viewer' ? (
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.formContainer}>
+            {/* Report Information Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialCommunityIcons name="clipboard-check" size={24} color={GREEN} />
+                <Text style={styles.sectionTitle}>Report Information</Text>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Date *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="MM/DD/YYYY"
+                  value={date}
+                  onChangeText={setDate}
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Accomplishment *</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Describe the accomplishment or activity completed..."
+                  value={accomplishment}
+                  onChangeText={setAccomplishment}
+                  placeholderTextColor="#999"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Remarks</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Additional notes, observations, or comments..."
+                  value={remarks}
+                  onChangeText={setRemarks}
+                  placeholderTextColor="#999"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
             </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Accomplishment *</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Describe the accomplishment or activity completed..."
-                value={accomplishment}
-                onChangeText={setAccomplishment}
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
+            {/* Action Buttons */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSave}>
+                <Ionicons name="save" size={20} color={WHITE} />
+                <Text style={styles.buttonText}>Save</Text>
+              </TouchableOpacity>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Remarks</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Additional notes, observations, or comments..."
-                value={remarks}
-                onChangeText={setRemarks}
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
+              <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClear}>
+                <Ionicons name="refresh" size={20} color={GREEN} />
+                <Text style={[styles.buttonText, { color: GREEN }]}>Clear</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.button, styles.viewButton]} onPress={handleViewRecords}>
+                <MaterialCommunityIcons name="file-document-outline" size={20} color={WHITE} />
+                <Text style={styles.buttonText}>View Records</Text>
+              </TouchableOpacity>
             </View>
           </View>
-
-          {/* Action Buttons */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSave}>
-              <Ionicons name="save" size={20} color={WHITE} />
-              <Text style={styles.buttonText}>Save</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClear}>
-              <Ionicons name="refresh" size={20} color={GREEN} />
-              <Text style={[styles.buttonText, { color: GREEN }]}>Clear</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.button, styles.viewButton]} onPress={handleViewRecords}>
-              <MaterialCommunityIcons name="file-document-outline" size={20} color={WHITE} />
-              <Text style={styles.buttonText}>View Records</Text>
-            </TouchableOpacity>
-          </View>
+        </ScrollView>
+      ) : (
+        // Redirect Viewers to dedicated records page
+        <View style={{ flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+            Redirecting to records...
+          </Text>
         </View>
-      </ScrollView>
+      )}
+      {/* Modal or Section to display fetched reports remains for non-Viewers */}
     </View>
   );
 }

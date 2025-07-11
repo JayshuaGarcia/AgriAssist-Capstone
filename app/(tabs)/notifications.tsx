@@ -1,29 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Platform, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
-import { Image as RNImage } from 'react-native';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { Dimensions, Image, Platform, Image as RNImage, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
-
-const notificationsFeatures = [
-  {
-    label: 'Reminders',
-    icon: 'bell-ring-outline',
-    route: '/notifications/reminders',
-  },
-  {
-    label: 'Seasonal Calendar',
-    icon: 'calendar-month-outline',
-    route: '/notifications/seasonal-calendar',
-  },
-  {
-    label: 'Weather Feed',
-    icon: 'weather-cloudy',
-    route: '/notifications/weather-feed',
-  },
-];
+import SearchBar from '../../components/SearchBar';
 
 const CARD_GAP = 28;
 const CARD_SIZE = (Dimensions.get('window').width - CARD_GAP * 4) / 2;
@@ -39,6 +21,35 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+
+  // Filter features based on user role
+  const getNotificationsFeatures = () => {
+    const baseFeatures = [
+      {
+        label: 'Seasonal Calendar',
+        icon: 'calendar-month-outline',
+        route: '/notifications/seasonal-calendar',
+      },
+      {
+        label: 'Weather Feed',
+        icon: 'weather-cloudy',
+        route: '/notifications/weather-feed',
+      },
+    ];
+
+    // Only show Reminders for BAEWs role
+    if (profile.role === 'BAEWs') {
+      baseFeatures.unshift({
+        label: 'Reminders',
+        icon: 'bell-ring-outline',
+        route: '/notifications/reminders',
+      });
+    }
+
+    return baseFeatures;
+  };
+
+  const notificationsFeatures = getNotificationsFeatures();
 
   useEffect(() => {
     NavigationBar.setVisibilityAsync('hidden').catch(() => {});
@@ -74,14 +85,18 @@ export default function NotificationsScreen() {
       {/* Top Bar */}
       <View style={styles.topBar}>
         <Image source={require('../../assets/images/Logo.png')} style={styles.logo} resizeMode="contain" />
-        <View style={styles.searchContainer}>
-          <MaterialCommunityIcons name="magnify" size={22} color="#111" style={{ marginLeft: 12 }} />
-          <TextInput
-            style={styles.searchInput}
+        <View style={{ flex: 1, marginLeft: 8, marginRight: 8 }}>
+          <SearchBar
             placeholder="Search here..."
-            placeholderTextColor="#111"
-            accessibilityLabel="Search"
-            returnKeyType="search"
+            data={notificationsFeatures.map(f => ({ id: f.route, title: f.label, icon: f.icon }))}
+            onSearch={query => {
+              const match = notificationsFeatures.find(f => f.label.toLowerCase() === query.toLowerCase());
+              if (match) router.push(match.route);
+            }}
+            onSelect={item => {
+              const match = notificationsFeatures.find(f => f.label === item.title);
+              if (match) router.push(match.route);
+            }}
           />
         </View>
         <Image source={{ uri: profile.profileImage }} style={styles.profileImg} />

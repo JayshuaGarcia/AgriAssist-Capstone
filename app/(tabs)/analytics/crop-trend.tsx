@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, Image } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useBarangay } from '../../../components/RoleContext';
+import { fetchAnalyticsEntries } from '../../../services/analyticsService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -17,44 +19,82 @@ const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 80;
 const BAR_WIDTH = (CHART_WIDTH - 60) / 12; // 12 months
 
+// Define the type for crop data entries
+interface CropDataEntry {
+  name: string;
+  color: string;
+  yield: number[];
+  disease: number[];
+  pest: number[];
+}
+
 export default function CropTrendScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { barangay } = useBarangay();
   const [selectedCrop, setSelectedCrop] = useState('all');
   const [selectedMetric, setSelectedMetric] = useState('yield');
+  const [analyticsData, setAnalyticsData] = useState<any[]>([]);
 
-  // Sample data for different crops
-  const cropData = {
-    rice: {
-      name: 'Rice',
-      color: RICE_COLOR,
-      yield: [85, 92, 78, 95, 88, 91, 87, 94, 89, 96, 82, 90],
-      disease: [12, 8, 15, 6, 11, 7, 13, 5, 10, 4, 16, 9],
-      pest: [8, 5, 12, 3, 9, 4, 11, 2, 7, 3, 14, 6],
-    },
-    corn: {
-      name: 'Corn',
-      color: CORN_COLOR,
-      yield: [72, 78, 65, 82, 75, 80, 73, 85, 77, 88, 70, 83],
-      disease: [15, 11, 18, 8, 14, 9, 16, 7, 12, 6, 19, 10],
-      pest: [10, 7, 13, 4, 11, 5, 12, 3, 9, 4, 15, 7],
-    },
-    vegetables: {
-      name: 'Vegetables',
-      color: VEGETABLES_COLOR,
-      yield: [68, 75, 62, 78, 70, 76, 69, 80, 72, 82, 65, 77],
-      disease: [18, 14, 21, 10, 17, 11, 19, 8, 15, 7, 22, 12],
-      pest: [12, 8, 15, 5, 13, 6, 14, 4, 10, 3, 17, 8],
-    },
-    fruits: {
-      name: 'Fruits',
-      color: FRUITS_COLOR,
-      yield: [60, 68, 55, 72, 63, 70, 61, 75, 65, 78, 58, 71],
-      disease: [20, 16, 24, 12, 19, 13, 21, 10, 17, 8, 25, 14],
-      pest: [14, 10, 17, 6, 15, 7, 16, 5, 12, 4, 19, 9],
-    },
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [barangay]);
+
+  const loadAnalyticsData = async () => {
+    try {
+      const data = await fetchAnalyticsEntries(barangay || undefined);
+      setAnalyticsData(data);
+    } catch (error) {
+      setAnalyticsData([]);
+    }
   };
+
+  // Use analyticsData if available, otherwise fallback to sample data
+  const cropData = analyticsData.length > 0 ?
+    analyticsData.reduce((acc, entry) => {
+      if (!acc[entry.crop]) {
+        acc[entry.crop] = {
+          name: entry.crop,
+          color: entry.color || RICE_COLOR,
+          yield: Array(12).fill(0),
+          disease: Array(12).fill(0),
+          pest: Array(12).fill(0),
+        };
+      }
+      const monthIdx = typeof entry.month === 'number' ? entry.month : (months.indexOf(entry.month) !== -1 ? months.indexOf(entry.month) : 0);
+      acc[entry.crop][entry.metric][monthIdx] = entry.value;
+      return acc;
+    }, {} as any) : {
+      rice: {
+        name: 'Rice',
+        color: RICE_COLOR,
+        yield: [85, 92, 78, 95, 88, 91, 87, 94, 89, 96, 82, 90],
+        disease: [12, 8, 15, 6, 11, 7, 13, 5, 10, 4, 16, 9],
+        pest: [8, 5, 12, 3, 9, 4, 11, 2, 7, 3, 14, 6],
+      },
+      corn: {
+        name: 'Corn',
+        color: CORN_COLOR,
+        yield: [72, 78, 65, 82, 75, 80, 73, 85, 77, 88, 70, 83],
+        disease: [15, 11, 18, 8, 14, 9, 16, 7, 12, 6, 19, 10],
+        pest: [10, 7, 13, 4, 11, 5, 12, 3, 9, 4, 15, 7],
+      },
+      vegetables: {
+        name: 'Vegetables',
+        color: VEGETABLES_COLOR,
+        yield: [68, 75, 62, 78, 70, 76, 69, 80, 72, 82, 65, 77],
+        disease: [18, 14, 21, 10, 17, 11, 19, 8, 15, 7, 22, 12],
+        pest: [12, 8, 15, 5, 13, 6, 14, 4, 10, 3, 17, 8],
+      },
+      fruits: {
+        name: 'Fruits',
+        color: FRUITS_COLOR,
+        yield: [60, 68, 55, 72, 63, 70, 61, 75, 65, 78, 58, 71],
+        disease: [20, 16, 24, 12, 19, 13, 21, 10, 17, 8, 25, 14],
+        pest: [14, 10, 17, 6, 15, 7, 16, 5, 12, 4, 19, 9],
+      },
+    };
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -120,15 +160,15 @@ export default function CropTrendScreen() {
 
   const getCurrentData = () => {
     if (selectedCrop === 'all') {
-      return Object.values(cropData);
+      return Object.values(cropData) as CropDataEntry[];
     }
-    return [cropData[selectedCrop as keyof typeof cropData]];
+    return [cropData[selectedCrop as keyof typeof cropData] as CropDataEntry];
   };
 
-  const currentData = getCurrentData();
-  const maxYield = Math.max(...currentData.flatMap(crop => crop.yield));
-  const maxDisease = Math.max(...currentData.flatMap(crop => crop.disease));
-  const maxPest = Math.max(...currentData.flatMap(crop => crop.pest));
+  const currentData: CropDataEntry[] = getCurrentData() || [];
+  const maxYield = Math.max(...(currentData?.flatMap((crop) => crop.yield) ?? [0]));
+  const maxDisease = Math.max(...(currentData?.flatMap((crop) => crop.disease) ?? [0]));
+  const maxPest = Math.max(...(currentData?.flatMap((crop) => crop.pest) ?? [0]));
 
   return (
     <View style={styles.container}>
@@ -166,9 +206,9 @@ export default function CropTrendScreen() {
                   style={[styles.cropOption, selectedCrop === key && styles.selectedCrop]}
                   onPress={() => setSelectedCrop(key)}
                 >
-                  <View style={[styles.cropColor, { backgroundColor: crop.color }]} />
+                  <View style={[styles.cropColor, { backgroundColor: (crop as CropDataEntry).color }]} />
                   <Text style={[styles.cropText, selectedCrop === key && styles.selectedCropText]}>
-                    {crop.name}
+                    {(crop as CropDataEntry).name}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -225,7 +265,7 @@ export default function CropTrendScreen() {
             
             {selectedMetric === 'yield' && (
               <View style={styles.chartWrapper}>
-                {currentData.map((crop, index) => (
+                {currentData?.map((crop, index) => (
                   <View key={index} style={styles.chartSection}>
                     <View style={styles.chartHeader}>
                       <View style={[styles.cropIndicator, { backgroundColor: crop.color }]} />
@@ -239,7 +279,7 @@ export default function CropTrendScreen() {
 
             {selectedMetric === 'disease' && (
               <View style={styles.chartWrapper}>
-                {currentData.map((crop, index) => (
+                {currentData?.map((crop, index) => (
                   <View key={index} style={styles.chartSection}>
                     <View style={styles.chartHeader}>
                       <View style={[styles.cropIndicator, { backgroundColor: crop.color }]} />
@@ -253,7 +293,7 @@ export default function CropTrendScreen() {
 
             {selectedMetric === 'pest' && (
               <View style={styles.chartWrapper}>
-                {currentData.map((crop, index) => (
+                {currentData?.map((crop, index) => (
                   <View key={index} style={styles.chartSection}>
                     <View style={styles.chartHeader}>
                       <View style={[styles.cropIndicator, { backgroundColor: crop.color }]} />
@@ -314,6 +354,10 @@ export default function CropTrendScreen() {
           </View>
         </View>
       </ScrollView>
+      {/* Show message if no analytics data for barangay */}
+      {analyticsData.length === 0 && (
+        <Text style={{ color: '#888', marginBottom: 16 }}>No analytics data found for your barangay. Showing sample data.</Text>
+      )}
     </View>
   );
 }

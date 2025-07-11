@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform, Alert, Image } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useState } from 'react';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useRecordType } from '../../../components/RecordTypeContext';
+import { useBarangay } from '../../../components/RoleContext';
+import { fetchCropMonitoringReports, uploadCropMonitoringReport } from '../../../services/cropMonitoringService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -15,6 +18,8 @@ export default function CropMonitoringScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { barangay } = useBarangay();
+  const { setRecordType } = useRecordType();
   const [farmerName, setFarmerName] = useState('');
   const [cropType, setCropType] = useState('');
   const [fieldLocation, setFieldLocation] = useState('');
@@ -26,6 +31,18 @@ export default function CropMonitoringScreen() {
   const [irrigationStatus, setIrrigationStatus] = useState('');
   const [growthStage, setGrowthStage] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
+  const [reports, setReports] = useState<any[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  // Auto-load records for Viewers and Admins
+  React.useEffect(() => {
+    if (profile.role === 'Viewer') {
+      router.push('/monitoring/crop-monitoring-records');
+    } else if (profile.role === 'Admin') {
+      setRecordType('crop-monitoring');
+      router.push('/barangay-select-records');
+    }
+  }, [profile.role]);
 
   const cropConditions = [
     { key: 'excellent', label: 'Excellent', icon: 'check-circle', color: '#4caf50' },
@@ -38,18 +55,40 @@ export default function CropMonitoringScreen() {
     'Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvest Ready', 'Mature'
   ];
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!farmerName.trim() || !cropType.trim() || !fieldLocation.trim() || !monitoringDate.trim()) {
       Alert.alert('Required Fields', 'Please fill in Farmer Name, Crop Type, Field Location, and Monitoring Date');
       return;
     }
-
     if (!cropCondition) {
       Alert.alert('Required Fields', 'Please select a crop condition');
       return;
     }
-
-    Alert.alert('Success', 'Crop monitoring report saved successfully!');
+    if (!barangay) {
+      Alert.alert('Barangay not set', 'Please select your barangay.');
+      return;
+    }
+    try {
+      await uploadCropMonitoringReport({
+        farmerName,
+        cropType,
+        fieldLocation,
+        monitoringDate,
+        cropCondition,
+        pestSightings,
+        diseaseObservations,
+        weatherConditions,
+        irrigationStatus,
+        growthStage,
+        additionalNotes,
+        barangay,
+        timestamp: Date.now(),
+      });
+      Alert.alert('Success', 'Crop monitoring report saved successfully!');
+      handleClear();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save crop monitoring report.');
+    }
   };
 
   const handleClear = () => {
@@ -66,8 +105,14 @@ export default function CropMonitoringScreen() {
     setAdditionalNotes('');
   };
 
-  const handleViewReports = () => {
-    Alert.alert('View Reports', 'This will show all saved crop monitoring reports');
+  const handleViewReports = async () => {
+    try {
+      const data = await fetchCropMonitoringReports(barangay || undefined);
+      setReports(data);
+      setModalVisible(true);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to fetch crop monitoring reports.');
+    }
   };
 
   return (
@@ -83,205 +128,226 @@ export default function CropMonitoringScreen() {
         <Image source={{ uri: profile.profileImage }} style={styles.profileImg} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          {/* Basic Information Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="account" size={24} color={GREEN} />
-              <Text style={styles.sectionTitle}>Basic Information</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Farmer Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter farmer name"
-                value={farmerName}
-                onChangeText={setFarmerName}
-                placeholderTextColor="#999"
-              />
-            </View>
+      {/* Show form for non-Viewers, records for Viewers */}
+      {profile.role !== 'Viewer' ? (
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
+            {/* Basic Information Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialCommunityIcons name="account" size={24} color={GREEN} />
+                <Text style={styles.sectionTitle}>Basic Information</Text>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Farmer Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter farmer name"
+                  value={farmerName}
+                  onChangeText={setFarmerName}
+                  placeholderTextColor="#999"
+                />
+              </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Crop Type *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter crop type (e.g., Rice, Corn, Vegetables)"
-                value={cropType}
-                onChangeText={setCropType}
-                placeholderTextColor="#999"
-              />
-            </View>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Crop Type *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter crop type (e.g., Rice, Corn, Vegetables)"
+                  value={cropType}
+                  onChangeText={setCropType}
+                  placeholderTextColor="#999"
+                />
+              </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Field Location *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter field location or coordinates"
-                value={fieldLocation}
-                onChangeText={setFieldLocation}
-                placeholderTextColor="#999"
-              />
-            </View>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Field Location *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter field location or coordinates"
+                  value={fieldLocation}
+                  onChangeText={setFieldLocation}
+                  placeholderTextColor="#999"
+                />
+              </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Monitoring Date *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="MM/DD/YYYY"
-                value={monitoringDate}
-                onChangeText={setMonitoringDate}
-                placeholderTextColor="#999"
-              />
-            </View>
-          </View>
-
-          {/* Crop Assessment Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="sprout" size={24} color={GREEN} />
-              <Text style={styles.sectionTitle}>Crop Assessment</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Crop Condition *</Text>
-              <View style={styles.conditionGrid}>
-                {cropConditions.map((condition) => (
-                  <TouchableOpacity
-                    key={condition.key}
-                    style={[
-                      styles.conditionOption,
-                      cropCondition === condition.key && styles.selectedCondition
-                    ]}
-                    onPress={() => setCropCondition(condition.key)}
-                  >
-                    <MaterialCommunityIcons 
-                      name={condition.icon as any} 
-                      size={20} 
-                      color={cropCondition === condition.key ? WHITE : condition.color} 
-                    />
-                    <Text style={[
-                      styles.conditionText,
-                      cropCondition === condition.key && styles.selectedConditionText
-                    ]}>
-                      {condition.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Monitoring Date *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="MM/DD/YYYY"
+                  value={monitoringDate}
+                  onChangeText={setMonitoringDate}
+                  placeholderTextColor="#999"
+                />
               </View>
             </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Growth Stage</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Select growth stage (e.g., Seedling, Flowering)"
-                value={growthStage}
-                onChangeText={setGrowthStage}
-                placeholderTextColor="#999"
-              />
+            {/* Crop Assessment Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialCommunityIcons name="sprout" size={24} color={GREEN} />
+                <Text style={styles.sectionTitle}>Crop Assessment</Text>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Crop Condition *</Text>
+                <View style={styles.conditionGrid}>
+                  {cropConditions.map((condition) => (
+                    <TouchableOpacity
+                      key={condition.key}
+                      style={[
+                        styles.conditionOption,
+                        cropCondition === condition.key && styles.selectedCondition
+                      ]}
+                      onPress={() => setCropCondition(condition.key)}
+                    >
+                      <MaterialCommunityIcons 
+                        name={condition.icon as any} 
+                        size={20} 
+                        color={cropCondition === condition.key ? WHITE : condition.color} 
+                      />
+                      <Text style={[
+                        styles.conditionText,
+                        cropCondition === condition.key && styles.selectedConditionText
+                      ]}>
+                        {condition.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Growth Stage</Text>
+                <View style={styles.dropdownContainer}>
+                  <TouchableOpacity
+                    style={styles.dropdown}
+                    onPress={() => {
+                      // Show picker or modal for growth stage selection
+                      Alert.alert('Growth Stage', 'Select growth stage', [
+                        ...growthStages.map(stage => ({
+                          text: stage,
+                          onPress: () => setGrowthStage(stage)
+                        })),
+                        { text: 'Cancel', style: 'cancel' }
+                      ])
+                    }}
+                  >
+                    <Text style={growthStage ? styles.dropdownText : styles.dropdownPlaceholder}>
+                      {growthStage || 'Select growth stage'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Pest Sightings</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Describe any pest sightings or issues"
+                  value={pestSightings}
+                  onChangeText={setPestSightings}
+                  multiline
+                  numberOfLines={3}
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Disease Observations</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Describe any disease symptoms observed"
+                  value={diseaseObservations}
+                  onChangeText={setDiseaseObservations}
+                  multiline
+                  numberOfLines={3}
+                  placeholderTextColor="#999"
+                />
+              </View>
             </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Irrigation Status</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Describe irrigation status"
-                value={irrigationStatus}
-                onChangeText={setIrrigationStatus}
-                placeholderTextColor="#999"
-              />
+            {/* Environmental Conditions Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialCommunityIcons name="weather-partly-cloudy" size={24} color={GREEN} />
+                <Text style={styles.sectionTitle}>Environmental Conditions</Text>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Weather Conditions</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Describe current weather conditions"
+                  value={weatherConditions}
+                  onChangeText={setWeatherConditions}
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Irrigation Status</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Describe irrigation status (e.g., Adequate, Insufficient)"
+                  value={irrigationStatus}
+                  onChangeText={setIrrigationStatus}
+                  placeholderTextColor="#999"
+                />
+              </View>
+            </View>
+
+            {/* Additional Notes Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialCommunityIcons name="note-text" size={24} color={GREEN} />
+                <Text style={styles.sectionTitle}>Additional Notes</Text>
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Add any additional observations or recommendations"
+                  value={additionalNotes}
+                  onChangeText={setAdditionalNotes}
+                  multiline
+                  numberOfLines={4}
+                  placeholderTextColor="#999"
+                />
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSave}>
+                <Ionicons name="save" size={20} color={WHITE} />
+                <Text style={styles.buttonText}>Save Report</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClear}>
+                <Ionicons name="refresh" size={20} color={GREEN} />
+                <Text style={[styles.buttonText, { color: GREEN }]}>Clear Form</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.button, styles.viewButton]} onPress={handleViewReports}>
+                <MaterialCommunityIcons name="file-document-outline" size={20} color={WHITE} />
+                <Text style={styles.buttonText}>View Reports</Text>
+              </TouchableOpacity>
             </View>
           </View>
-
-          {/* Issues & Observations Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="alert-circle" size={24} color={WARNING_COLOR} />
-              <Text style={styles.sectionTitle}>Issues & Observations</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Pest Sightings</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Describe any pest sightings, type, and severity..."
-                value={pestSightings}
-                onChangeText={setPestSightings}
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Disease Observations</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Describe any disease symptoms, affected areas..."
-                value={diseaseObservations}
-                onChangeText={setDiseaseObservations}
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Weather Conditions</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Describe current weather conditions"
-                value={weatherConditions}
-                onChangeText={setWeatherConditions}
-                placeholderTextColor="#999"
-              />
-            </View>
-          </View>
-
-          {/* Additional Notes Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="note-text" size={24} color={GREEN} />
-              <Text style={styles.sectionTitle}>Additional Notes</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Add any additional observations, recommendations, or notes..."
-                value={additionalNotes}
-                onChangeText={setAdditionalNotes}
-                placeholderTextColor="#999"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSave}>
-              <Ionicons name="save" size={20} color={WHITE} />
-              <Text style={styles.buttonText}>Save Report</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClear}>
-              <Ionicons name="refresh" size={20} color={GREEN} />
-              <Text style={[styles.buttonText, { color: GREEN }]}>Clear Form</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.button, styles.viewButton]} onPress={handleViewReports}>
-              <MaterialCommunityIcons name="file-document-outline" size={20} color={WHITE} />
-              <Text style={styles.buttonText}>View Reports</Text>
-            </TouchableOpacity>
-          </View>
+        </ScrollView>
+      ) : (
+        // Redirect Viewers to dedicated records page
+        <View style={{ flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+            Redirecting to records...
+          </Text>
         </View>
-      </ScrollView>
+      )}
+      {/* Modal or Section to display fetched reports remains for non-Viewers */}
     </View>
   );
 }
@@ -450,5 +516,26 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: WHITE,
     marginLeft: 8,
+  },
+  dropdownContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  dropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  dropdownPlaceholder: {
+    fontSize: 16,
+    color: '#999',
   },
 }); 

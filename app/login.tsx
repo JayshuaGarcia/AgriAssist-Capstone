@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
+import { useBarangay, useRole } from '../components/RoleContext';
 
 const GREEN = '#16543a';
 const BUTTON_GREEN = '#39796b';
@@ -11,13 +12,14 @@ const RECT_RADIUS = 32;
 const BUTTON_RADIUS = 32;
 
 export default function LoginScreen() {
+  const { role } = useRole();
+  const { barangay } = useBarangay();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const { login, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [role, setRole] = React.useState('Viewer');
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -29,7 +31,7 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      await login(email, password, role);
+      await login(email, password, role || 'Viewer');
     } catch (error: any) {
       setError(error.message);
     } finally {
@@ -50,6 +52,24 @@ export default function LoginScreen() {
           <Image source={require('../assets/images/Logo 2.png')} style={styles.logoImg} resizeMode="contain" />
           <Text style={styles.header}>Login</Text>
           <Text style={styles.subHeader}>Sign in to continue</Text>
+          
+          {/* Show selected barangay for BAEWs and Viewers */}
+          {(role === 'BAEWs' || role === 'Viewer') && (
+            <View style={styles.barangayIndicator}>
+              <Text style={styles.barangayText}>
+                Barangay: {barangay || 'Not Selected'}
+              </Text>
+              <TouchableOpacity 
+                style={styles.changeBarangayButton}
+                onPress={() => router.push('/barangay-select')}
+              >
+                <Text style={styles.changeBarangayText}>
+                  {barangay ? 'Change Barangay' : 'Select Barangay'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -67,24 +87,6 @@ export default function LoginScreen() {
             onChangeText={setPassword}
             secureTextEntry
           />
-          <Text style={{ fontWeight: 'bold', color: '#16543a', marginBottom: 8 }}>Select Role</Text>
-          <View style={{ flexDirection: 'row', marginBottom: 18 }}>
-            {['Admin', 'BAEWs', 'Viewer'].map((r) => (
-              <TouchableOpacity
-                key={r}
-                style={{
-                  backgroundColor: role === r ? '#39796b' : '#e0e0e0',
-                  paddingVertical: 10,
-                  paddingHorizontal: 18,
-                  borderRadius: 20,
-                  marginHorizontal: 5,
-                }}
-                onPress={() => setRole(r)}
-              >
-                <Text style={{ color: role === r ? '#fff' : '#16543a', fontWeight: 'bold' }}>{r}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
           {error ? (
             <Text style={styles.errorText}>{error}</Text>
           ) : null}
@@ -202,6 +204,37 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     textDecorationLine: 'underline',
+  },
+  barangayIndicator: {
+    backgroundColor: INPUT_GREEN,
+    borderRadius: BUTTON_RADIUS,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    marginBottom: 18,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.13,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  barangayText: {
+    color: GREEN,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  changeBarangayButton: {
+    backgroundColor: BUTTON_GREEN,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  changeBarangayText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   topGreen: {
     position: 'absolute',

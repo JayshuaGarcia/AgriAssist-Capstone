@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Switch, FlatList } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { FlatList, StyleSheet, Switch, Text, View } from 'react-native';
 
 const GREEN = '#16543a';
 
 const recentNotifications = [
-  { id: '1', text: 'Your report was approved.' },
-  { id: '2', text: 'Reminder: Training session tomorrow.' },
-  { id: '3', text: 'New farmer profile added.' },
+  { id: '1', text: ' ' },
 ];
 
 export default function ProfileNotificationsScreen() {

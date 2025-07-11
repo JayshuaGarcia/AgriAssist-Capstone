@@ -24,6 +24,7 @@ export interface Farmer {
   livestock?: string[];
   registrationDate: Date;
   status: 'active' | 'inactive';
+  barangay: string; // Added
 }
 
 export interface CropData {
@@ -36,6 +37,7 @@ export interface CropData {
   area: number;
   status: 'planted' | 'growing' | 'harvested';
   notes?: string;
+  barangay: string; // Added
 }
 
 export interface LivestockData {
@@ -46,6 +48,7 @@ export interface LivestockData {
   healthStatus: 'healthy' | 'sick' | 'vaccinated';
   lastVaccination?: Date;
   notes?: string;
+  barangay: string; // Added
 }
 
 export interface MonitoringData {
@@ -57,6 +60,7 @@ export interface MonitoringData {
   observation: string;
   actionTaken?: string;
   nextVisit?: Date;
+  barangay: string; // Added
 }
 
 export class FirestoreService {
@@ -76,7 +80,8 @@ export class FirestoreService {
     try {
       const docRef = await addDoc(collection(db, this.COLLECTIONS.FARMERS), {
         ...farmer,
-        registrationDate: new Date()
+        registrationDate: new Date(),
+        barangay: farmer.barangay // Ensure barangay is set
       });
       return docRef.id;
     } catch (error) {
@@ -84,10 +89,16 @@ export class FirestoreService {
     }
   }
 
-  // Get all farmers
-  static async getAllFarmers(): Promise<Farmer[]> {
+  // Get all farmers (optionally filter by barangay)
+  static async getAllFarmers(barangay?: string): Promise<Farmer[]> {
     try {
-      const querySnapshot = await getDocs(collection(db, this.COLLECTIONS.FARMERS));
+      let q;
+      if (barangay) {
+        q = query(collection(db, this.COLLECTIONS.FARMERS), where('barangay', '==', barangay));
+      } else {
+        q = collection(db, this.COLLECTIONS.FARMERS);
+      }
+      const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -137,21 +148,34 @@ export class FirestoreService {
   // Add crop data
   static async addCropData(cropData: Omit<CropData, 'id'>): Promise<string> {
     try {
-      const docRef = await addDoc(collection(db, this.COLLECTIONS.CROPS), cropData);
+      const docRef = await addDoc(collection(db, this.COLLECTIONS.CROPS), {
+        ...cropData,
+        barangay: cropData.barangay // Ensure barangay is set
+      });
       return docRef.id;
     } catch (error) {
       throw new Error('Failed to add crop data');
     }
   }
 
-  // Get crops by farmer
-  static async getCropsByFarmer(farmerId: string): Promise<CropData[]> {
+  // Get crops by farmer (optionally filter by barangay)
+  static async getCropsByFarmer(farmerId: string, barangay?: string): Promise<CropData[]> {
     try {
-      const q = query(
-        collection(db, this.COLLECTIONS.CROPS),
-        where('farmerId', '==', farmerId),
-        orderBy('plantingDate', 'desc')
-      );
+      let q;
+      if (barangay) {
+        q = query(
+          collection(db, this.COLLECTIONS.CROPS),
+          where('farmerId', '==', farmerId),
+          where('barangay', '==', barangay),
+          orderBy('plantingDate', 'desc')
+        );
+      } else {
+        q = query(
+          collection(db, this.COLLECTIONS.CROPS),
+          where('farmerId', '==', farmerId),
+          orderBy('plantingDate', 'desc')
+        );
+      }
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -167,20 +191,32 @@ export class FirestoreService {
   // Add livestock data
   static async addLivestockData(livestockData: Omit<LivestockData, 'id'>): Promise<string> {
     try {
-      const docRef = await addDoc(collection(db, this.COLLECTIONS.LIVESTOCK), livestockData);
+      const docRef = await addDoc(collection(db, this.COLLECTIONS.LIVESTOCK), {
+        ...livestockData,
+        barangay: livestockData.barangay // Ensure barangay is set
+      });
       return docRef.id;
     } catch (error) {
       throw new Error('Failed to add livestock data');
     }
   }
 
-  // Get livestock by farmer
-  static async getLivestockByFarmer(farmerId: string): Promise<LivestockData[]> {
+  // Get livestock by farmer (optionally filter by barangay)
+  static async getLivestockByFarmer(farmerId: string, barangay?: string): Promise<LivestockData[]> {
     try {
-      const q = query(
-        collection(db, this.COLLECTIONS.LIVESTOCK),
-        where('farmerId', '==', farmerId)
-      );
+      let q;
+      if (barangay) {
+        q = query(
+          collection(db, this.COLLECTIONS.LIVESTOCK),
+          where('farmerId', '==', farmerId),
+          where('barangay', '==', barangay)
+        );
+      } else {
+        q = query(
+          collection(db, this.COLLECTIONS.LIVESTOCK),
+          where('farmerId', '==', farmerId)
+        );
+      }
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -198,7 +234,8 @@ export class FirestoreService {
     try {
       const docRef = await addDoc(collection(db, this.COLLECTIONS.MONITORING), {
         ...monitoringData,
-        date: new Date()
+        date: new Date(),
+        barangay: monitoringData.barangay // Ensure barangay is set
       });
       return docRef.id;
     } catch (error) {
@@ -206,14 +243,24 @@ export class FirestoreService {
     }
   }
 
-  // Get monitoring data by farmer
-  static async getMonitoringByFarmer(farmerId: string): Promise<MonitoringData[]> {
+  // Get monitoring data by farmer (optionally filter by barangay)
+  static async getMonitoringByFarmer(farmerId: string, barangay?: string): Promise<MonitoringData[]> {
     try {
-      const q = query(
-        collection(db, this.COLLECTIONS.MONITORING),
-        where('farmerId', '==', farmerId),
-        orderBy('date', 'desc')
-      );
+      let q;
+      if (barangay) {
+        q = query(
+          collection(db, this.COLLECTIONS.MONITORING),
+          where('farmerId', '==', farmerId),
+          where('barangay', '==', barangay),
+          orderBy('date', 'desc')
+        );
+      } else {
+        q = query(
+          collection(db, this.COLLECTIONS.MONITORING),
+          where('farmerId', '==', farmerId),
+          orderBy('date', 'desc')
+        );
+      }
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -267,11 +314,12 @@ export class FirestoreService {
   }
 
   // ===== USER PROFILE OPERATIONS =====
-  static async createUserProfile(uid: string, profile: { name: string; email: string; role: string; approved: boolean }): Promise<void> {
+  static async createUserProfile(uid: string, profile: { name: string; email: string; role: string; approved: boolean; barangay: string }): Promise<void> {
     try {
       await addDoc(collection(db, this.COLLECTIONS.USERS), {
         uid,
-        ...profile
+        ...profile,
+        barangay: profile.barangay // Ensure barangay is set
       });
     } catch (error) {
       throw new Error('Failed to create user profile');
@@ -291,7 +339,7 @@ export class FirestoreService {
     }
   }
 
-  static async updateUserProfile(uid: string, updates: Partial<{ name: string; email: string; role: string; approved: boolean }>): Promise<void> {
+  static async updateUserProfile(uid: string, updates: Partial<{ name: string; email: string; role: string; approved: boolean; barangay: string }>): Promise<void> {
     try {
       const q = query(collection(db, this.COLLECTIONS.USERS), where('uid', '==', uid));
       const querySnapshot = await getDocs(q);
@@ -302,6 +350,85 @@ export class FirestoreService {
       }
     } catch (error) {
       throw new Error('Failed to update user profile');
+    }
+  }
+
+  // Get all pending user requests (users with approved: false) - for Admin or BAEW
+  static async getPendingUserRequests(barangay?: string, isAdmin?: boolean): Promise<any[]> {
+    try {
+      const querySnapshot = await getDocs(collection(db, this.COLLECTIONS.USERS));
+      const allUsers = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      let pendingRequests;
+      if (isAdmin) {
+        pendingRequests = allUsers.filter(user => (user.approved === false || user.approved === undefined));
+      } else if (barangay) {
+        pendingRequests = allUsers.filter(user => (user.approved === false || user.approved === undefined) && user.barangay === barangay);
+      } else {
+        pendingRequests = [];
+      }
+      return pendingRequests;
+    } catch (error) {
+      console.error('Firestore error:', error);
+      throw new Error('Failed to fetch pending user requests');
+    }
+  }
+
+  // Get pending Viewer requests only (for BAEW users)
+  static async getPendingViewerRequests(barangay?: string, isAdmin?: boolean): Promise<any[]> {
+    try {
+      const querySnapshot = await getDocs(collection(db, this.COLLECTIONS.USERS));
+      const allUsers = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      let pendingRequests;
+      if (isAdmin) {
+        pendingRequests = allUsers.filter(user => (user.approved === false || user.approved === undefined) && user.role === 'Viewer');
+      } else if (barangay) {
+        pendingRequests = allUsers.filter(user => (user.approved === false || user.approved === undefined) && user.role === 'Viewer' && user.barangay === barangay);
+      } else {
+        pendingRequests = [];
+      }
+      return pendingRequests;
+    } catch (error) {
+      console.error('Firestore error:', error);
+      throw new Error('Failed to fetch pending viewer requests');
+    }
+  }
+
+  // Approve or reject a user request
+  static async updateUserApprovalStatus(uid: string, approved: boolean): Promise<void> {
+    try {
+      const q = query(collection(db, this.COLLECTIONS.USERS), where('uid', '==', uid));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const docId = querySnapshot.docs[0].id;
+        const docRef = doc(db, this.COLLECTIONS.USERS, docId);
+        await updateDoc(docRef, { approved });
+      }
+    } catch (error) {
+      throw new Error('Failed to update user approval status');
+    }
+  }
+
+  // Get all users (optionally filter by barangay)
+  static async getAllUsers(barangay?: string, isAdmin?: boolean): Promise<any[]> {
+    try {
+      const querySnapshot = await getDocs(collection(db, this.COLLECTIONS.USERS));
+      const allUsers = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      if (isAdmin || !barangay) {
+        return allUsers;
+      } else {
+        return allUsers.filter(user => user.barangay === barangay);
+      }
+    } catch (error) {
+      throw new Error('Failed to fetch all users');
     }
   }
 } 

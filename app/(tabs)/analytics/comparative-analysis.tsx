@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, Modal, Pressable, Image } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { Dimensions, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useBarangay } from '../../../components/RoleContext';
+import { fetchAnalyticsEntries } from '../../../services/analyticsService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -19,10 +21,15 @@ export default function ComparativeAnalysisScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { barangay } = useBarangay();
   const [selectedYear1, setSelectedYear1] = useState('2020');
   const [selectedYear2, setSelectedYear2] = useState('2023');
   const [selectedCrop, setSelectedCrop] = useState('rice');
   const [showYearPicker, setShowYearPicker] = useState<'year1' | 'year2' | null>(null);
+  const [forecast, setForecast] = useState<any>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastError, setForecastError] = useState<string | null>(null);
+  const [analyticsData, setAnalyticsData] = useState<any[]>([]);
 
   // Generate years from 2020 to current year + 10
   const currentYear = new Date().getFullYear();
@@ -36,8 +43,32 @@ export default function ComparativeAnalysisScreen() {
     '2023': { rice: { yield: 520, area: 165, productivity: 92 }, corn: { yield: 435, area: 135, productivity: 85 }, vegetables: { yield: 360, area: 95, productivity: 88 }, fruits: { yield: 230, area: 75, productivity: 83 } },
   };
 
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [barangay]);
+
+  const loadAnalyticsData = async () => {
+    try {
+      const data = await fetchAnalyticsEntries(barangay || undefined);
+      setAnalyticsData(data);
+    } catch (error) {
+      setAnalyticsData([]);
+    }
+  };
+
   // Prediction logic for future years
   function getCropData(year: string, cropKey: string) {
+    const found = analyticsData.find(
+      (entry) => entry.year === year && entry.crop === cropKey
+    );
+    if (found) {
+      return {
+        yield: found.yield,
+        area: found.area,
+        productivity: found.productivity,
+      };
+    }
+    // fallback to hardcoded
     if (historicalData[year] && historicalData[year][cropKey]) {
       return historicalData[year][cropKey];
     }
@@ -130,6 +161,21 @@ export default function ComparativeAnalysisScreen() {
     </Modal>
   );
 
+  useEffect(() => {
+    setForecastLoading(true);
+    setForecastError(null);
+    fetch('https://harvest-forecast-api.onrender.com/')
+      .then(res => res.json())
+      .then(data => {
+        setForecast(data);
+        setForecastLoading(false);
+      })
+      .catch(err => {
+        setForecastError('Failed to fetch forecast data.');
+        setForecastLoading(false);
+      });
+  }, []);
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" hidden />
@@ -212,6 +258,27 @@ export default function ComparativeAnalysisScreen() {
               {crops.map(crop => renderComparisonCard(crop.key, selectedYear1, selectedYear2))}
             </View>
           </View>
+          {/* Forecast Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="cloud-search" size={24} color={GREEN} />
+              <Text style={styles.sectionTitle}>Harvest Forecast (API)</Text>
+            </View>
+            {forecastLoading && <Text>Loading forecast...</Text>}
+            {forecastError && <Text style={{ color: 'red' }}>{forecastError}</Text>}
+            {forecast && (
+              <View style={{ backgroundColor: '#e0f7fa', borderRadius: 10, padding: 16, marginTop: 8 }}>
+                <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>Forecast Data:</Text>
+                <Text selectable style={{ fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>
+                  {typeof forecast === 'object' ? JSON.stringify(forecast, null, 2) : String(forecast)}
+                </Text>
+              </View>
+            )}
+          </View>
+          {/* Show message if no analytics data for barangay */}
+          {analyticsData.length === 0 && (
+            <Text style={{ color: '#888', marginBottom: 16 }}>No analytics data found for your barangay. Showing sample data.</Text>
+          )}
         </View>
       </ScrollView>
     </View>

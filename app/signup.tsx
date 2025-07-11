@@ -2,27 +2,56 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
+import { useBarangay, useRole } from '../components/RoleContext';
 
 const GREEN = '#16543a';
 const BUTTON_GREEN = '#39796b';
 const INPUT_GREEN = '#74bfa3';
+const WHITE = '#ffffff';
 const RECT_HEIGHT = 80;
 const RECT_RADIUS = 32;
 const BUTTON_RADIUS = 32;
 
+const BARANGAYS = [
+  'Poblacion',
+  'Rizal',
+  'Tabugon',
+  'San Lorenzo',
+  'San Pedro',
+  'Pulongguit-guit',
+  'Basiad',
+  'Plaridel',
+  'Don Tomas',
+  'Maulawin',
+  'Patag Ibaba',
+  'Patag Ilaya',
+  'Bulala',
+  'Guitol',
+  'Kagtalaba',
+];
+
 export default function SignupScreen() {
+  const { role } = useRole();
+  const { barangay, setBarangay } = useBarangay();
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [selectedBarangay, setSelectedBarangay] = React.useState(barangay || '');
+  const [showBarangayDropdown, setShowBarangayDropdown] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const { signup, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [role, setRole] = React.useState('Viewer');
 
   const handleSignup = async () => {
     if (!name || !email || !password) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    // Only require barangay selection for BAEWs and Viewers
+    if ((role === 'BAEWs' || role === 'Viewer') && !selectedBarangay) {
+      setError('Please select a barangay');
       return;
     }
 
@@ -35,7 +64,12 @@ export default function SignupScreen() {
     setError('');
 
     try {
-      await signup(email, password, name, role);
+      // Set the selected barangay in context (only for BAEWs and Viewers)
+      if (role === 'BAEWs' || role === 'Viewer') {
+        setBarangay(selectedBarangay as any);
+      }
+      await signup(email, password, name, role || 'Viewer', selectedBarangay || '');
+      // The navigation will be handled by AuthContext based on approval status
     } catch (error: any) {
       setError(error.message);
     } finally {
@@ -80,24 +114,40 @@ export default function SignupScreen() {
             onChangeText={setPassword}
             secureTextEntry
           />
-          <Text style={{ fontWeight: 'bold', color: '#16543a', marginBottom: 8 }}>Select Role</Text>
-          <View style={{ flexDirection: 'row', marginBottom: 18 }}>
-            {['Admin', 'BAEWs', 'Viewer'].map((r) => (
+          
+          {/* Barangay Selection - Only for BAEWs and Viewers */}
+          {(role === 'BAEWs' || role === 'Viewer') && (
+            <>
               <TouchableOpacity
-                key={r}
-                style={{
-                  backgroundColor: role === r ? '#39796b' : '#e0e0e0',
-                  paddingVertical: 10,
-                  paddingHorizontal: 18,
-                  borderRadius: 20,
-                  marginHorizontal: 5,
-                }}
-                onPress={() => setRole(r)}
+                style={styles.input}
+                onPress={() => setShowBarangayDropdown(!showBarangayDropdown)}
               >
-                <Text style={{ color: role === r ? '#fff' : '#16543a', fontWeight: 'bold' }}>{r}</Text>
+                <Text style={[styles.inputText, !selectedBarangay && { color: GREEN }]}>
+                  {selectedBarangay || 'Select Barangay'}
+                </Text>
               </TouchableOpacity>
-            ))}
-          </View>
+              
+              {showBarangayDropdown && (
+                <View style={styles.dropdownContainer}>
+                  <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
+                    {BARANGAYS.map((barangayOption) => (
+                      <TouchableOpacity
+                        key={barangayOption}
+                        style={styles.dropdownItem}
+                        onPress={() => {
+                          setSelectedBarangay(barangayOption);
+                          setShowBarangayDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownItemText}>{barangayOption}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </>
+          )}
+          
           {error ? (
             <Text style={styles.errorText}>{error}</Text>
           ) : null}
@@ -210,6 +260,44 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     textDecorationLine: 'underline',
+  },
+  inputText: {
+    fontSize: 17,
+    color: GREEN,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  dropdownContainer: {
+    position: 'absolute',
+    top: 320,
+    left: 24,
+    right: 24,
+    backgroundColor: WHITE,
+    borderRadius: BUTTON_RADIUS,
+    borderWidth: 1,
+    borderColor: INPUT_GREEN,
+    maxHeight: 200,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  dropdownScroll: {
+    maxHeight: 200,
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemText: {
+    fontSize: 17,
+    color: GREEN,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   topGreen: {
     position: 'absolute',

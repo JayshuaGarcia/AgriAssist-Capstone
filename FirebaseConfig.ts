@@ -1,9 +1,10 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { initializeAuth, getReactNativePersistence } from "firebase/auth";
+import { getAuth } from "firebase/auth";
+import { getDatabase } from "firebase/database";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -20,10 +21,27 @@ const firebaseConfig = {
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase Auth with AsyncStorage persistence
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
+// Add this line to initialize and export the Realtime Database
+export const database = getDatabase(app);
+
+let auth;
+if (
+  Platform.OS !== 'web' &&
+  typeof global !== 'undefined' &&
+  !global.nativeCallSyncHook // Not Expo Go
+) {
+  // Dynamically require only in supported environments
+  const { initializeAuth, getReactNativePersistence } = require('firebase/auth');
+  const ReactNativeAsyncStorage = require('@react-native-async-storage/async-storage').default;
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+  });
+} else {
+  // Expo Go or web
+  auth = getAuth(app);
+}
+
+export { auth };
 
 // Initialize Firestore
 export const db = getFirestore(app);

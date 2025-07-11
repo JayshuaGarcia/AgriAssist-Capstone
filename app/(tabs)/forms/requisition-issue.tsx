@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform, Alert, Image } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useState } from 'react';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useRecordType } from '../../../components/RecordTypeContext';
+import { useBarangay } from '../../../components/RoleContext';
 
 const GREEN = '#16543a';
 const WHITE = '#ffffff';
@@ -12,6 +14,8 @@ export default function RequisitionIssueScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { setRecordType } = useRecordType();
+  const { barangay } = useBarangay();
   
   const [formType, setFormType] = useState('requisition'); // 'requisition' or 'issue'
   const [requestorName, setRequestorName] = useState('');
@@ -23,6 +27,16 @@ export default function RequisitionIssueScreen() {
   const [purpose, setPurpose] = useState('');
   const [approvedBy, setApprovedBy] = useState('');
   const [remarks, setRemarks] = useState('');
+
+  // Auto-redirect for Viewer and Admin roles
+  React.useEffect(() => {
+    if (profile.role === 'Viewer') {
+      router.push('/farmers/profile');
+    } else if (profile.role === 'Admin') {
+      setRecordType('farmer-profiles');
+      router.push('/barangay-select-records');
+    }
+  }, [profile.role]);
 
   const handleSubmit = () => {
     if (!requestorName || !department || !date || !itemName || !quantity) {

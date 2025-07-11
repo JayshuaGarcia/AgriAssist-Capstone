@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform, Alert, Image } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useState } from 'react';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useRecordType } from '../../../components/RecordTypeContext';
+import { useBarangay } from '../../../components/RoleContext';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -13,6 +15,8 @@ export default function FarmerProfileFormScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { setRecordType } = useRecordType();
+  const { barangay } = useBarangay();
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -21,6 +25,16 @@ export default function FarmerProfileFormScreen() {
   const [contactNumber, setContactNumber] = useState('');
   const [cropName, setCropName] = useState('');
   const [cropArea, setCropArea] = useState('');
+
+  // Auto-redirect for Viewer and Admin roles
+  React.useEffect(() => {
+    if (profile.role === 'Viewer') {
+      router.push('/farmers/profile');
+    } else if (profile.role === 'Admin') {
+      setRecordType('farmer-profiles');
+      router.push('/barangay-select-records');
+    }
+  }, [profile.role]);
 
   const handleSave = () => {
     if (!firstName || !lastName || !contactNumber) {

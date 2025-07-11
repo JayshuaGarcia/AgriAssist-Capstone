@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, Image } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { Dimensions, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
+import { useBarangay } from '../../../components/RoleContext';
+import { fetchAnalyticsEntries } from '../../../services/analyticsService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -21,11 +23,26 @@ export default function PerformanceInsightsScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+  const { barangay } = useBarangay();
   const [selectedMetric, setSelectedMetric] = useState('productivity');
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
+  const [analyticsData, setAnalyticsData] = useState<any[]>([]);
 
-  // Sample farmer performance data
-  const farmerData = [
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [barangay]);
+
+  const loadAnalyticsData = async () => {
+    try {
+      const data = await fetchAnalyticsEntries(barangay || undefined);
+      setAnalyticsData(data);
+    } catch (error) {
+      setAnalyticsData([]);
+    }
+  };
+
+  // Use analyticsData if available, otherwise fallback to sample data
+  const farmerData = analyticsData.length > 0 ? analyticsData : [
     {
       id: 1,
       name: 'Juan Dela Cruz',
@@ -347,6 +364,10 @@ export default function PerformanceInsightsScreen() {
           </View>
         </View>
       </ScrollView>
+      {/* Show message if no analytics data for barangay */}
+      {analyticsData.length === 0 && (
+        <Text style={{ color: '#888', marginBottom: 16 }}>No analytics data found for your barangay. Showing sample data.</Text>
+      )}
     </View>
   );
 }

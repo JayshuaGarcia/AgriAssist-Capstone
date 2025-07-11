@@ -1,20 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Platform, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
-import { Image as RNImage } from 'react-native';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useState } from 'react';
+import { Dimensions, Image, Platform, Image as RNImage, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
-
-const categories = [
-  { key: 'farmers', label: 'Farmers', icon: 'account-hard-hat' },
-  { key: 'monitoring', label: 'Monitoring', icon: 'monitor-dashboard' },
-  { key: 'analytics', label: 'Analytics & Forecasting', icon: 'chart-line' },
-  { key: 'operations', label: 'Operations', icon: 'cog-sync' },
-  { key: 'forms', label: 'Forms & Templates', icon: 'file-document-edit' },
-  { key: 'notifications', label: 'Notifications & Calendar', icon: 'bell-alert' },
-];
+import SearchBar from '../../components/SearchBar';
 
 const CARD_GAP = 28;
 const CARD_SIZE = (Dimensions.get('window').width - CARD_GAP * 4) / 2;
@@ -30,10 +21,41 @@ const categoryImages: { [key: string]: any } = {
   'Notifications & Calendar': require('../../assets/images/Notifications & Calendar.png'),
 };
 
+const homeFeatures = [
+  { label: 'Farmers', icon: 'account-hard-hat', route: '../farmers' },
+  { label: 'Monitoring', icon: 'monitor-dashboard', route: '../monitoring' },
+  { label: 'Analytics & Forecasting', icon: 'chart-line', route: '../analytics' },
+  { label: 'Operations', icon: 'cog-sync', route: '../operations' },
+  { label: 'Forms & Templates', icon: 'file-document-edit', route: '../forms' },
+  { label: 'Notifications & Calendar', icon: 'bell-alert', route: '../notifications' },
+];
+
 export default function HomeScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
   const { profile } = useAuth();
+
+  // Filter categories based on user role
+  const getCategories = () => {
+    const baseCategories = [
+      { key: 'farmers', label: 'Farmers', icon: 'account-hard-hat' },
+      { key: 'monitoring', label: 'Monitoring', icon: 'monitor-dashboard' },
+      { key: 'analytics', label: 'Analytics & Forecasting', icon: 'chart-line' },
+      { key: 'operations', label: 'Operations', icon: 'cog-sync' },
+    ];
+
+    // Only show Forms & Templates and Notifications for BAEWs role
+    if (profile.role === 'BAEWs') {
+      baseCategories.push(
+        { key: 'forms', label: 'Forms & Templates', icon: 'file-document-edit' },
+        { key: 'notifications', label: 'Notifications & Calendar', icon: 'bell-alert' }
+      );
+    }
+
+    return baseCategories;
+  };
+
+  const categories = getCategories();
 
   const tabList = [
     { key: 'home', label: 'Home', icon: <Ionicons name="home" size={28} /> },
@@ -75,44 +97,62 @@ export default function HomeScreen() {
       {/* Top Bar */}
       <View style={styles.topBar}>
         <Image source={require('../../assets/images/Logo.png')} style={styles.logo} resizeMode="contain" />
-        <View style={styles.searchContainer}>
-          <MaterialCommunityIcons name="magnify" size={22} color="#111" style={{ marginLeft: 12 }} />
-          <TextInput
-            style={styles.searchInput}
+        <View style={{ flex: 1, marginLeft: 8, marginRight: 8 }}>
+          <SearchBar
             placeholder="Search here ..."
-            placeholderTextColor="#111"
-            accessibilityLabel="Search"
-            returnKeyType="search"
+            data={homeFeatures.map(f => ({ id: f.route, title: f.label, icon: f.icon }))}
+            onSearch={query => {
+              const match = homeFeatures.find(f => f.label.toLowerCase() === query.toLowerCase());
+              if (match) router.push(match.route);
+            }}
+            onSelect={item => {
+              const match = homeFeatures.find(f => f.label === item.title);
+              if (match) router.push(match.route);
+            }}
           />
         </View>
         <Image source={{ uri: profile.profileImage }} style={styles.profileImg} />
       </View>
-      {/* Category Title Row */}
-      <View style={styles.categoryRow}>
-        <Text style={[styles.categoryTitle, { color: '#111' }]}>Category</Text>
-        <MaterialCommunityIcons name="menu" size={32} color="#111" style={{ marginRight: 8 }} />
-      </View>
-      {/* Category Grid */}
-      <View style={styles.grid}>
-        {categories.map((cat) => (
-          <View key={cat.key} style={styles.catCol}>
-            <TouchableOpacity
-              style={styles.catBtn}
-              onPress={() => router.push(`../${cat.key}`)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={cat.label}
-            >
-              <RNImage
-                source={categoryImages[cat.label]}
-                style={styles.catImg}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
-            <Text style={styles.catLabel} numberOfLines={2} ellipsizeMode="tail">{cat.label}</Text>
+      
+      {/* Scrollable Content */}
+      <ScrollView 
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Category Title Row */}
+        <View style={styles.categoryRow}>
+          <View style={styles.titleContainer}>
+            <Text style={[styles.categoryTitle, { color: '#111' }]}>Category</Text>
+            <View style={[styles.roleBadge, { backgroundColor: profile.role === 'Admin' ? '#dc3545' : profile.role === 'BAEWs' ? '#28a745' : '#6c757d' }]}>
+              <Text style={styles.roleText}>{profile.role}</Text>
+            </View>
           </View>
-        ))}
-      </View>
+          <MaterialCommunityIcons name="menu" size={32} color="#111" style={{ marginRight: 8 }} />
+        </View>
+        {/* Category Grid */}
+        <View style={styles.grid}>
+          {categories.map((cat) => (
+            <View key={cat.key} style={styles.catCol}>
+              <TouchableOpacity
+                style={styles.catBtn}
+                onPress={() => router.push(`../${cat.key}`)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={cat.label}
+              >
+                <RNImage
+                  source={categoryImages[cat.label]}
+                  style={styles.catImg}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+              <Text style={styles.catLabel} numberOfLines={2} ellipsizeMode="tail">{cat.label}</Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      
       {/* Custom bottom bar */}
       <View style={styles.customTabBar}>
         {tabList.map(tab => (
@@ -135,7 +175,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
     alignItems: 'center',
+    paddingBottom: 80, // Add padding to account for the bottom tab bar
   },
   topBar: {
     flexDirection: 'row',
@@ -201,6 +247,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: GREEN,
     textAlign: 'left',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roleText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   grid: {
     flexDirection: 'row',

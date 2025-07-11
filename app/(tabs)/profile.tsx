@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, ScrollView, TextInput } from 'react-native';
-import { useRouter, usePathname } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
 import * as NavigationBar from 'expo-navigation-bar';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
+import SearchBar from '../../components/SearchBar';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -12,13 +14,54 @@ const WHITE = '#ffffff';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const pathname = usePathname();
-  const [activeTab, setActiveTab] = useState('home');
   const { profile, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('home');
+  const [pendingRequests, setPendingRequests] = useState(0);
+
+  const profileFeatures = [
+    { label: 'Edit Profile', icon: 'account-edit', route: './profile-edit' },
+    { label: 'Notifications', icon: 'bell-outline', route: './profile-notifications' },
+    { label: 'Privacy & Security', icon: 'shield-check-outline', route: './profile-privacy' },
+    { label: 'Help & Support', icon: 'help-circle-outline', route: './profile-help' },
+    { label: 'About', icon: 'information-outline', route: './profile-about' },
+    { label: 'BAEW & Viewer Requests', icon: 'account-clock', route: './account-requests' },
+    { label: 'Viewer Requests', icon: 'account-eye', route: './viewer-requests' },
+  ];
+
+  const loadPendingRequestsCount = async () => {
+    try {
+      const { FirestoreService } = await import('../../services/firestoreService');
+      let pendingRequests;
+      if (profile.role === 'Admin') {
+        pendingRequests = await FirestoreService.getPendingUserRequests();
+      } else if (profile.role === 'BAEWs') {
+        pendingRequests = await FirestoreService.getPendingViewerRequests();
+      } else {
+        pendingRequests = [];
+      }
+      setPendingRequests(pendingRequests.length);
+    } catch (error) {
+      console.error('Error loading pending requests count:', error);
+    }
+  };
 
   useEffect(() => {
     NavigationBar.setVisibilityAsync('hidden').catch(() => {});
-  }, []);
+    
+    // Load pending requests count for admin and BAEWs
+    if (profile.role === 'Admin' || profile.role === 'BAEWs') {
+      loadPendingRequestsCount();
+    }
+  }, [profile.role]);
+
+  // Refresh pending requests count when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (profile.role === 'Admin' || profile.role === 'BAEWs') {
+        loadPendingRequestsCount();
+      }
+    }, [profile.role])
+  );
 
   const handleTabPress = (tab: string) => {
     setActiveTab(tab);
@@ -29,7 +72,7 @@ export default function ProfileScreen() {
       case 'explore':
         router.replace('./explore');
         break;
-      case 'serach':
+      case 'search':
         router.replace('./search');
         break;
       case 'profile':
@@ -40,71 +83,136 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleLogout = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+              // The logout function in AuthContext will navigate to login page
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" hidden />
+      
       {/* Top Bar */}
       <View style={styles.topBar}>
         <Image source={require('../../assets/images/Logo.png')} style={styles.logo} resizeMode="contain" />
-        <View style={styles.searchContainer}>
-          <MaterialCommunityIcons name="magnify" size={22} color="#111" style={{ marginLeft: 12 }} />
-          <TextInput
-            style={styles.searchInput}
+        <View style={{ flex: 1, marginLeft: 8, marginRight: 8 }}>
+          <SearchBar
             placeholder="Search here..."
-            placeholderTextColor="#111"
-            accessibilityLabel="Search"
-            returnKeyType="search"
+            data={profileFeatures.map(f => ({ id: f.route, title: f.label, icon: f.icon }))}
+            onSearch={query => {
+              const match = profileFeatures.find(f => f.label.toLowerCase() === query.toLowerCase());
+              if (match) router.push(match.route);
+            }}
+            onSelect={item => {
+              const match = profileFeatures.find(f => f.label === item.title);
+              if (match) router.push(match.route);
+            }}
           />
         </View>
         <Image source={{ uri: profile.profileImage }} style={styles.profileImg} />
       </View>
 
-      {/* Profile Info */}
-      <View style={styles.profileSection}>
-        <Image source={{ uri: profile.profileImage }} style={styles.profileImage} />
-        <Text style={styles.profileName}>{profile.name}</Text>
-        <Text style={styles.profileRole}>{profile.role}</Text>
-        <Text style={styles.profileLocation}>{profile.location}</Text>
-      </View>
+      {/* Scrollable Content */}
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Info */}
+        <View style={styles.profileSection}>
+          <Image source={{ uri: profile.profileImage }} style={styles.profileImage} />
+          <Text style={styles.profileName}>{profile.name}</Text>
+          <Text style={styles.profileRole}>{profile.role}</Text>
+          <Text style={styles.profileLocation}>{profile.location}</Text>
+        </View>
 
-      {/* Menu Items */}
-      <View style={styles.menuContainer}>
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-edit')}>
-          <MaterialCommunityIcons name="account-edit" size={24} color={GREEN} />
-          <Text style={styles.menuText}>Edit Profile</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
+        {/* Menu Items */}
+        <View style={styles.menuContainer}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-edit')}>
+            <MaterialCommunityIcons name="account-edit" size={24} color={GREEN} />
+            <Text style={styles.menuText}>Edit Profile</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-notifications')}>
-          <MaterialCommunityIcons name="bell-outline" size={24} color={GREEN} />
-          <Text style={styles.menuText}>Notifications</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-notifications')}>
+            <MaterialCommunityIcons name="bell-outline" size={24} color={GREEN} />
+            <Text style={styles.menuText}>Notifications</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-privacy')}>
-          <MaterialCommunityIcons name="shield-check-outline" size={24} color={GREEN} />
-          <Text style={styles.menuText}>Privacy & Security</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-privacy')}>
+            <MaterialCommunityIcons name="shield-check-outline" size={24} color={GREEN} />
+            <Text style={styles.menuText}>Privacy & Security</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-help')}>
-          <MaterialCommunityIcons name="help-circle-outline" size={24} color={GREEN} />
-          <Text style={styles.menuText}>Help & Support</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-help')}>
+            <MaterialCommunityIcons name="help-circle-outline" size={24} color={GREEN} />
+            <Text style={styles.menuText}>Help & Support</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-about')}>
-          <MaterialCommunityIcons name="information-outline" size={24} color={GREEN} />
-          <Text style={styles.menuText}>About</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-about')}>
+            <MaterialCommunityIcons name="information-outline" size={24} color={GREEN} />
+            <Text style={styles.menuText}>About</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={logout}>
-          <MaterialCommunityIcons name="logout" size={24} color="#ff4444" />
-          <Text style={[styles.menuText, { color: '#ff4444' }]}>Logout</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
-      </View>
+          {/* Admin menu item for account requests */}
+          {profile.role === 'Admin' && (
+            <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./account-requests')}>
+              <MaterialCommunityIcons name="account-clock" size={24} color={GREEN} />
+              <Text style={styles.menuText}>BAEW & Viewer Requests</Text>
+              {pendingRequests > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{pendingRequests}</Text>
+                </View>
+              )}
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
+          )}
+
+          {/* BAEW menu item for viewer requests */}
+          {profile.role === 'BAEWs' && (
+            <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./viewer-requests')}>
+              <MaterialCommunityIcons name="account-eye" size={24} color={GREEN} />
+              <Text style={styles.menuText}>Viewer Requests</Text>
+              {pendingRequests > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{pendingRequests}</Text>
+                </View>
+              )}
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+            <MaterialCommunityIcons name="logout" size={24} color="#ff4444" />
+            <Text style={[styles.menuText, { color: '#ff4444' }]}>Logout</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Bottom spacing for tab bar */}
+        <View style={styles.bottomSpacing} />
+      </ScrollView>
 
       {/* Custom bottom bar */}
       <View style={styles.customTabBar}>
@@ -184,6 +292,9 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 20,
+  },
   profileSection: {
     alignItems: 'center',
     padding: 20,
@@ -220,39 +331,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    backgroundColor: WHITE,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: GREEN,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-    textTransform: 'uppercase',
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: '#eee',
-    marginHorizontal: 10,
-  },
   menuContainer: {
     backgroundColor: WHITE,
     marginHorizontal: 20,
@@ -271,14 +349,28 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  logoutItem: {
-    borderBottomWidth: 0,
-  },
   menuText: {
     flex: 1,
     fontSize: 16,
     color: '#333',
     marginLeft: 16,
+  },
+  badge: {
+    backgroundColor: '#ff4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  badgeText: {
+    color: WHITE,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  bottomSpacing: {
+    height: 100, // Space for tab bar
   },
   tabLabel: {
     color: '#fff',
