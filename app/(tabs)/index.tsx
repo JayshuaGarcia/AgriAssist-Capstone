@@ -61,6 +61,23 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [adminAnnouncements, setAdminAnnouncements] = useState<any[]>([]);
+
+  // Function to add announcement from admin (this would be called when admin sends announcement)
+  const addAdminAnnouncement = (announcement: any) => {
+    setAdminAnnouncements(prev => [announcement, ...prev]);
+  };
+
+  // Function to simulate receiving an announcement (for testing purposes)
+  const simulateAdminAnnouncement = () => {
+    const newAnnouncement = {
+      title: "Weather Alert",
+      content: "Heavy rainfall expected in the next 3 days. Please secure your crops and equipment.",
+      date: "Today",
+      icon: "leaf"
+    };
+    addAdminAnnouncement(newAnnouncement);
+  };
 
   // Searchable features data
   const searchableFeatures = [
@@ -1235,40 +1252,39 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.settingsSection}>
-              <Text style={styles.settingsTitle}>Recent Announcements</Text>
+              <Text style={styles.settingsTitle}>Admin Announcements</Text>
               
-              <View style={styles.announcementCard}>
-                <View style={styles.announcementHeader}>
-                  <Ionicons name="leaf" size={20} color={GREEN} />
-                  <Text style={styles.announcementTitle}>Weather Alert</Text>
-                  <Text style={styles.announcementDate}>Today</Text>
+              {adminAnnouncements.length > 0 ? (
+                adminAnnouncements.map((announcement, index) => (
+                  <View key={index} style={styles.announcementCard}>
+                    <View style={styles.announcementHeader}>
+                      <Ionicons name={announcement.icon || "megaphone"} size={20} color={GREEN} />
+                      <Text style={styles.announcementTitle}>{announcement.title}</Text>
+                      <Text style={styles.announcementDate}>{announcement.date}</Text>
+                    </View>
+                    <Text style={styles.announcementContent}>
+                      {announcement.content}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.noAnnouncementsContainer}>
+                  <Ionicons name="megaphone-outline" size={64} color="#ccc" />
+                  <Text style={styles.noAnnouncementsTitle}>No Announcements Yet</Text>
+                  <Text style={styles.noAnnouncementsText}>
+                    When the admin sends announcements, they will appear here. Check back later for important updates and news.
+                  </Text>
+                  
+                  {/* Test button to simulate admin announcement (remove in production) */}
+                  <TouchableOpacity 
+                    style={styles.testAnnouncementButton}
+                    onPress={simulateAdminAnnouncement}
+                  >
+                    <Ionicons name="add-circle" size={20} color={GREEN} />
+                    <Text style={styles.testAnnouncementText}>Test: Simulate Admin Announcement</Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={styles.announcementContent}>
-                  Heavy rainfall expected in the next 3 days. Please secure your crops and equipment.
-                </Text>
-              </View>
-
-              <View style={styles.announcementCard}>
-                <View style={styles.announcementHeader}>
-                  <Ionicons name="trending-up" size={20} color={GREEN} />
-                  <Text style={styles.announcementTitle}>Price Update</Text>
-                  <Text style={styles.announcementDate}>Yesterday</Text>
-                </View>
-                <Text style={styles.announcementContent}>
-                  Rice prices have increased by 5% this week. Consider timing your harvest accordingly.
-                </Text>
-              </View>
-
-              <View style={styles.announcementCard}>
-                <View style={styles.announcementHeader}>
-                  <Ionicons name="information-circle" size={20} color={GREEN} />
-                  <Text style={styles.announcementTitle}>System Maintenance</Text>
-                  <Text style={styles.announcementDate}>2 days ago</Text>
-                </View>
-                <Text style={styles.announcementContent}>
-                  The app will be updated tonight from 11 PM to 1 AM. Some features may be temporarily unavailable.
-                </Text>
-              </View>
+              )}
             </View>
           </View>
         )}
@@ -2603,6 +2619,42 @@ const styles = StyleSheet.create({
   },
   newMessageText: {
     fontSize: 16,
+    color: GREEN,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  // No announcements styles
+  noAnnouncementsContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  noAnnouncementsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#999',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  noAnnouncementsText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  testAnnouncementButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GREEN,
+    marginTop: 20,
+  },
+  testAnnouncementText: {
+    fontSize: 14,
     color: GREEN,
     fontWeight: '600',
     marginLeft: 8,
