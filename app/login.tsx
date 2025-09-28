@@ -1,8 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
-import { useBarangay, useRole } from '../components/RoleContext';
 
 const GREEN = '#16543a';
 const BUTTON_GREEN = '#39796b';
@@ -12,13 +12,12 @@ const RECT_RADIUS = 32;
 const BUTTON_RADIUS = 32;
 
 export default function LoginScreen() {
-  const { role } = useRole();
-  const { barangay } = useBarangay();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
-  const { login, loading: authLoading } = useAuth();
+  const { login, forgotPassword, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const handleLogin = async () => {
@@ -31,11 +30,37 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      await login(email, password, role || 'Viewer');
+      // Check for admin credentials
+      if (email === 'AAadmin' && password === 'AAadmin') {
+        // Navigate to admin page
+        router.replace('/admin');
+        return;
+      }
+
+      await login(email, password, 'Farmer');
+      router.replace('/farmers'); // Always go to farmer fill up form after login
     } catch (error: any) {
       setError(error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert('Error', 'Please enter your email address first');
+      return;
+    }
+
+    try {
+      await forgotPassword(email);
+      Alert.alert(
+        'Password Reset Email Sent',
+        'Please check your email for instructions to reset your password.',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
     }
   };
 
@@ -49,29 +74,13 @@ export default function LoginScreen() {
       <View style={styles.topGreen} />
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.container}>
-          <Image source={require('../assets/images/Logo 2.png')} style={styles.logoImg} resizeMode="contain" />
+          <Image source={require('../assets/images/Logo.png')} style={styles.logoImg} resizeMode="contain" />
           <Text style={styles.header}>Login</Text>
           <Text style={styles.subHeader}>Sign in to continue</Text>
           
-          {/* Show selected barangay for BAEWs and Viewers */}
-          {(role === 'BAEWs' || role === 'Viewer') && (
-            <View style={styles.barangayIndicator}>
-              <Text style={styles.barangayText}>
-                Barangay: {barangay || 'Not Selected'}
-              </Text>
-              <TouchableOpacity 
-                style={styles.changeBarangayButton}
-                onPress={() => router.push('/barangay-select')}
-              >
-                <Text style={styles.changeBarangayText}>
-                  {barangay ? 'Change Barangay' : 'Select Barangay'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          
+          {/* Remove barangay selection for all users */}
           <TextInput
-            style={styles.input}
+            style={[styles.input, { textAlign: 'center' }]}
             placeholder="Email"
             placeholderTextColor={GREEN}
             value={email}
@@ -79,14 +88,34 @@ export default function LoginScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={GREEN}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View style={{width: '100%'}}>
+            <TextInput
+              style={[styles.input, styles.passwordInput, { textAlign: 'center' }]}
+              placeholder="Password"
+              placeholderTextColor={GREEN}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off' : 'eye'}
+                size={24}
+                color={GREEN}
+              />
+            </TouchableOpacity>
+          </View>
+          
+          <TouchableOpacity
+            style={styles.forgotPasswordLink}
+            onPress={handleForgotPassword}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          </TouchableOpacity>
+
           {error ? (
             <Text style={styles.errorText}>{error}</Text>
           ) : null}
@@ -101,14 +130,20 @@ export default function LoginScreen() {
               {loading || authLoading ? 'Logging In...' : 'Log In'}
             </Text>
           </TouchableOpacity>
+          
           <View style={styles.signupContainer}>
             <Text style={styles.signupText}>Don't Have an Account yet? </Text>
             <TouchableOpacity onPress={() => router.push('/signup')}>
               <Text style={styles.signupLink}>Sign Up Here.</Text>
             </TouchableOpacity>
           </View>
+          
+
         </View>
       </ScrollView>
+      
+
+      
       {/* Bottom green rounded rectangle */}
       <View style={styles.bottomGreen} />
     </KeyboardAvoidingView>
@@ -160,6 +195,40 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: INPUT_GREEN,
+    borderRadius: BUTTON_RADIUS,
+    marginBottom: 18,
+  },
+  passwordInput: {
+    paddingLeft: 30,
+    paddingRight: 48, // extra space for eye icon
+    textAlign: 'center',
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 24,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
+    zIndex: 2,
+    marginTop: -10, // raised higher for better alignment
+  },
+  forgotPasswordLink: {
+    alignSelf: 'flex-end',
+    marginBottom: 18,
+  },
+  forgotPasswordText: {
+    color: GREEN,
+    fontSize: 15,
+    fontWeight: '400',
+    textDecorationLine: 'underline',
+  },
   button: {
     width: '100%',
     backgroundColor: BUTTON_GREEN,
@@ -205,6 +274,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textDecorationLine: 'underline',
   },
+  adminLink: {
+    marginTop: 20,
+    marginBottom: -40,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  adminText: {
+    color: GREEN,
+    fontSize: 16,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+    textAlign: 'center',
+  },
+
+  adminLinkBottom: {
+    position: 'absolute',
+    bottom: RECT_HEIGHT + 120,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 15,
+  },
+  adminTextBottom: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
+    textAlign: 'center',
+  },
   barangayIndicator: {
     backgroundColor: INPUT_GREEN,
     borderRadius: BUTTON_RADIUS,
@@ -212,6 +310,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 18,
     alignSelf: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.13,
@@ -222,6 +321,7 @@ const styles = StyleSheet.create({
     color: GREEN,
     fontSize: 16,
     fontWeight: '500',
+    textAlign: 'center',
   },
   changeBarangayButton: {
     backgroundColor: BUTTON_GREEN,

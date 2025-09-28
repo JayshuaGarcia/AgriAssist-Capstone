@@ -3,8 +3,14 @@
   "compilerOptions": {
     "strict": true,
     "jsx": "react-jsx",
-    "lib": ["DOM", "ESNext"],
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
     "skipLibCheck": true,
+    "module": "es2015",
+    "target": "es2015",
+    "downlevelIteration": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": false,
     "noImplicitAny": false,
@@ -17,8 +23,6 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts",
     "types/**/*.d.ts"
   ]
 }

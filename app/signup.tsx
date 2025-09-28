@@ -1,57 +1,32 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
-import { useBarangay, useRole } from '../components/RoleContext';
 
 const GREEN = '#16543a';
+const INPUT_GREEN = '#f0f8f0';
 const BUTTON_GREEN = '#39796b';
-const INPUT_GREEN = '#74bfa3';
 const WHITE = '#ffffff';
+const BUTTON_RADIUS = 32;
 const RECT_HEIGHT = 80;
 const RECT_RADIUS = 32;
-const BUTTON_RADIUS = 32;
-
-const BARANGAYS = [
-  'Poblacion',
-  'Rizal',
-  'Tabugon',
-  'San Lorenzo',
-  'San Pedro',
-  'Pulongguit-guit',
-  'Basiad',
-  'Plaridel',
-  'Don Tomas',
-  'Maulawin',
-  'Patag Ibaba',
-  'Patag Ilaya',
-  'Bulala',
-  'Guitol',
-  'Kagtalaba',
-];
 
 export default function SignupScreen() {
-  const { role } = useRole();
-  const { barangay, setBarangay } = useBarangay();
-  const [name, setName] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [selectedBarangay, setSelectedBarangay] = React.useState(barangay || '');
-  const [showBarangayDropdown, setShowBarangayDropdown] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const { signup, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { signup, loading: authLoading } = useAuth();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSignup = async () => {
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !confirmPassword) {
       setError('Please fill in all fields');
-      return;
-    }
-
-    // Only require barangay selection for BAEWs and Viewers
-    if ((role === 'BAEWs' || role === 'Viewer') && !selectedBarangay) {
-      setError('Please select a barangay');
       return;
     }
 
@@ -60,16 +35,17 @@ export default function SignupScreen() {
       return;
     }
 
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      // Set the selected barangay in context (only for BAEWs and Viewers)
-      if (role === 'BAEWs' || role === 'Viewer') {
-        setBarangay(selectedBarangay as any);
-      }
-      await signup(email, password, name, role || 'Viewer', selectedBarangay || '');
-      // The navigation will be handled by AuthContext based on approval status
+      await signup(email, password, name, 'Farmer', '');
+      router.replace('/farmers'); // Always go to farmer fill up form after signup
     } catch (error: any) {
       setError(error.message);
     } finally {
@@ -87,10 +63,14 @@ export default function SignupScreen() {
       <View style={styles.topGreen} />
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.container}>
-          <Image source={require('../assets/images/Logo 2.png')} style={styles.logoImg} resizeMode="contain" />
+          <View style={styles.logoImgContainer}>
+            <View style={styles.logoImgWrapper}>
+              <Image source={require('../assets/images/Logo.png')} style={styles.logoImg} resizeMode="contain" />
+            </View>
+          </View>
           <Text style={styles.header}>Create{"\n"}New Account</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { textAlign: 'center' }]}
             placeholder="Name"
             placeholderTextColor={GREEN}
             value={name}
@@ -98,7 +78,7 @@ export default function SignupScreen() {
             autoCapitalize="words"
           />
           <TextInput
-            style={styles.input}
+            style={[styles.input, { textAlign: 'center' }]}
             placeholder="Email"
             placeholderTextColor={GREEN}
             value={email}
@@ -106,47 +86,49 @@ export default function SignupScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={GREEN}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View style={{width: '100%'}}>
+            <TextInput
+              style={[styles.input, styles.passwordInput, { textAlign: 'center' }]}
+              placeholder="Password"
+              placeholderTextColor={GREEN}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off' : 'eye'}
+                size={24}
+                color={GREEN}
+              />
+            </TouchableOpacity>
+          </View>
           
-          {/* Barangay Selection - Only for BAEWs and Viewers */}
-          {(role === 'BAEWs' || role === 'Viewer') && (
-            <>
-              <TouchableOpacity
-                style={styles.input}
-                onPress={() => setShowBarangayDropdown(!showBarangayDropdown)}
-              >
-                <Text style={[styles.inputText, !selectedBarangay && { color: GREEN }]}>
-                  {selectedBarangay || 'Select Barangay'}
-                </Text>
-              </TouchableOpacity>
-              
-              {showBarangayDropdown && (
-                <View style={styles.dropdownContainer}>
-                  <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
-                    {BARANGAYS.map((barangayOption) => (
-                      <TouchableOpacity
-                        key={barangayOption}
-                        style={styles.dropdownItem}
-                        onPress={() => {
-                          setSelectedBarangay(barangayOption);
-                          setShowBarangayDropdown(false);
-                        }}
-                      >
-                        <Text style={styles.dropdownItemText}>{barangayOption}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-            </>
-          )}
+          <View style={{width: '100%'}}>
+            <TextInput
+              style={[styles.input, styles.passwordInput, { textAlign: 'center' }]}
+              placeholder="Confirm Password"
+              placeholderTextColor={GREEN}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+            >
+              <Ionicons
+                name={showConfirmPassword ? 'eye-off' : 'eye'}
+                size={24}
+                color={GREEN}
+              />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Remove barangay selection section */}
           
           {error ? (
             <Text style={styles.errorText}>{error}</Text>
@@ -189,11 +171,21 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     backgroundColor: 'transparent',
   },
-  logoImg: {
+  logoImgContainer: {
     width: 120,
     height: 120,
     marginBottom: 10,
     marginTop: 16,
+  },
+  logoImgWrapper: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
   },
   header: {
     fontSize: 32,
@@ -215,6 +207,22 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     textAlign: 'center',
     fontWeight: '500',
+  },
+  passwordInput: {
+    paddingLeft: 30,
+    paddingRight: 48, // extra space for eye icon
+    textAlign: 'center',
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 24,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
+    zIndex: 2,
+    marginTop: -10, // raised higher for better alignment
   },
   button: {
     width: '100%',

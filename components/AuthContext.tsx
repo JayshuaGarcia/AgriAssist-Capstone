@@ -1,16 +1,23 @@
 import { useRouter } from 'expo-router';
+import { createUserWithEmailAndPassword, updateProfile as fbUpdateProfile, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import { AuthUser, FirebaseAuthService } from '../services/firebaseAuth';
-import { FirestoreService } from '../services/firestoreService';
-import { useBarangay } from './RoleContext';
+import { auth, db } from '../lib/firebase';
 
 interface UserProfile {
   name: string;
   role: string;
   location: string;
   profileImage: string;
+  phone?: string;
   approved?: boolean;
   barangay?: string;
+}
+
+interface AuthUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
 }
 
 interface AuthContextType {
@@ -18,200 +25,227 @@ interface AuthContextType {
   profile: UserProfile;
   login: (email: string, password: string, role: string) => Promise<void>;
   signup: (email: string, password: string, name: string, role: string, barangay: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
   logout: () => void;
   updateProfile: (profileData: Partial<UserProfile>) => void;
   loading: boolean;
+  requestEmailChange: (newEmail: string) => Promise<string>; // returns verification code
+  confirmEmailChange: (code: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  updateProfileImage: (uri: string) => void;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile>({
-    name: 'Sarah Johnson',
-    role: 'Agricultural Officer',
-    location: 'Manila, Philippines',
-    profileImage: 'https://randomuser.me/api/portraits/women/44.jpg'
+    name: 'Farmer',
+    role: 'Farmer',
+    location: 'Philippines',
+    profileImage: ''
   });
   const router = useRouter();
-  const { barangay } = useBarangay();
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [pendingCode, setPendingCode] = useState<string | null>(null);
 
-  // Listen to authentication state changes
+  // Listen for authentication state changes
   useEffect(() => {
-    const unsubscribe = FirebaseAuthService.onAuthStateChanged(async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const authUser = FirebaseAuthService.convertToAuthUser(firebaseUser);
+        const authUser: AuthUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName
+        };
         setUser(authUser);
         
-        // Get user profile from Firestore
+        // Load user profile from Firestore
         try {
-          const userProfile = await FirestoreService.getUserProfile(firebaseUser.uid);
-          if (userProfile) {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
             setProfile({
-              name: userProfile.name,
-              role: userProfile.role,
-              location: '',
-              profileImage: firebaseUser.photoURL || '',
-              approved: userProfile.approved,
-              barangay: userProfile.barangay
+              name: userData.name || 'Farmer',
+              role: userData.role || 'Farmer',
+              location: userData.location || 'Philippines',
+              profileImage: userData.profileImage || '',
+              phone: userData.phone,
+              approved: userData.approved,
+              barangay: userData.barangay
             });
-
-            // Check if user is approved, if not redirect to pending approval
-            if (!userProfile.approved && userProfile.role !== 'Admin') {
-              router.replace('/pending-approval');
-            }
-          } else {
-            // Update profile with user info if no Firestore profile
-            setProfile(prev => ({
-              ...prev,
-              name: firebaseUser.displayName || authUser.email?.split('@')[0] || 'User',
-              profileImage: firebaseUser.photoURL || prev.profileImage
-            }));
           }
         } catch (error) {
-          console.error('Error fetching user profile:', error);
-          // Update profile with user info if error
-          setProfile(prev => ({
-            ...prev,
-            name: firebaseUser.displayName || authUser.email?.split('@')[0] || 'User',
-            profileImage: firebaseUser.photoURL || prev.profileImage
-          }));
+          console.error('Error loading user profile:', error);
         }
       } else {
         setUser(null);
+        setProfile({
+          name: 'Farmer',
+          role: 'Farmer',
+          location: 'Philippines',
+          profileImage: ''
+        });
       }
       setLoading(false);
     });
 
-    return unsubscribe;
-  }, [router]);
+    return () => unsubscribe();
+  }, []);
 
+  // Real Firebase authentication
   const login = async (email: string, password: string, role: string) => {
+    setLoading(true);
     try {
-      setLoading(true);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
       
-      // First, attempt Firebase authentication
-      await FirebaseAuthService.signIn(email, password);
-      
-      // If authentication succeeds, get the current user
-      const currentUser = FirebaseAuthService.getCurrentUser();
-      if (!currentUser) {
-        throw new Error('Authentication failed');
-      }
-      
-      // Then fetch user profile from Firestore
-        const userProfile = await FirestoreService.getUserProfile(currentUser.uid);
-      if (!userProfile) {
-        throw new Error('User profile not found');
-      }
-      
-      // Check role mismatch
-      if (userProfile.role !== role) {
-        throw new Error('Role mismatch');
-      }
-      
-      // Check if user is approved
-      if (!userProfile.approved) {
-        throw new Error('Your account is pending approval');
-      }
-      
-      // Check barangay access - only BAEWs and Viewers are restricted to their assigned barangay
-      console.log('Login validation:', {
-        userRole: userProfile.role,
-        userBarangay: userProfile.barangay,
-        selectedBarangay: barangay,
-        isAdmin: userProfile.role === 'Admin'
-      });
-      
-      if (userProfile.role !== 'Admin' && userProfile.barangay && barangay && userProfile.barangay !== barangay) {
-        throw new Error(`You can only access ${userProfile.barangay} barangay. Please select the correct barangay.`);
-      }
-      
-      // Set profile and navigate
-        setProfile({
-          name: userProfile.name,
-          role: userProfile.role,
-          location: '',
+      // Check if user profile exists in Firestore
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      if (!userDoc.exists()) {
+        // Create user profile if it doesn't exist
+        await setDoc(doc(db, 'users', firebaseUser.uid), {
+          name: firebaseUser.displayName || 'Farmer',
+          role: role,
+          location: 'Philippines',
           profileImage: '',
-        approved: userProfile.approved,
-        barangay: userProfile.barangay
+          email: email,
+          createdAt: new Date().toISOString()
         });
-      
-      router.replace('/(tabs)');
+      }
     } catch (error: any) {
-      // Re-throw the error as-is to preserve the original error message
-      throw error;
+      let errorMessage = 'Login failed. Please try again.';
+      
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email. Please sign up first.';
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Incorrect password.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address.';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many failed attempts. Please try again later.';
+      }
+      
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const signup = async (email: string, password: string, name: string, role: string, barangay: string) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const userCredential = await FirebaseAuthService.signUp(email, password, role, barangay);
-      const currentUser = FirebaseAuthService.getCurrentUser();
-      if (currentUser) {
-        const userProfile = await FirestoreService.getUserProfile(currentUser.uid);
-        const isApproved = userProfile?.approved ?? (role === 'Admin');
-        
-        setProfile({
-          name: userProfile?.name || name,
-          role: userProfile?.role || role,
-          location: '',
-          profileImage: '',
-          approved: isApproved,
-          barangay: userProfile?.barangay || barangay
-        });
-
-        // Check if user is approved
-        if (!isApproved) {
-          // Navigate to pending approval screen for non-admin users
-          router.replace('/pending-approval');
-        } else {
-          // Navigate to main app for approved users (Admin)
-          router.replace('/(tabs)');
-        }
-      }
+      // Create user with Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      // Update the user's display name
+      await fbUpdateProfile(firebaseUser, {
+        displayName: name
+      });
+      
+      // Create user profile in Firestore
+      await setDoc(doc(db, 'users', firebaseUser.uid), {
+        name: name,
+        role: role,
+        location: 'Philippines',
+        profileImage: '',
+        email: email,
+        barangay: barangay,
+        approved: false, // New users need approval
+        createdAt: new Date().toISOString()
+      });
     } catch (error: any) {
-      throw new Error(error.message);
+      let errorMessage = 'Signup failed. Please try again.';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'An account with this email already exists. Please use a different email or try logging in.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Password should be at least 6 characters.';
+      }
+      
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
+  };
+
+  const forgotPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (error: any) {
+      let errorMessage = 'Failed to send password reset email.';
+      
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address.';
+      }
+      
+      throw new Error(errorMessage);
+    }
+  };
+
+  const requestEmailChange = async (newEmail: string) => {
+    // Generate a simple 6-digit code and pretend to send it via email service
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setPendingEmail(newEmail);
+    setPendingCode(code);
+    // In a real app, integrate EmailJS/SMTP here to send code to current user email
+    return code;
+  };
+
+  const confirmEmailChange = async (code: string) => {
+    if (!pendingEmail || !pendingCode) throw new Error('No pending email change.');
+    if (code !== pendingCode) throw new Error('Invalid verification code.');
+    // Apply the email change to the mock user
+    setUser(prev => prev ? { ...prev, email: pendingEmail } : prev);
+    setPendingEmail(null);
+    setPendingCode(null);
+  };
+
+  const changePassword = async (_currentPassword: string, _newPassword: string) => {
+    // Mock: accept any values with a small delay
+    await new Promise(resolve => setTimeout(resolve, 500));
   };
 
   const logout = async () => {
     try {
-      setLoading(true);
-      await FirebaseAuthService.signOut();
-      setUser(null);
-      // Navigate directly to login page
-      router.replace('/login');
-    } catch (error: any) {
-      console.error('Logout error:', error);
-    } finally {
-      setLoading(false);
+      await signOut(auth);
+    } catch (error) {
+      console.error('Error signing out:', error);
     }
   };
 
   const updateProfile = (profileData: Partial<UserProfile>) => {
-    setProfile(prevProfile => ({
-      ...prevProfile,
-      ...profileData
-    }));
+    setProfile(prev => ({ ...prev, ...profileData }));
+  };
+
+  const updateProfileImage = (uri: string) => {
+    setProfile(prev => ({ ...prev, profileImage: uri }));
+  };
+
+  const value: AuthContextType = {
+    user,
+    profile,
+    login,
+    signup,
+    forgotPassword,
+    logout,
+    updateProfile,
+    loading,
+    requestEmailChange,
+    confirmEmailChange,
+    changePassword,
+    updateProfileImage
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      profile, 
-      login, 
-      signup, 
-      logout, 
-      updateProfile,
-      loading 
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -219,6 +253,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 }; 

@@ -1,5 +1,6 @@
-import Redirect from 'expo-router/build/link/Redirect';
-import { Dimensions, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useEffect } from 'react';
+import { Dimensions, StyleSheet, View } from 'react-native';
 
 const GREEN = '#16543a';
 const BUTTON_GREEN = '#39796b';
@@ -7,7 +8,19 @@ const BUTTON_RADIUS = 32;
 const { width } = Dimensions.get('window');
 
 export default function LandingScreen() {
-  return <Redirect href="/role-select" />;
+  const router = useRouter();
+  
+  useEffect(() => {
+    // Add a small delay to ensure the router is ready
+    const timer = setTimeout(() => {
+      router.replace('/login');
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [router]);
+
+  // Return a minimal loading view instead of null
+  return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
 }
 
 const RECT_HEIGHT = 80;

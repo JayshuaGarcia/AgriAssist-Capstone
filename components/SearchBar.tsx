@@ -1,197 +1,87 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
+import {
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
 
 const GREEN = '#16543a';
+const LIGHT_GREEN = '#74bfa3';
+const INPUT_GREEN = '#f0f8f0';
 
 interface SearchBarProps {
+  onSearchPress: () => void;
   placeholder?: string;
-  data: Array<{ id: string; title: string; icon?: string }>;
-  onSearch: (query: string) => void;
-  onSelect: (item: { id: string; title: string; icon?: string }) => void;
-  style?: ViewStyle;
+  style?: any;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({
-  placeholder = 'Search here...',
-  data,
-  onSearch,
-  onSelect,
-  style,
-}) => {
-  const [query, setQuery] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [filtered, setFiltered] = useState(data);
-  const inputRef = useRef<TextInput>(null);
+export default function SearchBar({ onSearchPress, placeholder = "Search features, forms, and tools...", style }: SearchBarProps) {
+  const [searchText, setSearchText] = useState('');
 
-  useEffect(() => {
-    if (query.trim() === '') {
-      setFiltered(data);
-      setShowDropdown(false);
-    } else {
-      const q = query.toLowerCase();
-      setFiltered(
-        data.filter(item => item.title.toLowerCase().includes(q))
-      );
-      setShowDropdown(true);
-    }
-  }, [query, data]);
-
-  // Hide dropdown on outside press
-  useEffect(() => {
-    const hide = Keyboard.addListener('keyboardDidHide', () => setShowDropdown(false));
-    return () => hide.remove();
-  }, []);
-
-  const handleSearch = () => {
-    setShowDropdown(false);
-    onSearch(query);
-    Keyboard.dismiss();
+  const handleSearchPress = () => {
+    onSearchPress();
   };
 
-  const handleSelect = (item: { id: string; title: string; icon?: string }) => {
-    setQuery(item.title);
-    setShowDropdown(false);
-    onSelect(item);
-    Keyboard.dismiss();
-  };
-
-  const getIcon = (iconName?: string) => {
-    if (!iconName) return <Ionicons name="search" size={20} color={GREEN} />;
-    // Use MaterialCommunityIcons for feature icons
-    return <MaterialCommunityIcons name={iconName as any} size={20} color={GREEN} />;
+  const handleTextChange = (text: string) => {
+    setSearchText(text);
   };
 
   return (
-    <View style={[styles.wrapper, style]}>  
-      <View style={styles.barContainer}>
-        <Ionicons name="search" size={22} color={GREEN} style={{ marginLeft: 10 }} />
+    <TouchableOpacity 
+      style={[styles.container, style]} 
+      onPress={handleSearchPress}
+      activeOpacity={0.7}
+    >
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color={GREEN} style={styles.searchIcon} />
         <TextInput
-          ref={inputRef}
-          style={styles.input}
+          style={styles.searchInput}
           placeholder={placeholder}
-          placeholderTextColor="#444"
-          value={query}
-          onChangeText={setQuery}
-          onFocus={() => query.length > 0 && setShowDropdown(true)}
-          onSubmitEditing={handleSearch}
-          accessibilityLabel={placeholder}
-          returnKeyType="search"
+          placeholderTextColor="#999"
+          value={searchText}
+          onChangeText={handleTextChange}
+          editable={false}
+          pointerEvents="none"
         />
-        {query.length > 0 && (
-          <TouchableOpacity onPress={() => { setQuery(''); setShowDropdown(false); }} style={styles.clearButton}>
-            <Ionicons name="close-circle" size={20} color="#888" />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch} accessibilityLabel="Search">
-          <Ionicons name="search" size={22} color="#fff" />
-        </TouchableOpacity>
+        <Ionicons name="mic" size={18} color={GREEN} style={styles.micIcon} />
       </View>
-      {showDropdown && (
-        <View style={styles.dropdown}>
-          {filtered.length === 0 ? (
-            <Text style={styles.noResults}>No results found</Text>
-          ) : (
-            <FlatList
-              data={filtered.slice(0, 6)}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.suggestionItem} onPress={() => handleSelect(item)}>
-                  <View style={styles.suggestionIcon}>{getIcon(item.icon)}</View>
-                  <Text style={styles.suggestionText}>{item.title}</Text>
-                </TouchableOpacity>
-              )}
-              keyboardShouldPersistTaps="handled"
-            />
-          )}
-        </View>
-      )}
-    </View>
+    </TouchableOpacity>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  wrapper: {
-    // width: '100%', // Remove this line to allow parent to control width
-    alignItems: 'flex-start',
-    zIndex: 20,
+  container: {
+    marginHorizontal: 20,
+    marginVertical: 10,
   },
-  barContainer: {
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    height: 48,
-    marginVertical: 8,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-    paddingRight: 8,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    borderRadius: 24,
-    paddingHorizontal: 12,
-    fontSize: 16,
-    color: GREEN,
-    height: 48,
-  },
-  clearButton: {
-    padding: 4,
-    marginRight: 2,
-  },
-  searchButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: GREEN,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  dropdown: {
-    position: 'absolute',
-    top: 52,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
-    zIndex: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 3,
-    maxHeight: 220,
-  },
-  suggestionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: INPUT_GREEN,
+    borderRadius: 25,
+    paddingHorizontal: 15,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#e0f2e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  suggestionIcon: {
+  searchIcon: {
     marginRight: 10,
   },
-  suggestionText: {
-    fontSize: 15,
-    color: '#222',
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: GREEN,
+    paddingVertical: 0,
   },
-  noResults: {
-    padding: 16,
-    color: '#888',
-    textAlign: 'center',
-    fontSize: 15,
+  micIcon: {
+    marginLeft: 10,
   },
 });
 
-export default SearchBar; 
