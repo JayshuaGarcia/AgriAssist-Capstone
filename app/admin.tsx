@@ -1,10 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
-import { Alert, Dimensions, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { collection, getDocs } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Dimensions, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
+import { useNotification } from '../components/NotificationContext';
+import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
 import { OFFICIAL_PRODUCTS, Product } from '../constants/ProductData';
+import { db } from '../lib/firebase';
 
 const { width } = Dimensions.get('window');
 const GREEN = '#16543a';
@@ -12,6 +17,25 @@ const GREEN = '#16543a';
 export default function AdminPage() {
   const router = useRouter();
   const { user, profile, logout } = useAuth();
+
+  // Check admin authentication
+  useEffect(() => {
+    if (!user) {
+      Alert.alert('Authentication Required', 'You must be logged in to access the admin panel.', [
+        { text: 'OK', onPress: () => router.replace('/login') }
+      ]);
+      return;
+    }
+    
+    if (profile.role !== 'admin') {
+      Alert.alert('Access Denied', 'Only administrators can access this page.', [
+        { text: 'OK', onPress: () => router.replace('/(tabs)') }
+      ]);
+      return;
+    }
+  }, [user, profile.role]);
+  const { announcements, addAnnouncement, loadAnnouncements, deleteAnnouncement, loading: announcementLoading, error: announcementError } = useAnnouncements();
+  const { showNotification } = useNotification();
   const scrollViewRef = useRef<ScrollView>(null);
   const [activeNav, setActiveNav] = useState('home');
   const [searchQuery, setSearchQuery] = useState('');
@@ -21,6 +45,18 @@ export default function AdminPage() {
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [hasUploadedPDF, setHasUploadedPDF] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Announcement state
+  const [showCreateAnnouncement, setShowCreateAnnouncement] = useState(false);
+  const [showViewAnnouncements, setShowViewAnnouncements] = useState(false);
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementContent, setAnnouncementContent] = useState('');
+  const [announcementIcon, setAnnouncementIcon] = useState('megaphone');
+
+  // User list state
+  const [showUserList, setShowUserList] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   // Daily price index data structure
   const [dailyPriceData, setDailyPriceData] = useState<any>(null);
@@ -381,6 +417,88 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
     }
   };
 
+  // Show the latest announcement as sliding notification when admin page loads
+  useEffect(() => {
+    if (announcements.length > 0) {
+      const latestAnnouncement = announcements[0]; // First announcement is the latest
+      showNotification({
+        title: latestAnnouncement.title,
+        message: latestAnnouncement.content,
+        type: 'info',
+      });
+    }
+  }, [announcements]);
+
+  // Function to create and broadcast announcement to all users
+  const createAnnouncement = async () => {
+    if (!announcementTitle.trim() || !announcementContent.trim()) {
+      Alert.alert('Error', 'Please fill in both title and content for the announcement.');
+      return;
+    }
+
+    try {
+      const announcementData = {
+        title: announcementTitle.trim(),
+        content: announcementContent.trim(),
+        icon: announcementIcon,
+        date: new Date().toLocaleDateString('en-US', { 
+          weekday: 'short', 
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        }),
+        createdBy: 'Admin'
+      };
+
+      // Add announcement to Firebase (this will be visible to all users)
+      await addAnnouncement(announcementData);
+
+      // Reset form
+      setAnnouncementTitle('');
+      setAnnouncementContent('');
+      setAnnouncementIcon('megaphone');
+      setShowCreateAnnouncement(false);
+
+            // Show the new announcement as sliding notification
+            showNotification({
+              title: announcementData.title,
+              message: announcementData.content,
+              type: 'info',
+            });
+
+            // Show success message
+            Alert.alert(
+              'Announcement Created!', 
+              'Your announcement has been successfully sent to all users and saved to the database.',
+              [{ text: 'OK', style: 'default' }]
+            );
+          } catch (error) {
+            console.error('Error creating announcement:', error);
+            
+            // Show error notification
+            showNotification({
+              title: '❌ Announcement Failed',
+              message: 'Failed to create announcement. Please try again.',
+              type: 'error',
+              duration: 5000,
+            });
+            
+            Alert.alert(
+              'Error', 
+              'Failed to create announcement. Please check your internet connection and try again.',
+              [{ text: 'OK', style: 'default' }]
+            );
+          }
+  };
+
+  // Function to cancel announcement creation
+  const cancelAnnouncement = () => {
+    setAnnouncementTitle('');
+    setAnnouncementContent('');
+    setAnnouncementIcon('megaphone');
+    setShowCreateAnnouncement(false);
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     try {
@@ -397,6 +515,71 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
       Alert.alert('Error', 'Failed to refresh data. Please try again.');
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // Function to fetch all users from the database
+  const fetchUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      
+      // Debug: Check if user is authenticated
+      console.log('Current user:', user);
+      console.log('User profile:', profile);
+      
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to access this feature.');
+        setShowUserList(false);
+        return;
+      }
+      
+      if (profile.role !== 'admin') {
+        Alert.alert('Error', 'Only administrators can access this feature.');
+        setShowUserList(false);
+        return;
+      }
+      
+      // Test: Try to access a simple collection first
+      console.log('Attempting to fetch users...');
+      
+      // Fetch from Firebase users collection
+      const usersRef = collection(db, 'users');
+      const querySnapshot = await getDocs(usersRef);
+      
+      const usersList: any[] = [];
+      querySnapshot.forEach((doc) => {
+        const userData = doc.data();
+        usersList.push({
+          id: doc.id,
+          email: userData.email || 'No email',
+          displayName: userData.name || 'Unknown User',
+          role: userData.role || 'farmer',
+          location: userData.location || 'Philippines',
+          barangay: userData.barangay || '',
+          approved: userData.approved || false,
+          createdAt: userData.createdAt || new Date().toISOString(),
+          profileImage: userData.profileImage || '',
+          ...userData
+        });
+      });
+      
+      setUsers(usersList);
+      console.log('Successfully loaded users from Firebase:', usersList.length);
+      
+    } catch (error: any) {
+      console.error('Error fetching users:', error);
+      setUsers([]); // Set empty array if fetch fails
+      
+      let errorMessage = 'Failed to load users from database.';
+      if (error.code === 'permission-denied') {
+        errorMessage = 'Permission denied. Please check Firebase security rules or contact the administrator.';
+      } else if (error.code === 'unavailable') {
+        errorMessage = 'Database is temporarily unavailable. Please try again later.';
+      }
+      
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoadingUsers(false);
     }
   };
 
@@ -420,16 +603,19 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
           }
         >
           <View style={styles.contentContainer}>
-            <View style={styles.headerRow}>
-              <Text style={styles.sectionTitle}>Admin Dashboard</Text>
-            </View>
+            {/* Sliding Announcement - At the top */}
+            <SlidingAnnouncement style={{ marginTop: -10, marginBottom: 16 }} />
             
             {/* Welcome Message */}
             <View style={styles.welcomeContainer}>
-              <Text style={styles.welcomeTitle}>Welcome back, Admin!</Text>
-              <Text style={styles.welcomeSubtitle}>
-                Manage your agricultural system and monitor price data efficiently
-              </Text>
+              <View style={styles.welcomeHeader}>
+                <View style={styles.welcomeTextContainer}>
+                  <Text style={styles.welcomeTitle}>Welcome back, Admin!</Text>
+                  <Text style={styles.welcomeSubtitle}>
+                    Manage your agricultural system and monitor price data efficiently
+                  </Text>
+                </View>
+              </View>
             </View>
             
             <View style={styles.statsContainer}>
@@ -690,15 +876,21 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
             <View style={styles.adminToolsContainer}>
               <Text style={styles.toolsTitle}>Announcement Features</Text>
               
-              <TouchableOpacity style={styles.toolButton}>
+              <TouchableOpacity 
+                style={styles.toolButton}
+                onPress={() => setShowCreateAnnouncement(true)}
+              >
                 <Ionicons name="add-circle" size={24} color={GREEN} />
                 <Text style={styles.toolButtonText}>Create New Announcement</Text>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
               </TouchableOpacity>
               
-              <TouchableOpacity style={styles.toolButton}>
+              <TouchableOpacity 
+                style={styles.toolButton}
+                onPress={() => setShowViewAnnouncements(true)}
+              >
                 <Ionicons name="list" size={24} color={GREEN} />
-                <Text style={styles.toolButtonText}>View All Announcements</Text>
+                <Text style={styles.toolButtonText}>View All Announcements ({announcements.length})</Text>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
               </TouchableOpacity>
               
@@ -749,32 +941,32 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
               </Text>
             </View>
             
-            <View style={styles.adminToolsContainer}>
-              <Text style={styles.toolsTitle}>Messaging Features</Text>
-              
-              <TouchableOpacity style={styles.toolButton}>
-                <Ionicons name="mail-unread" size={24} color={GREEN} />
-                <Text style={styles.toolButtonText}>Unread Messages (5)</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            {/* New Message Button */}
+            <View style={styles.newMessageContainer}>
+              <TouchableOpacity 
+                style={styles.newMessageButton}
+                onPress={() => {
+                  fetchUsers();
+                  setShowUserList(true);
+                }}
+              >
+                <Ionicons name="add-circle" size={24} color="#fff" />
+                <Text style={styles.newMessageButtonText}>New Message</Text>
               </TouchableOpacity>
+            </View>
+            
+            {/* Inbox Section */}
+            <View style={styles.inboxContainer}>
+              <Text style={styles.inboxTitle}>Inbox</Text>
               
-              <TouchableOpacity style={styles.toolButton}>
-                <Ionicons name="chatbox" size={24} color={GREEN} />
-                <Text style={styles.toolButtonText}>All Conversations</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.toolButton}>
-                <Ionicons name="help-circle" size={24} color={GREEN} />
-                <Text style={styles.toolButtonText}>Support Tickets</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.toolButton}>
-                <Ionicons name="people" size={24} color={GREEN} />
-                <Text style={styles.toolButtonText}>Group Messages</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
+              {/* Empty State */}
+              <View style={styles.emptyInboxContainer}>
+                <Ionicons name="mail-outline" size={64} color="#ccc" />
+                <Text style={styles.emptyInboxTitle}>No Messages Yet</Text>
+                <Text style={styles.emptyInboxText}>
+                  When farmers send you messages, they will appear here. Start a conversation by creating a new message.
+                </Text>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -957,6 +1149,304 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Create Announcement Modal */}
+      <Modal
+        visible={showCreateAnnouncement}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={cancelAnnouncement}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Create New Announcement</Text>
+              <TouchableOpacity onPress={cancelAnnouncement}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Announcement Title</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter announcement title..."
+                  value={announcementTitle}
+                  onChangeText={setAnnouncementTitle}
+                  maxLength={100}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Icon</Text>
+                <View style={styles.iconSelector}>
+                  <TouchableOpacity 
+                    style={[styles.iconOption, announcementIcon === 'megaphone' && styles.selectedIcon]}
+                    onPress={() => setAnnouncementIcon('megaphone')}
+                  >
+                    <Ionicons name="megaphone" size={24} color={announcementIcon === 'megaphone' ? '#fff' : GREEN} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.iconOption, announcementIcon === 'warning' && styles.selectedIcon]}
+                    onPress={() => setAnnouncementIcon('warning')}
+                  >
+                    <Ionicons name="warning" size={24} color={announcementIcon === 'warning' ? '#fff' : GREEN} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.iconOption, announcementIcon === 'information-circle' && styles.selectedIcon]}
+                    onPress={() => setAnnouncementIcon('information-circle')}
+                  >
+                    <Ionicons name="information-circle" size={24} color={announcementIcon === 'information-circle' ? '#fff' : GREEN} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.iconOption, announcementIcon === 'leaf' && styles.selectedIcon]}
+                    onPress={() => setAnnouncementIcon('leaf')}
+                  >
+                    <Ionicons name="leaf" size={24} color={announcementIcon === 'leaf' ? '#fff' : GREEN} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Announcement Content</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea]}
+                  placeholder="Enter the announcement content..."
+                  value={announcementContent}
+                  onChangeText={setAnnouncementContent}
+                  multiline={true}
+                  numberOfLines={6}
+                  textAlignVertical="top"
+                  maxLength={1000}
+                />
+                <Text style={styles.characterCount}>{announcementContent.length}/1000</Text>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={cancelAnnouncement}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.createButton, announcementLoading && styles.createButtonDisabled]}
+                onPress={createAnnouncement}
+                disabled={announcementLoading}
+              >
+                {announcementLoading ? (
+                  <>
+                    <Ionicons name="hourglass" size={20} color="#fff" />
+                    <Text style={styles.createButtonText}>Creating...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="send" size={20} color="#fff" />
+                    <Text style={styles.createButtonText}>Create & Send</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* View All Announcements Modal */}
+      <Modal
+        visible={showViewAnnouncements}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowViewAnnouncements(false)}
+      >
+        <View style={styles.fullScreenModalOverlay}>
+          <View style={styles.viewModalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>All Announcements ({announcements.length})</Text>
+              <TouchableOpacity onPress={() => setShowViewAnnouncements(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.announcementsListContainer} showsVerticalScrollIndicator={false}>
+              {announcementLoading ? (
+                <View style={styles.loadingContainer}>
+                  <Ionicons name="cloud-download" size={40} color={GREEN} />
+                  <Text style={styles.loadingText}>Loading announcements...</Text>
+                </View>
+              ) : announcements.length > 0 ? (
+                announcements.map((announcement, index) => (
+                  <View key={announcement.id || index} style={styles.announcementItem}>
+                    <View style={styles.announcementItemHeader}>
+                      <View style={styles.announcementItemIconContainer}>
+                        <Ionicons 
+                          name={announcement.icon as any || "megaphone"} 
+                          size={20} 
+                          color={GREEN} 
+                        />
+                      </View>
+                      <View style={styles.announcementItemContent}>
+                        <Text style={styles.announcementItemTitle}>{announcement.title}</Text>
+                        <Text style={styles.announcementItemDate}>
+                          {announcement.date} • By {announcement.createdBy}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.deleteButton}
+                        onPress={() => {
+                          Alert.alert(
+                            'Delete Announcement',
+                            'Are you sure you want to delete this announcement? This action cannot be undone.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { 
+                                text: 'Delete', 
+                                style: 'destructive',
+                                onPress: () => deleteAnnouncement(announcement.id)
+                              }
+                            ]
+                          );
+                        }}
+                      >
+                        <Ionicons name="trash" size={20} color="#e74c3c" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.announcementItemText}>
+                      {announcement.content}
+                    </Text>
+                    <View style={styles.announcementItemFooter}>
+                      <Text style={styles.announcementItemId}>ID: {announcement.id}</Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.noAnnouncementsContainer}>
+                  <Ionicons name="megaphone-outline" size={64} color="#ccc" />
+                  <Text style={styles.noAnnouncementsTitle}>No Announcements Yet</Text>
+                  <Text style={styles.noAnnouncementsText}>
+                    Create your first announcement to get started!
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.viewModalFooter}>
+              <TouchableOpacity 
+                style={styles.refreshButton}
+                onPress={() => {
+                  loadAnnouncements();
+                }}
+              >
+                <Ionicons name="refresh" size={20} color={GREEN} />
+                <Text style={styles.refreshButtonText}>Refresh</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowViewAnnouncements(false)}
+              >
+                <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* User List Modal */}
+      <Modal
+        visible={showUserList}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowUserList(false)}
+      >
+        <View style={styles.fullScreenModalOverlay}>
+          <View style={styles.viewModalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select User to Message ({users.length})</Text>
+              <TouchableOpacity onPress={() => setShowUserList(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.announcementsListContainer} showsVerticalScrollIndicator={false}>
+              {loadingUsers ? (
+                <View style={styles.loadingContainer}>
+                  <Ionicons name="cloud-download" size={40} color={GREEN} />
+                  <Text style={styles.loadingText}>Loading users...</Text>
+                </View>
+              ) : users.length > 0 ? (
+                users.map((user, index) => (
+                  <TouchableOpacity 
+                    key={user.id || index} 
+                    style={styles.userItem}
+                    onPress={() => {
+                      Alert.alert(
+                        'Send Message',
+                        `Send message to ${user.displayName}?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { 
+                            text: 'Send', 
+                            onPress: () => {
+                              // Here you would implement the actual message sending
+                              Alert.alert('Success', `Message sent to ${user.displayName}!`);
+                              setShowUserList(false);
+                            }
+                          }
+                        ]
+                      );
+                    }}
+                  >
+                    <View style={styles.userItemHeader}>
+                      <View style={styles.userAvatar}>
+                        <Ionicons name="person" size={24} color="#fff" />
+                      </View>
+                      <View style={styles.userItemContent}>
+                        <Text style={styles.userItemName}>{user.displayName}</Text>
+                        <Text style={styles.userItemEmail}>{user.email}</Text>
+                        <Text style={styles.userItemRole}>
+                          {user.role} • {user.barangay ? user.barangay : user.location}
+                          {user.approved ? ' • ✓ Approved' : ' • ⏳ Pending'}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.noAnnouncementsContainer}>
+                  <Ionicons name="people-outline" size={64} color="#ccc" />
+                  <Text style={styles.noAnnouncementsTitle}>No Users Found</Text>
+                  <Text style={styles.noAnnouncementsText}>
+                    No users are currently registered in the system.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.viewModalFooter}>
+              <TouchableOpacity 
+                style={styles.refreshButton}
+                onPress={() => {
+                  fetchUsers();
+                }}
+              >
+                <Ionicons name="refresh" size={20} color={GREEN} />
+                <Text style={styles.refreshButtonText}>Refresh</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowUserList(false)}
+              >
+                <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
      </View>
    );
  }
@@ -1599,6 +2089,451 @@ const styles = StyleSheet.create({
     color: '#555',
     fontWeight: '400',
     lineHeight: 20,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: GREEN,
+  },
+  modalContent: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    padding: 15,
+    fontSize: 16,
+    backgroundColor: '#f8f9fa',
+  },
+  textArea: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  characterCount: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'right',
+    marginTop: 5,
+  },
+  iconSelector: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  iconOption: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: GREEN,
+    backgroundColor: '#f8f9fa',
+  },
+  selectedIcon: {
+    backgroundColor: GREEN,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    gap: 15,
+  },
+  cancelButton: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  createButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: GREEN,
+    padding: 15,
+    borderRadius: 10,
+    gap: 8,
+  },
+  createButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  createButtonDisabled: {
+    backgroundColor: '#ccc',
+    opacity: 0.7,
+  },
+  
+  // View All Announcements Modal Styles
+  viewModalContainer: {
+    backgroundColor: 'white',
+    flex: 1,
+    margin: 0,
+    borderRadius: 0,
+  },
+  announcementsListContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  announcementItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: GREEN,
+  },
+  announcementItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  announcementItemIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#e8f5e8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  announcementItemContent: {
+    flex: 1,
+  },
+  announcementItemTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  announcementItemDate: {
+    fontSize: 12,
+    color: '#666',
+  },
+  announcementItemText: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  announcementItemFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 8,
+  },
+  announcementItemId: {
+    fontSize: 10,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  deleteButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#ffeaea',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    backgroundColor: '#f8f9fa',
+  },
+  closeButton: {
+    backgroundColor: '#6c757d',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 6,
+    flex: 1,
+    marginLeft: 8,
+  },
+  closeButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  
+  // Missing styles for the view modal
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  noAnnouncementsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noAnnouncementsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#666',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noAnnouncementsText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 20,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e8',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: GREEN,
+    flex: 1,
+    marginRight: 8,
+  },
+  refreshButtonText: {
+    color: GREEN,
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+  fullScreenModalOverlay: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  // New Message Button Styles
+  newMessageContainer: {
+    marginBottom: 20,
+  },
+  newMessageButton: {
+    backgroundColor: GREEN,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  newMessageButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  // Inbox Styles
+  inboxContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  inboxTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: GREEN,
+    marginBottom: 15,
+  },
+  messageItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  messageAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: GREEN,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  messageContent: {
+    flex: 1,
+  },
+  messageSender: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 2,
+  },
+  messagePreview: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  messageTime: {
+    fontSize: 12,
+    color: '#999',
+  },
+  unreadBadge: {
+    backgroundColor: '#e74c3c',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  // Empty Inbox Styles
+  emptyInboxContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyInboxTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#999',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyInboxText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  // User List Modal Styles
+  userItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: GREEN,
+  },
+  userItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: GREEN,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  userItemContent: {
+    flex: 1,
+  },
+  userItemName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  userItemEmail: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  userItemRole: {
+    fontSize: 12,
+    color: '#999',
+    textTransform: 'capitalize',
+  },
+  // Welcome Header Styles
+  welcomeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  welcomeTextContainer: {
+    flex: 1,
+  },
+  adminLogoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffeaea',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ffcccc',
+  },
+  adminLogoutText: {
+    color: '#e74c3c',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
 });
 

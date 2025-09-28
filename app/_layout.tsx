@@ -5,7 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { AnnouncementProvider } from '../components/AnnouncementContext';
 import { AuthProvider } from '../components/AuthContext';
+import { NotificationProvider } from '../components/NotificationContext';
 // import { ErrorBoundary } from '../components/ErrorBoundary';
 import { NotificationSettingsProvider } from '../components/NotificationSettingsContext';
 import { PrivacySettingsProvider } from '../components/PrivacySettingsContext';
@@ -24,32 +26,36 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <SearchProvider>
-        <NotificationSettingsProvider>
-          <PrivacySettingsProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Stack>
-              <Stack.Screen name="index" options={{ headerShown: false }} />
-              <Stack.Screen name="login" options={{ headerShown: false }} />
-              <Stack.Screen name="signup" options={{ headerShown: false }} />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="notifications" options={{ headerShown: false }} />
-              <Stack.Screen name="help" options={{ headerShown: false }} />
-              <Stack.Screen name="privacy" options={{ headerShown: false }} />
-              <Stack.Screen name="about" options={{ headerShown: false }} />
-              <Stack.Screen name="language" options={{ headerShown: false }} />
-              <Stack.Screen name="admin" options={{ headerShown: false }} />
-              <Stack.Screen name="feature-placeholder" options={{ headerShown: false }} />
-              <Stack.Screen name="price-monitoring" options={{ headerShown: false }} />
-              <Stack.Screen name="planting-report" options={{ headerShown: false }} />
-              <Stack.Screen name="harvest-report" options={{ headerShown: false }} />
-              <Stack.Screen name="+not-found" />
-            </Stack>
-            <StatusBar style="auto" />
-          </ThemeProvider>
-          </PrivacySettingsProvider>
-        </NotificationSettingsProvider>
-      </SearchProvider>
-    </AuthProvider>
+      <NotificationProvider>
+        <AnnouncementProvider>
+          <SearchProvider>
+            <NotificationSettingsProvider>
+              <PrivacySettingsProvider>
+              <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <Stack>
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                <Stack.Screen name="login" options={{ headerShown: false }} />
+                <Stack.Screen name="signup" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="notifications" options={{ headerShown: false }} />
+                <Stack.Screen name="help" options={{ headerShown: false }} />
+                <Stack.Screen name="privacy" options={{ headerShown: false }} />
+                <Stack.Screen name="about" options={{ headerShown: false }} />
+                <Stack.Screen name="language" options={{ headerShown: false }} />
+                <Stack.Screen name="admin" options={{ headerShown: false }} />
+                <Stack.Screen name="feature-placeholder" options={{ headerShown: false }} />
+                <Stack.Screen name="price-monitoring" options={{ headerShown: false }} />
+                <Stack.Screen name="planting-report" options={{ headerShown: false }} />
+                <Stack.Screen name="harvest-report" options={{ headerShown: false }} />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+              <StatusBar style="auto" />
+              </ThemeProvider>
+            </PrivacySettingsProvider>
+          </NotificationSettingsProvider>
+        </SearchProvider>
+      </AnnouncementProvider>
+    </NotificationProvider>
+  </AuthProvider>
   );
 }

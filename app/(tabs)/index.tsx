@@ -2,7 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Dimensions, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useAnnouncements } from '../../components/AnnouncementContext';
 import { useAuth } from '../../components/AuthContext';
+import { useNotification } from '../../components/NotificationContext';
+import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -52,6 +55,8 @@ interface ForecastDay {
 export default function HomeScreen() {
   const router = useRouter();
   const { user, profile, logout } = useAuth();
+  const { announcements, loading: announcementsLoading, error: announcementsError, loadAnnouncements } = useAnnouncements();
+  const { showNotification } = useNotification();
   const [activeNav, setActiveNav] = useState('home');
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,23 +66,16 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [adminAnnouncements, setAdminAnnouncements] = useState<any[]>([]);
+  const [userMessages, setUserMessages] = useState<any[]>([]);
+  const [shownAnnouncementIds, setShownAnnouncementIds] = useState<Set<string>>(new Set());
 
-  // Function to add announcement from admin (this would be called when admin sends announcement)
-  const addAdminAnnouncement = (announcement: any) => {
-    setAdminAnnouncements(prev => [announcement, ...prev]);
+
+
+  // Function to add message (this would be called when user or admin sends a message)
+  const addMessage = (message: any) => {
+    setUserMessages(prev => [message, ...prev]);
   };
 
-  // Function to simulate receiving an announcement (for testing purposes)
-  const simulateAdminAnnouncement = () => {
-    const newAnnouncement = {
-      title: "Weather Alert",
-      content: "Heavy rainfall expected in the next 3 days. Please secure your crops and equipment.",
-      date: "Today",
-      icon: "leaf"
-    };
-    addAdminAnnouncement(newAnnouncement);
-  };
 
   // Searchable features data
   const searchableFeatures = [
@@ -605,6 +603,20 @@ export default function HomeScreen() {
     }
   }, [activeNav]);
 
+  // Show the latest announcement as sliding notification
+  useEffect(() => {
+    if (announcements.length > 0) {
+      const latestAnnouncement = announcements[0]; // First announcement is the latest
+      
+      // Always show the latest announcement as sliding notification
+      showNotification({
+        title: latestAnnouncement.title,
+        message: latestAnnouncement.content,
+        type: 'info',
+      });
+    }
+  }, [announcements]);
+
   useEffect(() => {
     if (forecastDays.length > 0 && selectedDateIndex < forecastDays.length) {
       const selectedDay = forecastDays[selectedDateIndex];
@@ -748,6 +760,8 @@ export default function HomeScreen() {
         {activeNav === 'home' && (
           <View style={styles.homeContainer}>
 
+            {/* Sliding Announcement - At the top */}
+            <SlidingAnnouncement style={{ marginTop: -10, marginBottom: 16 }} />
 
             {/* Hero Section */}
             <View style={styles.heroSection}>
@@ -758,14 +772,14 @@ export default function HomeScreen() {
                 <View style={styles.centeredIconContainer}>
                   <View style={styles.centeredIcon}>
                     <Image source={require('../../assets/images/Logo.png')} style={styles.logoImage} />
-        </View>
-      </View>
-      
-                <Text style={styles.heroDescription}>
-                  Access your agricultural tools and manage your farm efficiently
-                </Text>
+                  </View>
+                </View>
               </View>
             </View>
+            
+            <Text style={styles.heroDescription}>
+              Access your agricultural tools and manage your farm efficiently
+            </Text>
       
             {/* Agricultural Tools Section */}
             <View style={styles.toolsSection}>
@@ -818,6 +832,28 @@ export default function HomeScreen() {
                   <Text style={styles.toolTitle}>Harvest Report</Text>
                   <Text style={styles.toolDescription}>Yield analysis & reports</Text>
                 </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.toolCard}
+                  onPress={() => setActiveNav('announcements')}
+                >
+                  <View style={styles.toolIconContainer}>
+                    <Ionicons name="megaphone" size={28} color={GREEN} />
+                  </View>
+                  <Text style={[styles.toolTitle, { fontSize: 14 }]}>Announcements</Text>
+                  <Text style={[styles.toolDescription, { fontSize: 12 }]}>Farm updates & news</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.toolCard}
+                  onPress={() => setActiveNav('messages')}
+                >
+                  <View style={styles.toolIconContainer}>
+                    <Ionicons name="chatbubbles" size={28} color={GREEN} />
+                  </View>
+                  <Text style={styles.toolTitle}>Messages</Text>
+                  <Text style={styles.toolDescription}>Support & communication</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -848,7 +884,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <Text style={styles.forecastTitle}>Weather Forecast</Text>
               <TouchableOpacity 
-                style={styles.refreshButton}
+                style={styles.weatherRefreshButton}
                 onPress={() => fetchWeatherData()}
                 disabled={loading}
               >
@@ -1245,7 +1281,7 @@ export default function HomeScreen() {
                 <Ionicons name="megaphone" size={50} color={GREEN} />
               </View>
               <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>Farm Announcements</Text>
+                <Text style={styles.profileName}>Announcements</Text>
                 <Text style={styles.profileEmail}>Stay updated with latest news</Text>
                 <Text style={styles.profileRole}>Important Updates</Text>
               </View>
@@ -1254,8 +1290,26 @@ export default function HomeScreen() {
             <View style={styles.settingsSection}>
               <Text style={styles.settingsTitle}>Admin Announcements</Text>
               
-              {adminAnnouncements.length > 0 ? (
-                adminAnnouncements.map((announcement, index) => (
+              {announcementsLoading ? (
+                <View style={styles.loadingContainer}>
+                  <Ionicons name="cloud-download" size={40} color={GREEN} />
+                  <Text style={styles.loadingText}>Loading announcements...</Text>
+                </View>
+              ) : announcementsError ? (
+                <View style={styles.errorContainer}>
+                  <Ionicons name="alert-circle" size={40} color="#e74c3c" />
+                  <Text style={styles.errorTitle}>Error Loading Announcements</Text>
+                  <Text style={styles.errorMessage}>{announcementsError}</Text>
+                  <TouchableOpacity 
+                    style={styles.retryButton}
+                    onPress={loadAnnouncements}
+                  >
+                    <Ionicons name="refresh" size={20} color="#fff" />
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : announcements.length > 0 ? (
+                announcements.map((announcement, index) => (
                   <View key={index} style={styles.announcementCard}>
                     <View style={styles.announcementHeader}>
                       <Ionicons name={announcement.icon || "megaphone"} size={20} color={GREEN} />
@@ -1275,13 +1329,12 @@ export default function HomeScreen() {
                     When the admin sends announcements, they will appear here. Check back later for important updates and news.
                   </Text>
                   
-                  {/* Test button to simulate admin announcement (remove in production) */}
                   <TouchableOpacity 
-                    style={styles.testAnnouncementButton}
-                    onPress={simulateAdminAnnouncement}
+                    style={styles.refreshButton}
+                    onPress={loadAnnouncements}
                   >
-                    <Ionicons name="add-circle" size={20} color={GREEN} />
-                    <Text style={styles.testAnnouncementText}>Test: Simulate Admin Announcement</Text>
+                    <Ionicons name="refresh" size={20} color={GREEN} />
+                    <Text style={styles.refreshButtonText}>Refresh</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1304,55 +1357,40 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.settingsSection}>
-              <Text style={styles.settingsTitle}>Recent Messages</Text>
+              <Text style={styles.settingsTitle}>Messages</Text>
               
-              <TouchableOpacity style={styles.messageCard}>
-                <View style={styles.messageHeader}>
-                  <View style={styles.messageAvatar}>
-                    <Ionicons name="person" size={20} color="#fff" />
-                  </View>
-                  <View style={styles.messageInfo}>
-                    <Text style={styles.messageSender}>Admin Support</Text>
-                    <Text style={styles.messageTime}>2 hours ago</Text>
-                  </View>
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadText}>1</Text>
-                  </View>
+              {userMessages.length > 0 ? (
+                userMessages.map((message) => (
+                  <TouchableOpacity key={message.id} style={styles.messageCard}>
+                    <View style={styles.messageHeader}>
+                      <View style={styles.messageAvatar}>
+                        <Ionicons name="person" size={20} color="#fff" />
+                      </View>
+                      <View style={styles.messageInfo}>
+                        <Text style={styles.messageSender}>{message.sender}</Text>
+                        <Text style={styles.messageTime}>{message.time}</Text>
+                      </View>
+                      {!message.isRead && (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadText}>1</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.messagePreview}>
+                      {message.content}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.noMessagesContainer}>
+                  <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+                  <Text style={styles.noMessagesTitle}>No Messages Yet</Text>
+                  <Text style={styles.noMessagesText}>
+                    When you or the admin send messages, they will appear here. Start a conversation by sending a message.
+                  </Text>
+                  
                 </View>
-                <Text style={styles.messagePreview}>
-                  Thank you for your planting report. We've reviewed your data and everything looks good!
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.messageCard}>
-                <View style={styles.messageHeader}>
-                  <View style={styles.messageAvatar}>
-                    <Ionicons name="person" size={20} color="#fff" />
-                  </View>
-                  <View style={styles.messageInfo}>
-                    <Text style={styles.messageSender}>Agricultural Expert</Text>
-                    <Text style={styles.messageTime}>1 day ago</Text>
-                  </View>
-                </View>
-                <Text style={styles.messagePreview}>
-                  Your soil analysis results are ready. Check your profile for detailed recommendations.
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.messageCard}>
-                <View style={styles.messageHeader}>
-                  <View style={styles.messageAvatar}>
-                    <Ionicons name="person" size={20} color="#fff" />
-                  </View>
-                  <View style={styles.messageInfo}>
-                    <Text style={styles.messageSender}>System Notification</Text>
-                    <Text style={styles.messageTime}>3 days ago</Text>
-                  </View>
-                </View>
-                <Text style={styles.messagePreview}>
-                  Your harvest report has been successfully submitted and is being processed.
-                </Text>
-              </TouchableOpacity>
+              )}
 
               <TouchableOpacity style={styles.newMessageButton}>
                 <Ionicons name="add-circle" size={24} color={GREEN} />
@@ -1396,27 +1434,6 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.settingItem} onPress={() => setActiveNav('announcements')}>
-                <View style={styles.settingIconContainer}>
-                  <Ionicons name="megaphone" size={24} color={GREEN} />
-                </View>
-                <View style={styles.settingContent}>
-                  <Text style={styles.settingLabel}>Announcements</Text>
-                  <Text style={styles.settingDescription}>View farm announcements and updates</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.settingItem} onPress={() => setActiveNav('messages')}>
-                <View style={styles.settingIconContainer}>
-                  <Ionicons name="chatbubbles" size={24} color={GREEN} />
-                </View>
-                <View style={styles.settingContent}>
-                  <Text style={styles.settingLabel}>Messages</Text>
-                  <Text style={styles.settingDescription}>Communicate with admin and support</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
 
               <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/privacy')}>
                 <View style={styles.settingIconContainer}>
@@ -2104,7 +2121,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flex: 1,
   },
-  refreshButton: {
+  weatherRefreshButton: {
     padding: 10,
   },
   weatherCard: {
@@ -2642,7 +2659,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  testAnnouncementButton: {
+  // No messages styles
+  noMessagesContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  noMessagesTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#999',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  noMessagesText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  refreshButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2653,7 +2689,7 @@ const styles = StyleSheet.create({
     borderColor: GREEN,
     marginTop: 20,
   },
-  testAnnouncementText: {
+  refreshButtonText: {
     fontSize: 14,
     color: GREEN,
     fontWeight: '600',
