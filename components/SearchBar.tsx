@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 const GREEN = '#16543a';

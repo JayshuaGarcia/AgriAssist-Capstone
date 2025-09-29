@@ -37,20 +37,6 @@ export default function HelpSupportScreen() {
           <FAQItem q="Where can I manage notifications?" a="Open Notifications in Profile and Settings to toggle alerts." />
         </View>
 
-        <Text style={styles.sectionTitle}>Contact Us</Text>
-        <View style={styles.card}>
-          <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('mailto:support@agriassist.app?subject=Support Request')}>
-            <Ionicons name="mail" size={20} color={GREEN} />
-            <Text style={styles.contactText}>Email support@agriassist.app</Text>
-            <Ionicons name="chevron-forward" size={18} color="#ccc" />
-          </TouchableOpacity>
-          <Separator />
-          <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('https://agriassist.app/help')}>
-            <Ionicons name="globe" size={20} color={GREEN} />
-            <Text style={styles.contactText}>Help Center</Text>
-            <Ionicons name="chevron-forward" size={18} color="#ccc" />
-          </TouchableOpacity>
-        </View>
 
         <Text style={styles.sectionTitle}>Send Feedback</Text>
         <View style={styles.card}>

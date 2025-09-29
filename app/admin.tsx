@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
-import { collection, getDocs } from 'firebase/firestore';
+import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
 import { useNotification } from '../components/NotificationContext';
@@ -42,7 +42,6 @@ export default function AdminPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [products, setProducts] = useState<Product[]>(OFFICIAL_PRODUCTS);
-  const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [hasUploadedPDF, setHasUploadedPDF] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -57,6 +56,12 @@ export default function AdminPage() {
   const [showUserList, setShowUserList] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [showComposeMessage, setShowComposeMessage] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [adminMessages, setAdminMessages] = useState<any[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   // Daily price index data structure
   const [dailyPriceData, setDailyPriceData] = useState<any>(null);
@@ -108,10 +113,6 @@ export default function AdminPage() {
     product.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Scroll to top function
-  const scrollToTop = () => {
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-  };
   
   // Load sample data function
   const loadSampleData = () => {
@@ -403,17 +404,159 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
     item.specification?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  // Handle scroll events to show/hide scroll to top button
-  const handleScroll = (event: any) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    setShowScrollToTop(offsetY > 300);
-  };
 
   const handleSignOut = async () => {
     try {
       await logout();
     } finally {
       router.replace('/login');
+    }
+  };
+
+  // Group messages by contact
+  const groupMessagesByContact = (messages: any[]) => {
+    const contactMap = new Map();
+    
+    messages.forEach(message => {
+      let contactId, contactName, contactEmail;
+      
+      if (message.type === 'sent') {
+        contactId = message.receiverId;
+        contactName = message.receiverEmail;
+        contactEmail = message.receiverEmail;
+      } else {
+        contactId = message.senderId;
+        contactName = message.senderName || 'User';
+        contactEmail = message.senderEmail || 'Unknown';
+      }
+      
+      if (!contactMap.has(contactId)) {
+        contactMap.set(contactId, {
+          id: contactId,
+          name: contactName,
+          email: contactEmail,
+          messages: [],
+          lastMessage: null,
+          unreadCount: 0
+        });
+      }
+      
+      const contact = contactMap.get(contactId);
+      contact.messages.push(message);
+      
+      // Update last message and unread count
+      if (!contact.lastMessage || message.timestamp > contact.lastMessage.timestamp) {
+        contact.lastMessage = message;
+      }
+      
+      if (message.type === 'received' && !message.isRead) {
+        contact.unreadCount++;
+      }
+    });
+    
+    // Sort contacts by last message timestamp
+    return Array.from(contactMap.values()).sort((a, b) => 
+      (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0)
+    );
+  };
+
+  // Navigate to full-screen chat
+  const openChat = (contact: any) => {
+    router.push(`/admin-chat?contactId=${contact.id}&contactName=${encodeURIComponent(contact.name)}&contactEmail=${encodeURIComponent(contact.email)}`);
+  };
+
+  // Load admin messages (sent and received)
+  const loadAdminMessages = async () => {
+    setLoadingMessages(true);
+    try {
+      // Query messages where admin is sender or receiver
+      const sentMessagesQuery = query(
+        collection(db, 'messages'),
+        where('senderId', '==', 'admin')
+      );
+      
+      const receivedMessagesQuery = query(
+        collection(db, 'messages'),
+        where('receiverId', '==', 'admin')
+      );
+      
+      const [sentSnapshot, receivedSnapshot] = await Promise.all([
+        getDocs(sentMessagesQuery),
+        getDocs(receivedMessagesQuery)
+      ]);
+      
+      const sentMessages = sentSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        type: 'sent'
+      }));
+      
+      const receivedMessages = receivedSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        type: 'received'
+      }));
+      
+      // Combine and sort all messages by timestamp
+      const allMessages = [...sentMessages, ...receivedMessages]
+        .sort((a, b) => b.timestamp - a.timestamp);
+      
+      setAdminMessages(allMessages);
+      console.log('Loaded admin messages:', allMessages.length);
+    } catch (error) {
+      console.error('Error loading admin messages:', error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  // Send message to specific user
+  const sendMessageToUser = async () => {
+    if (!selectedUser || !messageText.trim()) {
+      Alert.alert('Error', 'Please select a user and enter a message');
+      return;
+    }
+
+    console.log('Selected user data:', selectedUser);
+    console.log('User UID:', selectedUser.uid);
+    console.log('User ID:', selectedUser.id);
+
+    setSendingMessage(true);
+    try {
+      const messageData = {
+        id: Date.now().toString(),
+        senderId: 'admin',
+        senderName: 'Admin',
+        receiverId: selectedUser.id, // Use 'id' since uid is undefined
+        receiverEmail: selectedUser.email,
+        content: messageText.trim(),
+        timestamp: Date.now(),
+        createdAt: new Date().toISOString(),
+        isRead: false,
+        type: 'admin_message'
+      };
+
+      // Add to Firestore messages collection
+      await addDoc(collection(db, 'messages'), messageData);
+      
+      Alert.alert('Success', `Message sent to ${selectedUser.displayName}`, [
+        {
+          text: 'OK',
+          onPress: () => {
+            setMessageText('');
+            setSelectedUser(null);
+            setShowComposeMessage(false);
+            setShowUserList(false);
+            // Reload messages to show the sent message
+            loadAdminMessages();
+          }
+        }
+      ]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -428,6 +571,13 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
       });
     }
   }, [announcements]);
+
+  // Load admin messages when navigating to messages section
+  useEffect(() => {
+    if (activeNav === 'messages') {
+      loadAdminMessages();
+    }
+  }, [activeNav]);
 
   // Function to create and broadcast announcement to all users
   const createAnnouncement = async () => {
@@ -551,6 +701,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         const userData = doc.data();
         usersList.push({
           id: doc.id,
+          uid: userData.uid || doc.id, // Include UID field, fallback to doc.id
           email: userData.email || 'No email',
           displayName: userData.name || 'Unknown User',
           role: userData.role || 'farmer',
@@ -589,8 +740,11 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
 
       {/* Main Content */}
       {activeNav === 'home' && (
+        <>
+          {/* Fixed Sliding Announcement - Only on Home */}
+          <SlidingAnnouncement />
         <ScrollView 
-          style={styles.scrollView}
+          style={[styles.scrollView, { paddingTop: 60 }]}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -603,20 +757,24 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
           }
         >
           <View style={styles.contentContainer}>
-            {/* Sliding Announcement - At the top */}
-            <SlidingAnnouncement style={{ marginTop: -10, marginBottom: 16 }} />
             
-            {/* Welcome Message */}
-            <View style={styles.welcomeContainer}>
-              <View style={styles.welcomeHeader}>
-                <View style={styles.welcomeTextContainer}>
-                  <Text style={styles.welcomeTitle}>Welcome back, Admin!</Text>
-                  <Text style={styles.welcomeSubtitle}>
-                    Manage your agricultural system and monitor price data efficiently
-                  </Text>
+            {/* Hero Section */}
+            <View style={styles.heroSection}>
+              <View style={styles.heroContent}>
+                <Text style={styles.heroTitle}>Welcome to</Text>
+                
+                {/* Centered Icon/Logo */}
+                <View style={styles.centeredIconContainer}>
+                  <View style={styles.centeredIcon}>
+                    <Image source={require('../assets/images/Logo.png')} style={styles.logoImage} />
+                  </View>
                 </View>
               </View>
             </View>
+            
+            <Text style={styles.heroDescription}>
+              Hello Admin! - Manage your agricultural system efficiently
+            </Text>
             
             <View style={styles.statsContainer}>
               <View style={styles.statCard}>
@@ -638,20 +796,23 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
               </View>
             </View>
 
-            <View style={styles.adminToolsContainer}>
-              <Text style={styles.toolsTitle}>Admin Tools</Text>
+            {/* Admin Tools Section */}
+            <View style={styles.toolsSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Admin Tools</Text>
+                <Text style={styles.sectionSubtitle}>Manage your agricultural system</Text>
+              </View>
               
-              {/* Grid Layout for Tools */}
               <View style={styles.toolsGrid}>
                 <TouchableOpacity 
                   style={styles.toolCard}
                   onPress={() => setActiveNav('announcements')}
                 >
                   <View style={styles.toolIconContainer}>
-                    <Ionicons name="megaphone" size={32} color="#fff" />
+                    <Ionicons name="megaphone" size={28} color={GREEN} />
                   </View>
-                  <Text style={styles.toolCardTitle}>Announcements</Text>
-                  <Text style={styles.toolCardDescription}>Send announcements to farmers</Text>
+                  <Text style={styles.announcementToolTitle}>Announcements</Text>
+                  <Text style={styles.announcementToolDescription}>Send announcements to farmers</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
@@ -659,15 +820,38 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                   onPress={() => setActiveNav('messages')}
                 >
                   <View style={styles.toolIconContainer}>
-                    <Ionicons name="chatbubbles" size={32} color="#fff" />
+                    <Ionicons name="chatbubbles" size={28} color={GREEN} />
                   </View>
-                  <Text style={styles.toolCardTitle}>Messages</Text>
-                  <Text style={styles.toolCardDescription}>Communicate with farmers</Text>
+                  <Text style={styles.toolTitle}>Messages</Text>
+                  <Text style={styles.toolDescription}>Communicate with farmers</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.toolCard}
+                  onPress={() => router.push('/planting-report')}
+                >
+                  <View style={styles.toolIconContainer}>
+                    <Ionicons name="leaf" size={28} color={GREEN} />
+                  </View>
+                  <Text style={styles.toolTitle}>Planting Records</Text>
+                  <Text style={styles.toolDescription}>View and manage planting data</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.toolCard}
+                  onPress={() => router.push('/harvest-report')}
+                >
+                  <View style={styles.toolIconContainer}>
+                    <Ionicons name="basket" size={28} color={GREEN} />
+                  </View>
+                  <Text style={styles.toolTitle}>Harvest Records</Text>
+                  <Text style={styles.toolDescription}>View and manage harvest data</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </ScrollView>
+        </>
       )}
 
       {activeNav === 'price-monitoring' && (
@@ -675,8 +859,6 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
           ref={scrollViewRef}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
         >
           <View style={styles.contentContainer}>
             <View style={styles.headerRow}>
@@ -957,16 +1139,63 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
             
             {/* Inbox Section */}
             <View style={styles.inboxContainer}>
-              <Text style={styles.inboxTitle}>Inbox</Text>
-              
-              {/* Empty State */}
-              <View style={styles.emptyInboxContainer}>
-                <Ionicons name="mail-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyInboxTitle}>No Messages Yet</Text>
-                <Text style={styles.emptyInboxText}>
-                  When farmers send you messages, they will appear here. Start a conversation by creating a new message.
-                </Text>
+              <View style={styles.inboxHeader}>
+                <Text style={styles.inboxTitle}>Messages</Text>
+                <TouchableOpacity 
+                  style={styles.refreshInboxButton}
+                  onPress={loadAdminMessages}
+                >
+                  <Ionicons name="refresh" size={20} color={GREEN} />
+                </TouchableOpacity>
               </View>
+              
+              {loadingMessages ? (
+                <View style={styles.loadingContainer}>
+                  <Ionicons name="cloud-download" size={40} color={GREEN} />
+                  <Text style={styles.loadingText}>Loading messages...</Text>
+                </View>
+              ) : adminMessages.length > 0 ? (
+                <View style={styles.contactListContainer}>
+                  {groupMessagesByContact(adminMessages).map((contact) => (
+                    <TouchableOpacity 
+                      key={contact.id} 
+                      style={styles.contactItem}
+                      onPress={() => openChat(contact)}
+                    >
+                      <View style={styles.contactAvatar}>
+                        <Ionicons name="person" size={24} color="#fff" />
+                      </View>
+                      <View style={styles.contactInfo}>
+                        <View style={styles.contactHeader}>
+                          <Text style={styles.contactName}>{contact.name}</Text>
+                          <Text style={styles.contactTime}>
+                            {contact.lastMessage?.createdAt ? 
+                              new Date(contact.lastMessage.createdAt).toLocaleDateString() : 
+                              'Unknown'
+                            }
+                          </Text>
+                        </View>
+                        <Text style={styles.contactLastMessage} numberOfLines={1}>
+                          {contact.lastMessage?.content || 'No messages'}
+                        </Text>
+                      </View>
+                      {contact.unreadCount > 0 && (
+                        <View style={styles.contactUnreadBadge}>
+                          <Text style={styles.contactUnreadCount}>{contact.unreadCount}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyInboxContainer}>
+                  <Ionicons name="mail-outline" size={64} color="#ccc" />
+                  <Text style={styles.emptyInboxTitle}>No Messages Yet</Text>
+                  <Text style={styles.emptyInboxText}>
+                    When farmers send you messages, they will appear here. Start a conversation by creating a new message.
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         </ScrollView>
@@ -1084,12 +1313,6 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         </ScrollView>
       )}
 
-             {/* Scroll to Top Button */}
-       {showScrollToTop && (
-         <TouchableOpacity style={styles.scrollToTopButton} onPress={scrollToTop}>
-           <Ionicons name="arrow-up" size={24} color="#fff" />
-         </TouchableOpacity>
-       )}
 
       {/* Bottom Navigation Tabs */}
       <View style={styles.bottomNavTabs}>
@@ -1253,6 +1476,75 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         </View>
       </Modal>
 
+      {/* Compose Message Modal */}
+      <Modal
+        visible={showComposeMessage}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowComposeMessage(false)}
+      >
+        <View style={styles.fullScreenModalOverlay}>
+          <View style={styles.viewModalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Compose Message</Text>
+              <TouchableOpacity onPress={() => setShowComposeMessage(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.composeMessageContainer}>
+              <View style={styles.recipientInfo}>
+                <View style={styles.recipientAvatar}>
+                  <Ionicons name="person" size={24} color="#fff" />
+                </View>
+                <View style={styles.recipientDetails}>
+                  <Text style={styles.recipientName}>{selectedUser?.displayName}</Text>
+                  <Text style={styles.recipientEmail}>{selectedUser?.email}</Text>
+                </View>
+              </View>
+
+              <View style={styles.messageInputContainer}>
+                <Text style={styles.messageLabel}>Message:</Text>
+                <TextInput
+                  style={styles.messageTextInput}
+                  placeholder="Type your message here..."
+                  value={messageText}
+                  onChangeText={setMessageText}
+                  multiline={true}
+                  numberOfLines={6}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.composeButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.composeCancelButton}
+                  onPress={() => {
+                    setMessageText('');
+                    setSelectedUser(null);
+                    setShowComposeMessage(false);
+                  }}
+                >
+                  <Text style={styles.composeCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.sendButton, sendingMessage && styles.sendButtonDisabled]}
+                  onPress={sendMessageToUser}
+                  disabled={sendingMessage || !messageText.trim()}
+                >
+                  {sendingMessage ? (
+                    <Text style={styles.sendButtonText}>Sending...</Text>
+                  ) : (
+                    <Text style={styles.sendButtonText}>Send Message</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* View All Announcements Modal */}
       <Modal
         visible={showViewAnnouncements}
@@ -1381,21 +1673,9 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                     key={user.id || index} 
                     style={styles.userItem}
                     onPress={() => {
-                      Alert.alert(
-                        'Send Message',
-                        `Send message to ${user.displayName}?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { 
-                            text: 'Send', 
-                            onPress: () => {
-                              // Here you would implement the actual message sending
-                              Alert.alert('Success', `Message sent to ${user.displayName}!`);
-                              setShowUserList(false);
-                            }
-                          }
-                        ]
-                      );
+                      setSelectedUser(user);
+                      setShowUserList(false);
+                      setShowComposeMessage(true);
                     }}
                   >
                     <View style={styles.userItemHeader}>
@@ -1407,7 +1687,6 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                         <Text style={styles.userItemEmail}>{user.email}</Text>
                         <Text style={styles.userItemRole}>
                           {user.role} • {user.barangay ? user.barangay : user.location}
-                          {user.approved ? ' • ✓ Approved' : ' • ⏳ Pending'}
                         </Text>
                       </View>
                       <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -1486,18 +1765,6 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginRight: 12,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    flex: 1,
-  },
-  sectionSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 20,
-    lineHeight: 22,
   },
   welcomeContainer: {
     backgroundColor: '#fff',
@@ -1581,51 +1848,97 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
+  toolsSection: {
+    backgroundColor: '#fff',
+    padding: 25,
+    borderRadius: 25,
+    marginBottom: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  sectionTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: GREEN,
+    marginBottom: 12,
+    letterSpacing: -0.5,
+  },
+  sectionSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
   toolsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 15,
   },
   toolCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 15,
     width: '48%',
+    backgroundColor: '#fafafa',
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 20,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 4,
     borderWidth: 1,
     borderColor: '#f0f0f0',
+    minHeight: 140,
   },
   toolIconContainer: {
-    backgroundColor: GREEN,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 70,
+    height: 70,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: GREEN,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#e8f5e8',
+    borderRadius: 35,
+    marginBottom: 15,
+    borderWidth: 2,
+    borderColor: '#d0e8d0',
   },
-  toolCardTitle: {
+  toolTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  toolDescription: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
+    color: '#555',
     textAlign: 'center',
+    lineHeight: 20,
+    fontWeight: '400',
   },
-  toolCardDescription: {
-    fontSize: 12,
-    color: '#666',
+  announcementToolTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: GREEN,
+    marginBottom: 8,
     textAlign: 'center',
-    lineHeight: 16,
+    letterSpacing: -0.3,
+  },
+  announcementToolDescription: {
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
+    lineHeight: 20,
+    fontWeight: '400',
   },
   toolCardPlaceholder: {
     width: '48%',
@@ -1949,22 +2262,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  scrollToTopButton: {
-    position: 'absolute',
-    bottom: 100,
-    right: 20,
-    backgroundColor: GREEN,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
   // Profile and Settings Styles
   profileHeader: {
     flexDirection: 'column',
@@ -2248,19 +2545,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   announcementItemTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 4,
   },
   announcementItemDate: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#666',
   },
   announcementItemText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#555',
-    lineHeight: 20,
+    lineHeight: 22,
     marginBottom: 8,
   },
   announcementItemFooter: {
@@ -2510,6 +2807,278 @@ const styles = StyleSheet.create({
     color: '#999',
     textTransform: 'capitalize',
   },
+  // Compose Message Modal Styles
+  composeMessageContainer: {
+    flex: 1,
+    padding: 20,
+  },
+  recipientInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  recipientAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: GREEN,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  recipientDetails: {
+    flex: 1,
+  },
+  recipientName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  recipientEmail: {
+    fontSize: 14,
+    color: '#666',
+  },
+  messageInputContainer: {
+    marginBottom: 20,
+  },
+  messageLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  messageTextInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#333',
+    backgroundColor: '#fff',
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+  composeButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  composeCancelButton: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  composeCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  sendButton: {
+    flex: 1,
+    backgroundColor: GREEN,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  sendButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  // Admin Inbox Styles
+  inboxHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  refreshInboxButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f8f9fa',
+  },
+  // Chat Interface Styles
+  chatContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  chatMessageContainer: {
+    marginVertical: 4,
+    maxWidth: '80%',
+  },
+  sentMessageContainer: {
+    alignSelf: 'flex-end',
+    alignItems: 'flex-end',
+  },
+  receivedMessageContainer: {
+    alignSelf: 'flex-start',
+    alignItems: 'flex-start',
+  },
+  chatBubble: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sentBubble: {
+    backgroundColor: GREEN,
+    borderBottomRightRadius: 4,
+  },
+  receivedBubble: {
+    backgroundColor: '#f1f3f4',
+    borderBottomLeftRadius: 4,
+  },
+  chatMessageText: {
+    fontSize: 16,
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  sentMessageText: {
+    color: '#fff',
+  },
+  receivedMessageText: {
+    color: '#333',
+  },
+  chatTimestamp: {
+    fontSize: 11,
+    opacity: 0.7,
+  },
+  sentTimestamp: {
+    color: '#fff',
+    textAlign: 'right',
+  },
+  receivedTimestamp: {
+    color: '#666',
+    textAlign: 'left',
+  },
+  chatMessageInfo: {
+    marginTop: 4,
+    paddingHorizontal: 8,
+  },
+  chatSenderInfo: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  // Contact List Styles
+  contactListContainer: {
+    flex: 1,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  contactAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: GREEN,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  contactName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  contactTime: {
+    fontSize: 12,
+    color: '#666',
+  },
+  contactLastMessage: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 18,
+  },
+  contactUnreadBadge: {
+    backgroundColor: GREEN,
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  contactUnreadCount: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  // Chat Header Styles
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  backToContactsButton: {
+    padding: 8,
+    marginRight: 12,
+  },
+  chatContactInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chatContactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: GREEN,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  chatContactDetails: {
+    flex: 1,
+  },
+  chatContactName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  chatContactEmail: {
+    fontSize: 12,
+    color: '#666',
+  },
+  chatOptionsButton: {
+    padding: 8,
+  },
   // Welcome Header Styles
   welcomeHeader: {
     flexDirection: 'row',
@@ -2534,6 +3103,59 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  heroSection: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 25,
+    borderRadius: 25,
+    marginBottom: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  heroContent: {
+    flex: 1,
+    marginRight: 0,
+    alignItems: 'center',
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: GREEN,
+    marginBottom: 8,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  centeredIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 25,
+  },
+  centeredIcon: {
+    width: 120,
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoImage: {
+    width: 140,
+    height: 140,
+    resizeMode: 'contain',
+  },
+  heroDescription: {
+    fontSize: 16,
+    color: '#555',
+    lineHeight: 24,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginBottom: 25,
   },
 });
 

@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, Dimensions, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../../components/AnnouncementContext';
 import { useAuth } from '../../components/AuthContext';
 import { useNotification } from '../../components/NotificationContext';
 import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
+import { db } from '../../lib/firebase';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -76,6 +78,111 @@ export default function HomeScreen() {
     setUserMessages(prev => [message, ...prev]);
   };
 
+  // Load messages for the current user
+  const loadUserMessages = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      // First, get the user's document ID from the users collection
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '==', user.email)
+      );
+      const userSnapshot = await getDocs(usersQuery);
+      
+      if (userSnapshot.empty) {
+        console.log('No user document found for current user');
+        return;
+      }
+      
+      const userDoc = userSnapshot.docs[0];
+      const userDocId = userDoc.id;
+      
+      console.log('Current user UID:', user.uid);
+      console.log('Current user document ID:', userDocId);
+      
+      // Query both sent and received messages
+      const sentMessagesQuery = query(
+        collection(db, 'messages'),
+        where('senderId', '==', userDocId)
+      );
+      
+      const receivedMessagesQuery = query(
+        collection(db, 'messages'),
+        where('receiverId', '==', userDocId)
+      );
+      
+      const [sentSnapshot, receivedSnapshot] = await Promise.all([
+        getDocs(sentMessagesQuery),
+        getDocs(receivedMessagesQuery)
+      ]);
+      
+      const sentMessages = sentSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      const receivedMessages = receivedSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Combine all messages
+      const allMessages = [...sentMessages, ...receivedMessages];
+      
+      // Group messages by contact (sender or receiver)
+      const contactMap = new Map();
+      
+      allMessages.forEach(message => {
+        let contactId, contactName, contactEmail;
+        
+        if (message.senderId === userDocId) {
+          // User sent this message
+          contactId = message.receiverId;
+          contactName = message.receiverName || 'Admin';
+          contactEmail = message.receiverEmail || 'admin@agriassist.com';
+        } else {
+          // User received this message
+          contactId = message.senderId;
+          contactName = message.senderName || 'Admin';
+          contactEmail = message.senderEmail || 'admin@agriassist.com';
+        }
+        
+        if (!contactMap.has(contactId)) {
+          contactMap.set(contactId, {
+            contactId,
+            contactName,
+            contactEmail,
+            lastMessage: message,
+            unreadCount: 0,
+            messages: []
+          });
+        }
+        
+        const contact = contactMap.get(contactId);
+        contact.messages.push(message);
+        
+        // Update last message if this one is newer
+        if (message.timestamp > contact.lastMessage.timestamp) {
+          contact.lastMessage = message;
+        }
+        
+        // Count unread messages (only for received messages)
+        if (message.receiverId === userDocId && !message.isRead) {
+          contact.unreadCount++;
+        }
+      });
+      
+      // Convert map to array and sort by last message timestamp
+      const contacts = Array.from(contactMap.values())
+        .sort((a, b) => (b.lastMessage.timestamp || 0) - (a.lastMessage.timestamp || 0));
+      
+      setUserMessages(contacts);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+    }
+  };
+
 
   // Searchable features data
   const searchableFeatures = [
@@ -126,6 +233,22 @@ export default function HomeScreen() {
       icon: 'notifications',
       hasPage: true,
       action: () => router.push('/notifications')
+    },
+    {
+      id: 'announcements',
+      title: 'Announcements',
+      description: 'Farm updates and news',
+      icon: 'megaphone',
+      hasPage: true,
+      action: () => setActiveNav('announcements')
+    },
+    {
+      id: 'messages',
+      title: 'Messages',
+      description: 'Support and communication',
+      icon: 'chatbubbles',
+      hasPage: true,
+      action: () => setActiveNav('messages')
     },
     {
       id: 'privacy-security',
@@ -617,6 +740,13 @@ export default function HomeScreen() {
     }
   }, [announcements]);
 
+  // Load messages when user navigates to messages section
+  useEffect(() => {
+    if (activeNav === 'messages' && user?.uid) {
+      loadUserMessages();
+    }
+  }, [activeNav, user?.uid]);
+
   useEffect(() => {
     if (forecastDays.length > 0 && selectedDateIndex < forecastDays.length) {
       const selectedDay = forecastDays[selectedDateIndex];
@@ -753,15 +883,21 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Top Green Border */}
       <View style={{ height: 36, width: '100%', backgroundColor: '#16543a', shadowColor: 'transparent', elevation: 0 }} />
+      
       {/* Main Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}
+      {activeNav === 'home' && (
+        <>
+          {/* Fixed Sliding Announcement - Only on Home */}
+          <SlidingAnnouncement />
+        </>
+      )}
+      
+      <ScrollView style={[styles.content, { paddingTop: activeNav === 'home' ? 60 : 0 }]} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[GREEN]} tintColor={GREEN} />}>
         {/* Home Navigation Buttons */}
         {activeNav === 'home' && (
+          <>
           <View style={styles.homeContainer}>
-
-            {/* Sliding Announcement - At the top */}
-            <SlidingAnnouncement style={{ marginTop: -10, marginBottom: 16 }} />
 
             {/* Hero Section */}
             <View style={styles.heroSection}>
@@ -870,6 +1006,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </>
         )}
 
         {/* Weather Forecast Section */}
@@ -1360,24 +1497,30 @@ export default function HomeScreen() {
               <Text style={styles.settingsTitle}>Messages</Text>
               
               {userMessages.length > 0 ? (
-                userMessages.map((message) => (
-                  <TouchableOpacity key={message.id} style={styles.messageCard}>
+                userMessages.map((contact) => (
+                  <TouchableOpacity 
+                    key={contact.contactId} 
+                    style={styles.messageCard}
+                    onPress={() => router.push(`/user-chat?contactId=${contact.contactId}&contactName=${encodeURIComponent(contact.contactName)}&contactEmail=${encodeURIComponent(contact.contactEmail)}`)}
+                  >
                     <View style={styles.messageHeader}>
                       <View style={styles.messageAvatar}>
                         <Ionicons name="person" size={20} color="#fff" />
                       </View>
                       <View style={styles.messageInfo}>
-                        <Text style={styles.messageSender}>{message.sender}</Text>
-                        <Text style={styles.messageTime}>{message.time}</Text>
+                        <Text style={styles.messageSender}>{contact.contactName}</Text>
+                        <Text style={styles.messageTime}>
+                          {contact.lastMessage.createdAt ? new Date(contact.lastMessage.createdAt).toLocaleDateString() : 'Unknown'}
+                        </Text>
                       </View>
-                      {!message.isRead && (
+                      {contact.unreadCount > 0 && (
                         <View style={styles.unreadBadge}>
-                          <Text style={styles.unreadText}>1</Text>
+                          <Text style={styles.unreadText}>{contact.unreadCount}</Text>
                         </View>
                       )}
                     </View>
                     <Text style={styles.messagePreview}>
-                      {message.content}
+                      {contact.lastMessage.content}
                     </Text>
                   </TouchableOpacity>
                 ))
@@ -1518,7 +1661,7 @@ export default function HomeScreen() {
           onPress={() => handleNavigation('tutorial')}
         >
           <Ionicons 
-            name="school" 
+            name="trending-up" 
             size={24} 
             color={activeNav === 'tutorial' ? GREEN : '#666'} 
           />
@@ -1526,7 +1669,7 @@ export default function HomeScreen() {
             styles.navText, 
             activeNav === 'tutorial' && styles.activeNavText
           ]}>
-            Tutorial
+            Price Monitoring
           </Text>
         </TouchableOpacity>
         
