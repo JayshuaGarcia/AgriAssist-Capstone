@@ -1,15 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
 import { useNotification } from '../components/NotificationContext';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
+import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../constants/CommodityData';
 import { OFFICIAL_PRODUCTS, Product } from '../constants/ProductData';
 import { useNavigationBar } from '../hooks/useNavigationBar';
+import { daPriceService, updateCommodityWithDAPrices } from '../lib/daPriceService';
 import { db } from '../lib/firebase';
 
 const { width } = Dimensions.get('window');
@@ -38,16 +41,172 @@ export default function AdminPage() {
       return;
     }
   }, [user, profile.role]);
+
   const { announcements, addAnnouncement, loadAnnouncements, deleteAnnouncement, loading: announcementLoading, error: announcementError } = useAnnouncements();
   const { showNotification } = useNotification();
   const scrollViewRef = useRef<ScrollView>(null);
   const [activeNav, setActiveNav] = useState('home');
+  
+  // Search functionality
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Search data for navigation
+  const searchData = [
+    {
+      id: 'announcements',
+      title: 'Announcements',
+      description: 'Manage system announcements',
+      category: 'Management',
+      icon: 'megaphone',
+      action: () => setActiveNav('announcements')
+    },
+    {
+      id: 'messages',
+      title: 'Messages',
+      description: 'View and manage messages',
+      category: 'Communication',
+      icon: 'chatbubbles',
+      action: () => setActiveNav('messages')
+    },
+    {
+      id: 'planting-records',
+      title: 'Planting Records',
+      description: 'View planting reports and records',
+      category: 'Reports',
+      icon: 'leaf',
+      action: () => setActiveNav('planting-records')
+    },
+    {
+      id: 'harvest-records',
+      title: 'Harvest Records',
+      description: 'View harvest reports and records',
+      category: 'Reports',
+      icon: 'basket',
+      action: () => setActiveNav('harvest-records')
+    },
+    {
+      id: 'farmers-records',
+      title: 'Farmers Records',
+      description: 'View and manage farmer profiles',
+      category: 'Management',
+      icon: 'people',
+      action: () => setActiveNav('farmers-records')
+    },
+    {
+      id: 'price-monitoring',
+      title: 'Price Monitoring',
+      description: 'Monitor agricultural commodity prices',
+      category: 'Analytics',
+      icon: 'trending-up',
+      action: () => setActiveNav('price-monitoring')
+    },
+    {
+      id: 'settings',
+      title: 'Settings & Preferences',
+      description: 'Configure system settings',
+      category: 'Configuration',
+      icon: 'settings',
+      action: () => setActiveNav('settings')
+    },
+    {
+      id: 'notifications',
+      title: 'Notifications',
+      description: 'Manage notification settings',
+      category: 'Configuration',
+      icon: 'notifications',
+      action: () => router.push('/notifications')
+    },
+    {
+      id: 'privacy',
+      title: 'Privacy & Security',
+      description: 'Account security and privacy settings',
+      category: 'Security',
+      icon: 'shield-checkmark',
+      action: () => router.push('/privacy')
+    },
+    {
+      id: 'help',
+      title: 'Help & Support',
+      description: 'Get help and support',
+      category: 'Support',
+      icon: 'help-circle',
+      action: () => router.push('/help')
+    },
+    {
+      id: 'about',
+      title: 'About',
+      description: 'About AgriAssist application',
+      category: 'Information',
+      icon: 'information-circle',
+      action: () => router.push('/about')
+    }
+  ];
+
+  // Search function
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    const filtered = searchData.filter(item => 
+      item.title.toLowerCase().includes(query.toLowerCase()) ||
+      item.description.toLowerCase().includes(query.toLowerCase())
+    );
+    setSearchResults(filtered);
+    setIsSearching(false);
+  };
+
+  // Navigate to search result
+  const handleSearchResultPress = (item: any) => {
+    item.action();
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+
+  // Load price data when price monitoring tab is active
+  useEffect(() => {
+    if (activeNav === 'price-monitoring') {
+      fetchPriceData();
+    }
+  }, [activeNav]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [products, setProducts] = useState<Product[]>(OFFICIAL_PRODUCTS);
   const [hasUploadedPDF, setHasUploadedPDF] = useState(false);
+  
+  // Price monitoring states
+  const [priceRefreshing, setPriceRefreshing] = useState(false);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [commodities, setCommodities] = useState<Commodity[]>(COMMODITY_DATA);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [showCommodityModal, setShowCommodityModal] = useState(false);
+  const [priceSearchQuery, setPriceSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Records state
+  const [plantingRecords, setPlantingRecords] = useState<any[]>([]);
+  const [harvestRecords, setHarvestRecords] = useState<any[]>([]);
+  const [loadingRecords, setLoadingRecords] = useState(false);
+  
+  // Grouped records state (messaging style)
+  const [groupedPlantingRecords, setGroupedPlantingRecords] = useState<any[]>([]);
+  const [groupedHarvestRecords, setGroupedHarvestRecords] = useState<any[]>([]);
+  const [selectedUserAccount, setSelectedUserAccount] = useState<any>(null);
+  const [showUserReports, setShowUserReports] = useState(false);
+  const [reportType, setReportType] = useState<'planting' | 'harvest'>('planting');
+  
+  // Individual report detail view
+  const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [showReportDetail, setShowReportDetail] = useState(false);
+  const [readReports, setReadReports] = useState<Set<string>>(new Set());
   
   // Announcement state
   const [showCreateAnnouncement, setShowCreateAnnouncement] = useState(false);
@@ -69,6 +228,12 @@ export default function AdminPage() {
 
   // Daily price index data structure
   const [dailyPriceData, setDailyPriceData] = useState<any>(null);
+
+  // Farmers records state
+  const [farmersData, setFarmersData] = useState<any[]>([]);
+  const [loadingFarmers, setLoadingFarmers] = useState(false);
+  const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
+  const [showFarmerDetail, setShowFarmerDetail] = useState(false);
   
   // Sample Excel price data
   const sampleExcelData = {
@@ -417,6 +582,229 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
     }
   };
 
+  // Price monitoring functions
+  const fetchPriceData = async () => {
+    setPriceLoading(true);
+    setPriceError(null);
+
+    try {
+      console.log('🌾 Fetching DA Philippines daily retail prices...');
+      
+      // Fetch current prices from DA service
+      const priceData = await daPriceService.getCurrentPrices(COMMODITY_DATA);
+      
+      // Fetch forecasts from DA service
+      const forecastData = await daPriceService.getPriceForecasts(COMMODITY_DATA);
+      
+      console.log('📊 DA price data received:', priceData.length, 'items');
+      console.log('🔮 DA forecast data received:', forecastData.length, 'items');
+      
+      // Update commodities with DA price data
+      const updatedCommodities = commodities.map(commodity => {
+        const price = priceData.find(p => p.commodityId === commodity.id);
+        const forecast = forecastData.find(f => f.commodityId === commodity.id);
+        
+        if (price) {
+          return updateCommodityWithDAPrices(commodity, price, forecast);
+        }
+        return commodity;
+      });
+
+      console.log('📊 Updated commodities sample:', {
+        count: updatedCommodities.length,
+        withPrices: updatedCommodities.filter(c => c.currentPrice).length,
+        firstCommodity: updatedCommodities[0] ? {
+          name: updatedCommodities[0].name,
+          category: updatedCommodities[0].category,
+          currentPrice: updatedCommodities[0].currentPrice,
+          hasPrice: !!updatedCommodities[0].currentPrice
+        } : null
+      });
+      
+      setCommodities(updatedCommodities);
+      setLastUpdated(new Date().toLocaleTimeString());
+      console.log('✅ Successfully updated', updatedCommodities.length, 'commodities with DA data');
+    } catch (error: any) {
+      setPriceError(error.message || 'Failed to fetch DA price data');
+      console.error('Error fetching DA price data:', error);
+    } finally {
+      setPriceLoading(false);
+    }
+  };
+
+  const onPriceRefresh = async () => {
+    setPriceRefreshing(true);
+    await fetchPriceData();
+    setPriceRefreshing(false);
+  };
+
+  const filteredCommodities = React.useMemo(() => {
+    let filtered = commodities;
+    
+    // Filter by category first
+    if (selectedCategory) {
+      filtered = filtered.filter(commodity => commodity.category === selectedCategory);
+    }
+    
+    // Filter by search query
+    if (priceSearchQuery.trim()) {
+      filtered = filtered.filter(commodity => 
+        commodity.name.toLowerCase().includes(priceSearchQuery.toLowerCase().trim())
+      );
+    }
+    
+    return filtered;
+  }, [selectedCategory, priceSearchQuery, commodities]);
+
+  // Price monitoring render functions
+  const renderCommodityItem = ({ item }: { item: Commodity }) => (
+    <View style={styles.adminPriceCommodityCard}>
+      <View style={styles.adminPriceCommodityHeader}>
+        <View style={styles.adminPriceCommodityInfo}>
+          <Text style={styles.adminPriceCommodityName}>{item.name}</Text>
+          <Text style={styles.adminPriceCommodityCategory}>{item.category}</Text>
+        </View>
+        <View style={styles.adminPriceContainer}>
+          {item.currentPrice ? (
+            <>
+              <Text style={styles.adminPriceCurrentPrice}>₱{item.currentPrice.toFixed(2)}</Text>
+              <Text style={styles.adminPriceUnit}>/{item.unit}</Text>
+            </>
+          ) : (
+            <Text style={styles.adminPriceNoPriceText}>No data</Text>
+          )}
+        </View>
+      </View>
+      
+      {item.priceChange !== undefined && (
+        <View style={styles.adminPriceChangeContainer}>
+          <View style={[
+            styles.adminPriceChangeBadge,
+            item.priceChange >= 0 ? styles.adminPriceIncrease : styles.adminPriceDecrease
+          ]}>
+            <Ionicons 
+              name={item.priceChange >= 0 ? "trending-up" : "trending-down"} 
+              size={16} 
+              color="#fff" 
+            />
+            <Text style={styles.adminPriceChangeText}>
+              {item.priceChange >= 0 ? '+' : ''}₱{Math.abs(item.priceChange).toFixed(2)} 
+              ({item.priceChangePercent !== undefined && item.priceChangePercent >= 0 ? '+' : ''}{item.priceChangePercent?.toFixed(1) || '0.0'}%)
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {item.forecast && (
+        <View style={styles.adminPriceForecastContainer}>
+          <Text style={styles.adminPriceForecastTitle}>📈 Forecast</Text>
+          <View style={styles.adminPriceForecastGrid}>
+            <View style={styles.adminPriceForecastItem}>
+              <Text style={styles.adminPriceForecastLabel}>Next Week</Text>
+              <Text style={styles.adminPriceForecastPrice}>₱{item.forecast?.nextWeek?.toFixed(2) || '0.00'}</Text>
+            </View>
+            <View style={styles.adminPriceForecastItem}>
+              <Text style={styles.adminPriceForecastLabel}>Next Month</Text>
+              <Text style={styles.adminPriceForecastPrice}>₱{item.forecast?.nextMonth?.toFixed(2) || '0.00'}</Text>
+            </View>
+          </View>
+          <View style={[
+            styles.adminPriceTrendBadge,
+            item.forecast.trend === 'up' ? styles.adminPriceTrendUp : 
+            item.forecast.trend === 'down' ? styles.adminPriceTrendDown : styles.adminPriceTrendStable
+          ]}>
+            <Ionicons 
+              name={
+                item.forecast.trend === 'up' ? 'arrow-up' :
+                item.forecast.trend === 'down' ? 'arrow-down' : 'remove'
+              } 
+              size={12} 
+              color="#fff" 
+            />
+            <Text style={styles.adminPriceTrendText}>
+              {item.forecast.trend.toUpperCase()} TREND ({item.forecast.confidence}%)
+            </Text>
+          </View>
+          
+          {item.forecast.factors && item.forecast.factors.length > 0 && (
+            <View style={styles.adminPriceFactorsContainer}>
+              <Text style={styles.adminPriceFactorsTitle}>Key Factors:</Text>
+              {item.forecast.factors.slice(0, 3).map((factor, index) => (
+                <Text key={index} style={styles.adminPriceFactorText}>• {factor}</Text>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
+      {item.lastUpdated && (
+        <Text style={styles.adminPriceLastUpdated}>Updated: {item.lastUpdated}</Text>
+      )}
+    </View>
+  );
+
+  const renderCommodityModal = () => (
+    <Modal
+      visible={showCommodityModal}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowCommodityModal(false)}
+    >
+      <View style={styles.adminPriceModalOverlay}>
+        <View style={styles.adminPriceModalContent}>
+          <View style={styles.adminPriceModalHeader}>
+            <Text style={styles.adminPriceModalTitle}>Select Commodity</Text>
+            <TouchableOpacity
+              style={styles.adminPriceModalCloseButton}
+              onPress={() => setShowCommodityModal(false)}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.adminPriceModalScrollView}>
+            {Object.values(COMMODITY_CATEGORIES).map(category => (
+              <TouchableOpacity
+                key={category}
+                style={[
+                  styles.adminPriceModalItem,
+                  selectedCategory === category && styles.adminPriceModalItemActive
+                ]}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  setShowCommodityModal(false);
+                }}
+              >
+                <Ionicons 
+                  name={
+                    category === 'KADIWA RICE-FOR-ALL' ? 'leaf' :
+                    category === 'IMPORTED COMMERCIAL RICE' ? 'leaf' :
+                    category === 'LOCAL COMMERCIAL RICE' ? 'leaf' :
+                    category === 'CORN' ? 'flower' :
+                    category === 'FISH' ? 'fish' :
+                    category === 'LIVESTOCK & POULTRY PRODUCTS' ? 'restaurant' :
+                    category === 'LOWLAND VEGETABLES' ? 'nutrition' :
+                    category === 'HIGHLAND VEGETABLES' ? 'nutrition' :
+                    category === 'SPICES' ? 'flame' :
+                    category === 'FRUITS' ? 'happy' : 'basket'
+                  }
+                  size={20} 
+                  color={selectedCategory === category ? "#fff" : GREEN} 
+                />
+                <Text style={[
+                  styles.adminPriceModalItemText,
+                  selectedCategory === category && styles.adminPriceModalItemTextActive
+                ]}>
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
   // Group messages by contact
   const groupMessagesByContact = (messages: any[]) => {
     const contactMap = new Map();
@@ -583,6 +971,219 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
     }
   }, [activeNav]);
 
+  // Load records when navigating to records sections
+  useEffect(() => {
+    if (activeNav === 'planting-records' || activeNav === 'harvest-records') {
+      loadRecords();
+    }
+  }, [activeNav]);
+
+  // Load farmers data when navigating to farmers-records section
+  useEffect(() => {
+    if (activeNav === 'farmers-records') {
+      loadFarmersData();
+    }
+  }, [activeNav]);
+
+  // Load read reports from AsyncStorage on component mount
+  useEffect(() => {
+    loadReadReports();
+  }, []);
+
+  // Function to load read reports from AsyncStorage
+  const loadReadReports = async () => {
+    try {
+      const readReportsData = await AsyncStorage.getItem('admin_read_reports');
+      if (readReportsData) {
+        const readReportsArray = JSON.parse(readReportsData);
+        setReadReports(new Set(readReportsArray));
+        console.log('✅ Loaded read reports from storage:', readReportsArray.length);
+      }
+    } catch (error) {
+      console.error('❌ Error loading read reports:', error);
+    }
+  };
+
+  // Function to save read reports to AsyncStorage
+  const saveReadReports = async (readReportsSet: Set<string>) => {
+    try {
+      const readReportsArray = Array.from(readReportsSet);
+      await AsyncStorage.setItem('admin_read_reports', JSON.stringify(readReportsArray));
+      console.log('✅ Saved read reports to storage:', readReportsArray.length);
+    } catch (error) {
+      console.error('❌ Error saving read reports:', error);
+    }
+  };
+
+  // Function to mark a report as read
+  const markReportAsRead = async (reportId: string) => {
+    const newReadReports = new Set(readReports);
+    newReadReports.add(reportId);
+    setReadReports(newReadReports);
+    await saveReadReports(newReadReports);
+    
+    // Update the records state to reflect the read status
+    updateRecordsReadStatus(reportId);
+  };
+
+  // Function to update records state with read status
+  const updateRecordsReadStatus = (reportId: string) => {
+    // Update planting records
+    setPlantingRecords(prevRecords => 
+      prevRecords.map(record => 
+        record.id === reportId ? { ...record, read: true } : record
+      )
+    );
+    
+    // Update harvest records
+    setHarvestRecords(prevRecords => 
+      prevRecords.map(record => 
+        record.id === reportId ? { ...record, read: true } : record
+      )
+    );
+    
+    // Regroup records with updated read status
+    setTimeout(() => {
+      const updatedPlanting = plantingRecords.map(record => 
+        record.id === reportId ? { ...record, read: true } : record
+      );
+      const updatedHarvest = harvestRecords.map(record => 
+        record.id === reportId ? { ...record, read: true } : record
+      );
+      
+      setGroupedPlantingRecords(groupRecordsByUser(updatedPlanting));
+      setGroupedHarvestRecords(groupRecordsByUser(updatedHarvest));
+    }, 100);
+  };
+
+
+  // Function to load planting and harvest records
+  const loadRecords = async () => {
+    setLoadingRecords(true);
+    try {
+      console.log('🔄 Loading records...');
+      
+      // Load planting records
+      try {
+          const plantingQuery = query(collection(db, 'plantingReports'));
+          const plantingSnapshot = await getDocs(plantingQuery);
+          const plantingData = plantingSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          read: readReports.has(doc.id) // Use persistent read status
+        }));
+        setPlantingRecords(plantingData);
+        
+        // Group planting records by user
+        const groupedPlanting = groupRecordsByUser(plantingData);
+        setGroupedPlantingRecords(groupedPlanting);
+        
+        console.log('✅ Loaded planting records:', plantingData.length);
+        console.log('✅ Grouped planting records:', groupedPlanting.length, 'users');
+        } catch (plantingError) {
+        console.log('⚠️ No planting records found or error:', plantingError);
+        setPlantingRecords([]);
+        setGroupedPlantingRecords([]);
+        }
+
+      // Load harvest records
+        try {
+          const harvestQuery = query(collection(db, 'harvestReports'));
+          const harvestSnapshot = await getDocs(harvestQuery);
+          const harvestData = harvestSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          read: readReports.has(doc.id) // Use persistent read status
+        }));
+        setHarvestRecords(harvestData);
+        
+        // Group harvest records by user
+        const groupedHarvest = groupRecordsByUser(harvestData);
+        setGroupedHarvestRecords(groupedHarvest);
+        
+        console.log('✅ Loaded harvest records:', harvestData.length);
+        console.log('✅ Grouped harvest records:', groupedHarvest.length, 'users');
+        } catch (harvestError) {
+        console.log('⚠️ No harvest records found or error:', harvestError);
+        setHarvestRecords([]);
+        setGroupedHarvestRecords([]);
+      }
+      
+      console.log('✅ Records loading completed');
+    } catch (error) {
+      console.error('❌ Error loading records:', error);
+      Alert.alert('Error', 'Failed to load records. Please try again.');
+    } finally {
+      setLoadingRecords(false);
+    }
+  };
+
+  // Function to group records by user account
+  const groupRecordsByUser = (records: any[]) => {
+    const userGroups: { [key: string]: any } = {};
+    
+    records.forEach(record => {
+      const userId = record.userId || record.farmerEmail;
+      const userName = record.farmerName || 'Unknown User';
+      const userEmail = record.farmerEmail || 'unknown@email.com';
+      
+      if (!userGroups[userId]) {
+        userGroups[userId] = {
+          userId: userId,
+          userName: userName,
+          userEmail: userEmail,
+          reports: [],
+          unreadCount: 0,
+          latestReportDate: null
+        };
+      }
+      
+      userGroups[userId].reports.push(record);
+      if (!record.read) {
+        userGroups[userId].unreadCount++;
+      }
+      
+      // Track latest report date
+      const reportDate = record.submittedAt?.toDate?.() || new Date();
+      if (!userGroups[userId].latestReportDate || reportDate > userGroups[userId].latestReportDate) {
+        userGroups[userId].latestReportDate = reportDate;
+      }
+    });
+    
+    // Convert to array and sort by latest report date
+    return Object.values(userGroups).sort((a: any, b: any) => 
+      new Date(b.latestReportDate).getTime() - new Date(a.latestReportDate).getTime()
+    );
+  };
+
+  // Function to mark reports as read
+  const markReportsAsRead = (userId: string, reportType: 'planting' | 'harvest') => {
+    const records = reportType === 'planting' ? plantingRecords : harvestRecords;
+    const setRecords = reportType === 'planting' ? setPlantingRecords : setHarvestRecords;
+    const setGroupedRecords = reportType === 'planting' ? setGroupedPlantingRecords : setGroupedHarvestRecords;
+    
+    // Update individual records
+    const updatedRecords = records.map(record => 
+      record.userId === userId ? { ...record, read: true } : record
+    );
+    setRecords(updatedRecords);
+    
+    // Update grouped records
+    const updatedGrouped = groupRecordsByUser(updatedRecords);
+    setGroupedRecords(updatedGrouped);
+  };
+
+  // Function to open detailed report view
+  const openReportDetail = async (report: any) => {
+    setSelectedReport(report);
+    setShowReportDetail(true);
+    
+    // Mark as read when opened
+    if (!readReports.has(report.id)) {
+      await markReportAsRead(report.id);
+    }
+  };
+
   // Function to create and broadcast announcement to all users
   const createAnnouncement = async () => {
     if (!announcementTitle.trim() || !announcementContent.trim()) {
@@ -669,6 +1270,58 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
       Alert.alert('Error', 'Failed to refresh data. Please try again.');
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // Function to load farmers data from AsyncStorage
+  const loadFarmersData = async () => {
+    setLoadingFarmers(true);
+    try {
+      console.log('🔄 Loading farmers form data from AsyncStorage...');
+      
+      // Get all AsyncStorage keys
+      const keys = await AsyncStorage.getAllKeys();
+      
+      // Filter keys that start with 'farmerFormData_'
+      const farmerFormKeys = keys.filter(key => key.startsWith('farmerFormData_'));
+      
+      const farmersList: any[] = [];
+      
+      // Load form data for each user
+      for (const key of farmerFormKeys) {
+        try {
+          const formDataString = await AsyncStorage.getItem(key);
+          if (formDataString) {
+            const formData = JSON.parse(formDataString);
+            const userId = key.replace('farmerFormData_', '');
+            
+            // Count completed forms
+            const completedForms = Object.values(formData).filter((form: any) => form.isSubmitted).length;
+            const totalForms = Object.keys(formData).length;
+            
+            farmersList.push({
+              id: userId,
+              userId: userId,
+              userEmail: 'User Form Data', // We don't have email in AsyncStorage
+              userName: `User ${userId.substring(0, 8)}...`, // Truncated user ID
+              formData: formData,
+              completedForms: completedForms,
+              totalForms: totalForms,
+              completionPercentage: Math.round((completedForms / totalForms) * 100)
+            });
+          }
+        } catch (error) {
+          console.error(`Error loading form data for key ${key}:`, error);
+        }
+      }
+      
+      setFarmersData(farmersList);
+      console.log(`✅ Loaded ${farmersList.length} farmers with form data`);
+    } catch (error) {
+      console.error('Error loading farmers data:', error);
+      Alert.alert('Error', 'Failed to load farmers data');
+    } finally {
+      setLoadingFarmers(false);
     }
   };
 
@@ -780,25 +1433,6 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
               Hello Admin! - Manage your agricultural system efficiently
             </Text>
             
-            <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Ionicons name="people" size={32} color={GREEN} />
-                <Text style={styles.statNumber}>150+</Text>
-                <Text style={styles.statLabel}>Active Users</Text>
-              </View>
-              
-              <View style={styles.statCard}>
-                <Ionicons name="leaf" size={32} color={GREEN} />
-                <Text style={styles.statNumber}>100</Text>
-                <Text style={styles.statLabel}>Products</Text>
-              </View>
-              
-              <View style={styles.statCard}>
-                <Ionicons name="trending-up" size={32} color={GREEN} />
-                <Text style={styles.statNumber}>24/7</Text>
-                <Text style={styles.statLabel}>Monitoring</Text>
-              </View>
-            </View>
 
             {/* Admin Tools Section */}
             <View style={styles.toolsSection}>
@@ -832,7 +1466,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                 
                 <TouchableOpacity 
                   style={styles.toolCard}
-                  onPress={() => router.push('/planting-report')}
+                  onPress={() => setActiveNav('planting-records')}
                 >
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="leaf" size={28} color={GREEN} />
@@ -843,7 +1477,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                 
                 <TouchableOpacity 
                   style={styles.toolCard}
-                  onPress={() => router.push('/harvest-report')}
+                  onPress={() => setActiveNav('harvest-records')}
                 >
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="basket" size={28} color={GREEN} />
@@ -851,14 +1485,172 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                   <Text style={styles.toolTitle}>Harvest Records</Text>
                   <Text style={styles.toolDescription}>View and manage harvest data</Text>
                 </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.toolCard, styles.centeredToolCard]}
+                  onPress={() => setActiveNav('farmers-records')}
+                >
+                  <View style={styles.toolIconContainer}>
+                    <Ionicons name="people" size={28} color={GREEN} />
+                  </View>
+                  <Text style={styles.toolTitle}>Farmers Records</Text>
+                  <Text style={styles.toolDescription}>View and manage farmer profiles</Text>
+                </TouchableOpacity>
               </View>
             </View>
+
           </View>
         </ScrollView>
         </>
       )}
 
       {activeNav === 'price-monitoring' && (
+        <View style={styles.adminPriceMonitoringContainer}>
+          {/* Header */}
+          <View style={styles.adminPriceHeader}>
+            <TouchableOpacity 
+              style={styles.adminPriceBackButton}
+              onPress={() => setActiveNav('home')}
+            >
+              <Ionicons name="arrow-back" size={24} color={GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          {/* Last Updated Info */}
+          {lastUpdated && (
+            <View style={styles.adminPriceUpdateInfo}>
+              <Ionicons name="time" size={16} color="#74bfa3" />
+              <Text style={styles.adminPriceUpdateText}>Last updated: {lastUpdated}</Text>
+            </View>
+          )}
+          
+          {/* Data Source Info */}
+          <View style={styles.adminPriceDataSourceInfo}>
+            <Ionicons name="library" size={16} color="#74bfa3" />
+            <Text style={styles.adminPriceDataSourceText}>Data Source: DA Philippines Weekly Average Retail Prices (Seasonal Forecasts)</Text>
+          </View>
+
+          {/* Error Display */}
+          {priceError && (
+            <View style={styles.adminPriceErrorContainer}>
+              <Ionicons name="warning" size={20} color="#ff6b6b" />
+              <Text style={styles.adminPriceErrorText}>{priceError}</Text>
+            </View>
+          )}
+
+          {/* Search Bar */}
+          <View style={styles.adminPriceSearchContainer}>
+            <View style={styles.adminPriceSearchInputContainer}>
+              <Ionicons name="search" size={20} color="#666" style={styles.adminPriceSearchIcon} />
+              <TextInput
+                style={styles.adminPriceSearchInput}
+                placeholder="Search for a product..."
+                placeholderTextColor="#999"
+                value={priceSearchQuery}
+                onChangeText={setPriceSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {priceSearchQuery.length > 0 && (
+                <TouchableOpacity
+                  style={styles.adminPriceClearButton}
+                  onPress={() => setPriceSearchQuery('')}
+                >
+                  <Ionicons name="close-circle" size={20} color="#666" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Filter Buttons */}
+          <View style={styles.adminPriceFilterButtonsContainer}>
+            <TouchableOpacity
+              style={[
+                styles.adminPriceFilterButton,
+                selectedCategory === null && styles.adminPriceFilterButtonActive
+              ]}
+              onPress={() => setSelectedCategory(null)}
+            >
+              <Ionicons 
+                name="apps" 
+                size={20} 
+                color={selectedCategory === null ? "#fff" : GREEN} 
+              />
+              <Text style={[
+                styles.adminPriceFilterButtonText,
+                selectedCategory === null && styles.adminPriceFilterButtonTextActive
+              ]}>
+                All
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.adminPriceFilterButton,
+                selectedCategory !== null && styles.adminPriceFilterButtonActive
+              ]}
+              onPress={() => setShowCommodityModal(true)}
+            >
+              <Ionicons 
+                name="basket" 
+                size={20} 
+                color={selectedCategory !== null ? "#fff" : GREEN} 
+              />
+              <Text style={[
+                styles.adminPriceFilterButtonText,
+                selectedCategory !== null && styles.adminPriceFilterButtonTextActive
+              ]}>
+                {selectedCategory || 'Commodities'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Commodity List */}
+          {priceLoading ? (
+            <View style={styles.adminPriceLoadingContainer}>
+              <ActivityIndicator size="large" color={GREEN} />
+              <Text style={styles.adminPriceLoadingText}>Fetching latest prices...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredCommodities}
+              renderItem={renderCommodityItem}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[styles.adminPriceCommodityList, { paddingBottom: 100 }]}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={priceRefreshing}
+                  onRefresh={onPriceRefresh}
+                  colors={[GREEN]}
+                  tintColor={GREEN}
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.adminPriceEmptyState}>
+                  <Ionicons name="search" size={60} color="#74bfa3" />
+                  <Text style={styles.adminPriceEmptyTitle}>No commodities found</Text>
+                  <Text style={styles.adminPriceEmptySubtitle}>
+                    {priceSearchQuery.trim() 
+                      ? `No products found matching "${priceSearchQuery}"`
+                      : selectedCategory 
+                        ? `No commodities found in ${selectedCategory} category`
+                        : 'Try selecting a different category or check your internet connection.'
+                    }
+                  </Text>
+                </View>
+              }
+            />
+          )}
+          
+          {/* Commodity Selection Modal */}
+          {renderCommodityModal()}
+        </View>
+      )}
+
+      {activeNav === 'price-monitoring-old' && (
         <ScrollView 
           ref={scrollViewRef}
           style={styles.scrollView}
@@ -872,7 +1664,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
               >
                 <Ionicons name="arrow-back" size={24} color={GREEN} />
               </TouchableOpacity>
-              <Text style={styles.sectionTitle}>Price Monitoring</Text>
+              <Text style={styles.sectionTitle}>Price Monitoring (Old)</Text>
               <View style={{ width: 24 }} />
             </View>
             
@@ -1006,19 +1798,101 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
       )}
 
       {activeNav === 'search' && (
-        <View style={styles.contentContainer}>
-          <View style={styles.headerRow}>
+        <View style={styles.searchPageContainer}>
+          {/* Header */}
+          <View style={styles.searchPageHeader}>
             <TouchableOpacity 
               style={styles.backButton}
               onPress={() => setActiveNav('home')}
             >
               <Ionicons name="arrow-back" size={24} color={GREEN} />
             </TouchableOpacity>
-            <Text style={styles.sectionTitle}>Search Products</Text>
+            <Text style={styles.searchPageTitle}>Search Features</Text>
             <View style={{ width: 24 }} />
           </View>
           
-          <Text style={styles.sectionSubtitle}>Find specific agricultural products</Text>
+          <ScrollView 
+            style={styles.searchPageScrollView}
+            contentContainerStyle={styles.searchPageScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.searchPageSubtitle}>Find and access app features quickly</Text>
+            
+            {/* Search Bar */}
+            <View style={styles.searchPageSearchContainer}>
+              <Ionicons name="search" size={20} color="#666" style={styles.searchPageSearchIcon} />
+              <TextInput
+                style={styles.searchPageSearchInput}
+                placeholder="Search features..."
+                placeholderTextColor="#999"
+                value={searchQuery}
+                onChangeText={handleSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchPageClearButton}>
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Content */}
+            <View style={styles.searchPageContent}>
+              {searchQuery.length === 0 ? (
+                <View style={styles.searchPageAllFeatures}>
+                  <Text style={styles.searchPageAllFeaturesTitle}>All Features</Text>
+                  
+                  {searchData.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.searchPageFeatureItem}
+                      onPress={() => handleSearchResultPress(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.searchPageFeatureIcon}>
+                        <Ionicons name={item.icon as any} size={24} color={GREEN} />
+                      </View>
+                      <View style={styles.searchPageFeatureContent}>
+                        <Text style={styles.searchPageFeatureTitle}>{item.title}</Text>
+                        <Text style={styles.searchPageFeatureDescription}>{item.description}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : searchResults.length > 0 ? (
+                <View style={styles.searchPageResults}>
+                  <Text style={styles.searchPageResultsTitle}>Search Results</Text>
+                  {searchResults.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.searchPageFeatureItem}
+                      onPress={() => handleSearchResultPress(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.searchPageFeatureIcon}>
+                        <Ionicons name={item.icon as any} size={24} color={GREEN} />
+                      </View>
+                      <View style={styles.searchPageFeatureContent}>
+                        <Text style={styles.searchPageFeatureTitle}>{item.title}</Text>
+                        <Text style={styles.searchPageFeatureDescription}>{item.description}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.searchPageNoResults}>
+                  <Ionicons name="search" size={60} color="#ccc" />
+                  <Text style={styles.searchPageNoResultsTitle}>No results found</Text>
+                  <Text style={styles.searchPageNoResultsDescription}>
+                    No features match "{searchQuery}"
+                  </Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
         </View>
       )}
 
@@ -1317,6 +2191,550 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         </ScrollView>
       )}
 
+      {activeNav === 'planting-records' && !showUserReports && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[GREEN]}
+              tintColor={GREEN}
+            />
+          }
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setActiveNav('home')}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>Planting Records</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <Text style={styles.sectionDescription}>
+              Reports grouped by farmer account
+            </Text>
+
+            {loadingRecords ? (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Loading planting records...</Text>
+              </View>
+            ) : groupedPlantingRecords.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="leaf-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyText}>No planting records found</Text>
+              </View>
+            ) : (
+              <View style={styles.messagesList}>
+                {groupedPlantingRecords.map((userGroup, index) => (
+                  <TouchableOpacity 
+                    key={userGroup.userId} 
+                    style={[
+                      styles.messageCard,
+                      userGroup.unreadCount > 0 && styles.messageCardUnread
+                    ]}
+                    onPress={() => {
+                      setSelectedUserAccount(userGroup);
+                      setReportType('planting');
+                      setShowUserReports(true);
+                      markReportsAsRead(userGroup.userId, 'planting');
+                    }}
+                  >
+                    <View style={styles.messageHeader}>
+                      <View style={styles.userInfo}>
+                        <View style={styles.messageUserAvatar}>
+                          <Ionicons name="person" size={20} color={GREEN} />
+                        </View>
+                        <View style={styles.userDetails}>
+                          <Text style={styles.userName}>{userGroup.userName}</Text>
+                          <Text style={styles.userEmail}>{userGroup.userEmail}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.messageMetaInfo}>
+                        {userGroup.unreadCount > 0 && (
+                          <View style={styles.messageUnreadBadge}>
+                            <Text style={styles.unreadCount}>{userGroup.unreadCount}</Text>
+                          </View>
+                        )}
+                        <Text style={styles.messageTimeText}>
+                          {userGroup.latestReportDate?.toLocaleDateString() || 'Unknown'}
+                          </Text>
+                        </View>
+                    </View>
+                    <View style={styles.messagePreviewContainer}>
+                      <Text style={styles.messagePreviewText}>
+                        {userGroup.reports.length} report{userGroup.reports.length !== 1 ? 's' : ''}
+                        {userGroup.unreadCount > 0 && ` • ${userGroup.unreadCount} unread`}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                            </View>
+                          )}
+                        </View>
+        </ScrollView>
+      )}
+
+      {/* User Reports Detail View */}
+      {activeNav === 'planting-records' && showUserReports && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setShowUserReports(false)}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>{selectedUserAccount?.userName}'s Reports</Text>
+              <View style={{ width: 24 }} />
+                      </View>
+                      
+            <Text style={styles.sectionDescription}>
+              {reportType === 'planting' ? 'Planting' : 'Harvest'} reports from {selectedUserAccount?.userEmail}
+            </Text>
+
+            {selectedUserAccount && (
+                      <View style={styles.userReportsList}>
+                {selectedUserAccount.reports.map((report: any, index: number) => (
+                  <TouchableOpacity 
+                    key={report.id} 
+                    style={[
+                      styles.reportCard,
+                      !report.read && styles.reportCardUnread
+                    ]}
+                    onPress={() => openReportDetail(report)}
+                  >
+                    <View style={styles.reportHeader}>
+                      <Text style={styles.reportCrop}>{report.crop}</Text>
+                                <View style={[
+                                  styles.statusBadge,
+                        report.read ? styles.statusRead : styles.statusUnread
+                                ]}>
+                        <Text style={styles.statusText}>{report.read ? 'READ' : 'UNREAD'}</Text>
+                                </View>
+                                  </View>
+                    <View style={styles.reportDetailsContainer}>
+                              <Ionicons name="resize" size={16} color="#666" />
+                      <Text style={styles.reportDetails}>
+                        Area Planted: {report.areaPlanted} {report.areaType}
+                        {report.customAreaType && ` (${report.customAreaType})`}
+                              </Text>
+                            </View>
+                    <View style={styles.reportDateContainer}>
+                              <Ionicons name="calendar" size={16} color="#999" />
+                      <Text style={styles.reportDate}>
+                        Submitted: {report.submittedAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
+                              </Text>
+                      {!report.read && (
+                        <View style={styles.readIndicator}>
+                          <Text style={styles.readIndicatorText}>NEW</Text>
+                            </View>
+                      )}
+                          </View>
+                    <View style={styles.reportTapHint}>
+                      <Text style={styles.reportTapHintText}>Tap to view details</Text>
+                      <Ionicons name="chevron-forward" size={16} color="#999" />
+                    </View>
+                  </TouchableOpacity>
+                        ))}
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      )}
+
+      {activeNav === 'harvest-records' && !showUserReports && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[GREEN]}
+              tintColor={GREEN}
+            />
+          }
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setActiveNav('home')}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>Harvest Records</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <Text style={styles.sectionDescription}>
+              Reports grouped by farmer account
+            </Text>
+
+            {loadingRecords ? (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Loading harvest records...</Text>
+              </View>
+            ) : groupedHarvestRecords.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="basket-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyText}>No harvest records found</Text>
+              </View>
+            ) : (
+              <View style={styles.messagesList}>
+                {groupedHarvestRecords.map((userGroup, index) => (
+                  <TouchableOpacity 
+                    key={userGroup.userId} 
+                    style={[
+                      styles.messageCard,
+                      userGroup.unreadCount > 0 && styles.messageCardUnread
+                    ]}
+                    onPress={() => {
+                      setSelectedUserAccount(userGroup);
+                      setReportType('harvest');
+                      setShowUserReports(true);
+                      markReportsAsRead(userGroup.userId, 'harvest');
+                    }}
+                  >
+                    <View style={styles.messageHeader}>
+                      <View style={styles.userInfo}>
+                        <View style={styles.messageUserAvatar}>
+                          <Ionicons name="person" size={20} color={GREEN} />
+                        </View>
+                        <View style={styles.userDetails}>
+                          <Text style={styles.userName}>{userGroup.userName}</Text>
+                          <Text style={styles.userEmail}>{userGroup.userEmail}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.messageMetaInfo}>
+                        {userGroup.unreadCount > 0 && (
+                          <View style={styles.messageUnreadBadge}>
+                            <Text style={styles.unreadCount}>{userGroup.unreadCount}</Text>
+                          </View>
+                        )}
+                        <Text style={styles.messageTimeText}>
+                          {userGroup.latestReportDate?.toLocaleDateString() || 'Unknown'}
+                          </Text>
+                        </View>
+                    </View>
+                    <View style={styles.messagePreviewContainer}>
+                      <Text style={styles.messagePreviewText}>
+                        {userGroup.reports.length} report{userGroup.reports.length !== 1 ? 's' : ''}
+                        {userGroup.unreadCount > 0 && ` • ${userGroup.unreadCount} unread`}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                            </View>
+                          )}
+                        </View>
+        </ScrollView>
+      )}
+
+      {/* User Harvest Reports Detail View */}
+      {activeNav === 'harvest-records' && showUserReports && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setShowUserReports(false)}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>{selectedUserAccount?.userName}'s Reports</Text>
+              <View style={{ width: 24 }} />
+                      </View>
+                      
+            <Text style={styles.sectionDescription}>
+              {reportType === 'planting' ? 'Planting' : 'Harvest'} reports from {selectedUserAccount?.userEmail}
+            </Text>
+
+            {selectedUserAccount && (
+                      <View style={styles.userReportsList}>
+                {selectedUserAccount.reports.map((report: any, index: number) => (
+                  <TouchableOpacity 
+                    key={report.id} 
+                    style={[
+                      styles.reportCard,
+                      !report.read && styles.reportCardUnread
+                    ]}
+                    onPress={() => openReportDetail(report)}
+                  >
+                    <View style={styles.reportHeader}>
+                      <Text style={styles.reportCrop}>{report.crop}</Text>
+                                <View style={[
+                                  styles.statusBadge,
+                        report.read ? styles.statusRead : styles.statusUnread
+                                ]}>
+                        <Text style={styles.statusText}>{report.read ? 'READ' : 'UNREAD'}</Text>
+                                </View>
+                                  </View>
+                    <View style={styles.reportDetailsContainer}>
+                              <Ionicons name="basket" size={16} color="#666" />
+                      <Text style={styles.reportDetails}>
+                        Harvest Amount: {report.amount} {report.amountType}
+                        {report.customAmountType && ` (${report.customAmountType})`}
+                              </Text>
+                            </View>
+                    <View style={styles.reportDateContainer}>
+                              <Ionicons name="calendar" size={16} color="#999" />
+                      <Text style={styles.reportDate}>
+                        Submitted: {report.submittedAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
+                              </Text>
+                      {!report.read && (
+                        <View style={styles.readIndicator}>
+                          <Text style={styles.readIndicatorText}>NEW</Text>
+                            </View>
+                      )}
+                          </View>
+                    <View style={styles.reportTapHint}>
+                      <Text style={styles.reportTapHintText}>Tap to view details</Text>
+                      <Ionicons name="chevron-forward" size={16} color="#999" />
+                    </View>
+                  </TouchableOpacity>
+                        ))}
+                      </View>
+            )}
+                    </View>
+        </ScrollView>
+      )}
+
+      {/* Farmers Records Section */}
+      {activeNav === 'farmers-records' && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setActiveNav('home')}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>Farmers Records</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <Text style={styles.sectionDescription}>
+              View and manage farmer profiles and information
+            </Text>
+
+            {loadingFarmers ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={GREEN} />
+                <Text style={styles.loadingText}>Loading farmers data...</Text>
+              </View>
+            ) : farmersData.length === 0 ? (
+              <View style={styles.placeholderContainer}>
+                <Ionicons name="people" size={64} color="#ccc" />
+                <Text style={styles.placeholderTitle}>No Farmers Data</Text>
+                <Text style={styles.placeholderDescription}>
+                  No farmer profiles have been submitted yet.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.farmersList}>
+                {farmersData.map((farmer) => (
+                  <TouchableOpacity
+                    key={farmer.id}
+                    style={styles.farmerCard}
+                    onPress={() => {
+                      setSelectedFarmer(farmer);
+                      setShowFarmerDetail(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.farmerCardHeader}>
+                      <View style={styles.farmerAvatar}>
+                        <Ionicons name="person" size={24} color={GREEN} />
+                      </View>
+                      <View style={styles.farmerInfo}>
+                        <Text style={styles.farmerName}>{farmer.userName || 'Unknown'}</Text>
+                        <Text style={styles.farmerEmail}>{farmer.userEmail || 'Unknown'}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                    </View>
+                    
+                    <View style={styles.farmerStats}>
+                      <View style={styles.farmerStat}>
+                        <Text style={styles.farmerStatLabel}>Forms Completed</Text>
+                        <Text style={styles.farmerStatValue}>
+                          {farmer.completedForms || 0} / {farmer.totalForms || 0}
+                        </Text>
+                      </View>
+                      <View style={styles.farmerStat}>
+                        <Text style={styles.farmerStatLabel}>Completion</Text>
+                        <Text style={styles.farmerStatValue}>
+                          {farmer.completionPercentage || 0}%
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {/* Show completed forms summary */}
+                    {farmer.formData && (
+                      <View style={styles.completedFormsSummary}>
+                        <Text style={styles.completedFormsLabel}>Completed Forms:</Text>
+                        <View style={styles.completedFormsList}>
+                          {Object.keys(farmer.formData).map((formKey) => {
+                            const formData = farmer.formData[formKey];
+                            if (formData?.isSubmitted) {
+                              const formTitle = formKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                              return (
+                                <View key={formKey} style={styles.completedFormItem}>
+                                  <Ionicons name="checkmark-circle" size={12} color="#4caf50" />
+                                  <Text style={styles.completedFormText}>{formTitle}</Text>
+                                </View>
+                              );
+                            }
+                            return null;
+                          })}
+                        </View>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      )}
+
+      {/* Detailed Report View Modal */}
+      <Modal
+        visible={showReportDetail}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowReportDetail(false)}
+      >
+        <View style={styles.detailModalContainer}>
+          <View style={styles.detailModalHeader}>
+            <TouchableOpacity 
+              style={styles.detailModalCloseButton}
+              onPress={() => setShowReportDetail(false)}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.detailModalTitle}>Report Details</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          {selectedReport && (
+            <ScrollView style={styles.detailModalContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.detailCard}>
+                <View style={styles.detailHeader}>
+                  <View style={styles.detailUserInfo}>
+                    <View style={styles.detailUserAvatar}>
+                      <Ionicons name="person" size={24} color={GREEN} />
+                    </View>
+                    <View>
+                      <Text style={styles.detailUserName}>{selectedReport.farmerName}</Text>
+                      <Text style={styles.detailUserEmail}>{selectedReport.farmerEmail}</Text>
+                    </View>
+                  </View>
+                  <View style={[
+                    styles.detailStatusBadge,
+                    selectedReport.read ? styles.detailStatusRead : styles.detailStatusUnread
+                  ]}>
+                    <Text style={styles.detailStatusText}>{selectedReport.read ? 'READ' : 'UNREAD'}</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Crop Information</Text>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="leaf" size={20} color={GREEN} />
+                    <Text style={styles.detailLabel}>Crop:</Text>
+                    <Text style={styles.detailValue}>{selectedReport.crop}</Text>
+                  </View>
+                </View>
+                
+                {selectedReport.areaPlanted && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailSectionTitle}>Area Information</Text>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="resize" size={20} color={GREEN} />
+                      <Text style={styles.detailLabel}>Area Planted:</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedReport.areaPlanted} {selectedReport.areaType}
+                        {selectedReport.customAreaType && ` (${selectedReport.customAreaType})`}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                
+                {selectedReport.amount && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailSectionTitle}>Harvest Information</Text>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="basket" size={20} color={GREEN} />
+                      <Text style={styles.detailLabel}>Amount:</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedReport.amount} {selectedReport.amountType}
+                        {selectedReport.customAmountType && ` (${selectedReport.customAmountType})`}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Submission Details</Text>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="calendar" size={20} color={GREEN} />
+                    <Text style={styles.detailLabel}>Submitted:</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedReport.submittedAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="time" size={20} color={GREEN} />
+                    <Text style={styles.detailLabel}>Time:</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedReport.submittedAt?.toDate?.()?.toLocaleTimeString() || 'Unknown'}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="checkmark-circle" size={20} color={GREEN} />
+                    <Text style={styles.detailLabel}>Read Status:</Text>
+                    <Text style={[styles.detailValue, { color: selectedReport.read ? GREEN : '#ff6b6b' }]}>
+                      {selectedReport.read ? 'Read' : 'Unread'}
+                    </Text>
+                  </View>
+                </View>
+                
+                {selectedReport.imageUrl && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailSectionTitle}>Documentation</Text>
+                    <View style={styles.detailImageContainer}>
+                      <Image source={{ uri: selectedReport.imageUrl }} style={styles.detailImage} />
+                    </View>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      )}
+        </View>
+      </Modal>
 
       {/* Bottom Navigation Tabs */}
       <View style={styles.bottomNavTabs}>
@@ -1730,6 +3148,110 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         </View>
       </Modal>
 
+      {/* Farmer Detail Modal */}
+      <Modal
+        visible={showFarmerDetail}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowFarmerDetail(false)}
+      >
+        <View style={styles.detailModalContainer}>
+          <View style={styles.detailModalHeader}>
+            <TouchableOpacity 
+              style={styles.detailModalCloseButton}
+              onPress={() => setShowFarmerDetail(false)}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.detailModalTitle}>Farmer Profile</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          {selectedFarmer && (
+            <ScrollView style={styles.detailModalContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.farmerDetailCard}>
+                <View style={styles.farmerDetailHeader}>
+                  <View style={styles.farmerDetailAvatar}>
+                    <Ionicons name="person" size={32} color={GREEN} />
+                  </View>
+                  <View style={styles.farmerDetailInfo}>
+                    <Text style={styles.farmerDetailName}>{selectedFarmer.userName || 'Unknown'}</Text>
+                    <Text style={styles.farmerDetailEmail}>{selectedFarmer.userEmail || 'Unknown'}</Text>
+                    <Text style={styles.farmerDetailId}>ID: {selectedFarmer.userId || selectedFarmer.id}</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.farmerDetailStats}>
+                  <View style={styles.farmerDetailStat}>
+                    <Text style={styles.farmerDetailStatLabel}>Forms Completed</Text>
+                    <Text style={styles.farmerDetailStatValue}>
+                      {selectedFarmer.completedForms || 0} / {selectedFarmer.totalForms || 0}
+                    </Text>
+                  </View>
+                  <View style={styles.farmerDetailStat}>
+                    <Text style={styles.farmerDetailStatLabel}>Completion</Text>
+                    <Text style={styles.farmerDetailStatValue}>
+                      {selectedFarmer.completionPercentage || 0}%
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Form Sections - Show All Forms (Submitted and Not Submitted) */}
+              {selectedFarmer.formData && Object.keys(selectedFarmer.formData).map((key) => {
+                const formData = selectedFarmer.formData[key];
+                const formTitle = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+
+                return (
+                  <View key={key} style={styles.farmerFormSection}>
+                    <View style={styles.farmerFormHeader}>
+                      <Text style={styles.farmerFormTitle}>{formTitle}</Text>
+                      <View style={[
+                        styles.formStatusBadge, 
+                        formData?.isSubmitted ? styles.formStatusSubmitted : styles.formStatusNotSubmitted
+                      ]}>
+                        <Text style={[
+                          styles.formStatusText,
+                          formData?.isSubmitted ? styles.formStatusTextSubmitted : styles.formStatusTextNotSubmitted
+                        ]}>
+                          {formData?.isSubmitted ? 'SUBMITTED' : 'NOT SUBMITTED'}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.farmerFormContent}>
+                      {Object.keys(formData).map((fieldKey) => {
+                        if (fieldKey === 'isSubmitted') {
+                          return null;
+                        }
+
+                        const value = formData[fieldKey];
+                        const fieldTitle = fieldKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                        
+                        return (
+                          <View key={fieldKey} style={styles.farmerFormField}>
+                            <Text style={styles.farmerFormFieldLabel}>{fieldTitle}:</Text>
+                            <Text style={[
+                              styles.farmerFormFieldValue,
+                              (!value || (Array.isArray(value) && value.length === 0)) && styles.farmerFormFieldEmpty
+                            ]}>
+                              {!value || (Array.isArray(value) && value.length === 0) 
+                                ? 'No answer provided' 
+                                : Array.isArray(value) ? value.join(', ') : value
+                              }
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
      </View>
    );
  }
@@ -1793,35 +3315,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     lineHeight: 22,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 30,
-  },
-  statCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: GREEN,
-    marginTop: 8,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
   },
   adminToolsContainer: {
     backgroundColor: '#fff',
@@ -1902,6 +3395,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f0f0f0',
     minHeight: 140,
+  },
+  centeredToolCard: {
+    alignSelf: 'center',
+    marginLeft: 'auto',
+    marginRight: 'auto',
   },
   toolIconContainer: {
     width: 70,
@@ -3161,5 +4659,1268 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 25,
   },
+  // Records styles
+  recordsSection: {
+    marginBottom: 30,
+  },
+  recordsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  recordsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    marginLeft: 10,
+    flex: 1,
+  },
+  recordsCount: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  recordsList: {
+    gap: 12,
+  },
+  recordCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  recordHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  recordCrop: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusRead: {
+    backgroundColor: '#d4edda',
+    borderColor: '#74c0fc',
+  },
+  statusUnread: {
+    backgroundColor: '#f8d7da',
+    borderColor: '#f5c6cb',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  recordFarmer: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  recordEmail: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
+  recordDetails: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 6,
+    flex: 1,
+  },
+  recordDate: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 6,
+  },
+  userInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  recordDetailsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  recordDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  placeholderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  placeholderTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 20,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  placeholderDescription: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  farmersList: {
+    gap: 12,
+  },
+  farmerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  farmerCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  farmerAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f0f8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  farmerInfo: {
+    flex: 1,
+  },
+  farmerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  farmerEmail: {
+    fontSize: 14,
+    color: '#666',
+  },
+  farmerStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  farmerStat: {
+    alignItems: 'center',
+  },
+  farmerStatLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 4,
+  },
+  farmerStatValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  farmerDetailCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  farmerDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  farmerDetailAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f0f8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  farmerDetailInfo: {
+    flex: 1,
+  },
+  farmerDetailName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  farmerDetailEmail: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 2,
+  },
+  farmerDetailId: {
+    fontSize: 14,
+    color: '#999',
+  },
+  farmerDetailStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  farmerDetailStat: {
+    alignItems: 'center',
+  },
+  farmerDetailStatLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 4,
+  },
+  farmerDetailStatValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  farmerFormSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  farmerFormTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: GREEN,
+    marginBottom: 12,
+  },
+  farmerFormContent: {
+    gap: 8,
+  },
+  farmerFormField: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  farmerFormFieldLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    width: 120,
+    flexShrink: 0,
+  },
+  farmerFormFieldValue: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
+  },
+  farmerFormFieldEmpty: {
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  farmerFormHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  formStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  formStatusSubmitted: {
+    backgroundColor: '#e8f5e8',
+    borderWidth: 1,
+    borderColor: '#4caf50',
+  },
+  formStatusNotSubmitted: {
+    backgroundColor: '#fff3e0',
+    borderWidth: 1,
+    borderColor: '#ff9800',
+  },
+  formStatusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  formStatusTextSubmitted: {
+    color: '#2e7d32',
+  },
+  formStatusTextNotSubmitted: {
+    color: '#f57c00',
+  },
+  completedFormsSummary: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  completedFormsLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  completedFormsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  completedFormItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginRight: 4,
+    marginBottom: 2,
+  },
+  completedFormText: {
+    fontSize: 10,
+    color: '#4caf50',
+    marginLeft: 2,
+    fontWeight: '500',
+  },
+  summaryContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 25,
+    gap: 12,
+  },
+  summaryCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  summaryNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: GREEN,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  recentReportsContainer: {
+    marginTop: 20,
+  },
+  recentReportsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+    marginBottom: 12,
+  },
+  recentReportsList: {
+    gap: 8,
+  },
+  recentReportCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  recentReportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  recentReportType: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  recentReportCrop: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: GREEN,
+    marginBottom: 2,
+  },
+  recentReportFarmer: {
+    fontSize: 12,
+    color: '#666',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 10,
+  },
+  // Messaging-style interface styles
+  messagesList: {
+    gap: 12,
+  },
+  messageCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  messageCardUnread: {
+    backgroundColor: '#f8fffe',
+    borderColor: GREEN,
+    borderWidth: 2,
+    shadowColor: GREEN,
+    shadowOpacity: 0.15,
+  },
+  messageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  messageUserAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: GREEN,
+  },
+  userDetails: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  userEmail: {
+    fontSize: 12,
+    color: '#666',
+  },
+  messageMetaInfo: {
+    alignItems: 'flex-end',
+  },
+  messageUnreadBadge: {
+    backgroundColor: GREEN,
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  unreadCount: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  messageTimeText: {
+    fontSize: 11,
+    color: '#999',
+  },
+  messagePreviewContainer: {
+    marginTop: 4,
+  },
+  messagePreviewText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  userReportsList: {
+    gap: 12,
+  },
+  reportCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  reportCardUnread: {
+    backgroundColor: '#f8fffe',
+    borderColor: GREEN,
+    borderWidth: 2,
+    shadowColor: GREEN,
+    shadowOpacity: 0.15,
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reportCrop: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  reportDetailsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  reportDetails: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  reportDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  reportDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  readIndicator: {
+    backgroundColor: GREEN,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  readIndicatorText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  reportTapHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  reportTapHintText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  // Detailed Report Modal Styles
+  detailModalContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  detailModalCloseButton: {
+    padding: 8,
+  },
+  detailModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  detailModalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  detailCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  detailUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  detailUserAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+    borderWidth: 2,
+    borderColor: GREEN,
+  },
+  detailUserName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  detailUserEmail: {
+    fontSize: 14,
+    color: '#666',
+  },
+  detailStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  detailStatusRead: {
+    backgroundColor: '#d4edda',
+    borderWidth: 1,
+    borderColor: '#74c0fc',
+  },
+  detailStatusUnread: {
+    backgroundColor: '#f8d7da',
+    borderWidth: 1,
+    borderColor: '#f5c6cb',
+  },
+  detailStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  detailSection: {
+    marginBottom: 20,
+  },
+  detailSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+    marginBottom: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+    marginRight: 8,
+    minWidth: 80,
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+    flex: 1,
+  },
+  detailImageContainer: {
+    marginTop: 10,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  detailImage: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
+  // Admin price monitoring styles
+  adminPriceMonitoringContainer: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  adminPriceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    marginBottom: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  adminPriceBackButton: {
+    padding: 8,
+    marginRight: 12,
+  },
+  adminPriceHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: GREEN,
+    flex: 1,
+    textAlign: 'center',
+  },
+  adminPriceUpdateInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    backgroundColor: '#f0f8f0',
+  },
+  adminPriceUpdateText: {
+    fontSize: 12,
+    color: '#74bfa3',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  adminPriceDataSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: '#f0f8f0',
+  },
+  adminPriceDataSourceText: {
+    fontSize: 11,
+    color: GREEN,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  adminPriceErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffe6e6',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    marginVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ffb3b3',
+  },
+  adminPriceErrorText: {
+    fontSize: 14,
+    color: '#d63031',
+    marginLeft: 8,
+    flex: 1,
+  },
+  adminPriceSearchContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+  },
+  adminPriceSearchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  adminPriceSearchIcon: {
+    marginRight: 10,
+  },
+  adminPriceSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 0,
+  },
+  adminPriceClearButton: {
+    padding: 5,
+    marginLeft: 10,
+  },
+  adminPriceFilterButtonsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'space-between',
+  },
+  adminPriceFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#74bfa3',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    flex: 0.48,
+    justifyContent: 'center',
+  },
+  adminPriceFilterButtonActive: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  adminPriceFilterButtonText: {
+    fontSize: 16,
+    color: GREEN,
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+  adminPriceFilterButtonTextActive: {
+    color: '#fff',
+  },
+  adminPriceLoadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  adminPriceLoadingText: {
+    color: GREEN,
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 15,
+  },
+  adminPriceCommodityList: {
+    paddingHorizontal: 20,
+    paddingTop: 0,
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
+  adminPriceCommodityCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 10,
+    marginTop: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  adminPriceCommodityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  adminPriceCommodityInfo: {
+    flex: 1,
+  },
+  adminPriceCommodityName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f3d2a',
+    marginBottom: 4,
+  },
+  adminPriceCommodityCategory: {
+    fontSize: 14,
+    color: '#74bfa3',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  adminPriceContainer: {
+    alignItems: 'flex-end',
+  },
+  adminPriceCurrentPrice: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: GREEN,
+  },
+  adminPriceUnit: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  adminPriceNoPriceText: {
+    fontSize: 16,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  adminPriceChangeContainer: {
+    marginBottom: 12,
+  },
+  adminPriceChangeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  adminPriceIncrease: {
+    backgroundColor: '#e8f5e8',
+  },
+  adminPriceDecrease: {
+    backgroundColor: '#ffeaea',
+  },
+  adminPriceChangeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+    color: GREEN,
+  },
+  adminPriceForecastContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+  },
+  adminPriceForecastTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f3d2a',
+    marginBottom: 12,
+  },
+  adminPriceForecastGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  adminPriceForecastItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  adminPriceForecastLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  adminPriceForecastPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: GREEN,
+  },
+  adminPriceTrendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  adminPriceTrendUp: {
+    backgroundColor: '#4caf50',
+  },
+  adminPriceTrendDown: {
+    backgroundColor: '#f44336',
+  },
+  adminPriceTrendStable: {
+    backgroundColor: '#ff9800',
+  },
+  adminPriceTrendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+    marginLeft: 4,
+  },
+  adminPriceFactorsContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  adminPriceFactorsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0f3d2a',
+    marginBottom: 4,
+  },
+  adminPriceFactorText: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 2,
+    lineHeight: 16,
+  },
+  adminPriceLastUpdated: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'right',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  adminPriceEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  adminPriceEmptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f3d2a',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  adminPriceEmptySubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  adminPriceModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  adminPriceModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  adminPriceModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  adminPriceModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+  },
+  adminPriceModalCloseButton: {
+    padding: 5,
+  },
+  adminPriceModalScrollView: {
+    maxHeight: 400,
+  },
+  adminPriceModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  adminPriceModalItemActive: {
+    backgroundColor: '#f0f8f0',
+  },
+  adminPriceModalItemText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 12,
+    fontWeight: '500',
+  },
+  adminPriceModalItemTextActive: {
+    color: GREEN,
+    fontWeight: '600',
+  },
+  // Search page styles - matching the user's search design exactly
+  searchPageContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  searchPageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+    backgroundColor: '#fff',
+  },
+  searchPageTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: GREEN,
+    textAlign: 'center',
+  },
+  searchPageScrollView: {
+    flex: 1,
+  },
+  searchPageScrollContent: {
+    paddingBottom: 100,
+  },
+  searchPageSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  searchPageSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  searchPageSearchIcon: {
+    marginRight: 12,
+  },
+  searchPageSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 0,
+  },
+  searchPageClearButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  searchPageContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  searchPageAllFeatures: {
+    flex: 1,
+  },
+  searchPageAllFeaturesTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: GREEN,
+    marginBottom: 16,
+  },
+  searchPageResults: {
+    flex: 1,
+  },
+  searchPageResultsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: GREEN,
+    marginBottom: 16,
+  },
+  searchPageFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    paddingHorizontal: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  searchPageFeatureIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  searchPageFeatureContent: {
+    flex: 1,
+  },
+  searchPageFeatureTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+    marginBottom: 4,
+  },
+  searchPageFeatureDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 18,
+  },
+  searchPageNoResults: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  searchPageNoResultsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  searchPageNoResultsDescription: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
+  }
 });
+
+
 

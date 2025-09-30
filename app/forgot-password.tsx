@@ -144,7 +144,13 @@ export default function ForgotPasswordScreen() {
       </Text>
       
       <TextInput
-        style={[styles.input, { textAlign: 'center' }]}
+        style={[styles.input, { 
+          textAlign: 'center', 
+          paddingLeft: 24, 
+          paddingRight: 24,
+          includeFontPadding: false,
+          textAlignVertical: 'center'
+        }]}
         placeholder="Email Address"
         placeholderTextColor={GREEN}
         value={email}
@@ -152,6 +158,8 @@ export default function ForgotPasswordScreen() {
         autoCapitalize="none"
         keyboardType="email-address"
         autoFocus
+        selectionColor="#16543a"
+        cursorColor={email ? "#16543a" : "transparent"}
       />
 
       <TouchableOpacity 
@@ -175,7 +183,13 @@ export default function ForgotPasswordScreen() {
       </Text>
       
       <TextInput
-        style={[styles.input, { textAlign: 'center' }]}
+        style={[styles.input, { 
+          textAlign: 'center', 
+          paddingLeft: 24, 
+          paddingRight: 24,
+          includeFontPadding: false,
+          textAlignVertical: 'center'
+        }]}
         placeholder="000000"
         placeholderTextColor={GREEN}
         value={code}
@@ -183,6 +197,8 @@ export default function ForgotPasswordScreen() {
         keyboardType="numeric"
         maxLength={6}
         autoFocus
+        selectionColor="#16543a"
+        cursorColor={code ? "#16543a" : "transparent"}
       />
 
       <TouchableOpacity 
@@ -215,13 +231,21 @@ export default function ForgotPasswordScreen() {
       
       <View style={{width: '100%'}}>
         <TextInput
-          style={[styles.input, styles.passwordInput, { textAlign: 'center' }]}
+          style={[styles.input, styles.passwordInput, { 
+            textAlign: 'center', 
+            paddingLeft: 24, 
+            paddingRight: 48,
+            includeFontPadding: false,
+            textAlignVertical: 'center'
+          }]}
           placeholder="New Password"
           placeholderTextColor={GREEN}
           value={newPassword}
           onChangeText={setNewPassword}
           secureTextEntry={!showNewPassword}
           autoFocus
+          selectionColor="#16543a"
+          cursorColor={newPassword ? "#16543a" : "transparent"}
         />
         <TouchableOpacity
           style={styles.eyeIcon}
@@ -237,12 +261,20 @@ export default function ForgotPasswordScreen() {
 
       <View style={{width: '100%'}}>
         <TextInput
-          style={[styles.input, styles.passwordInput, { textAlign: 'center' }]}
+          style={[styles.input, styles.passwordInput, { 
+            textAlign: 'center', 
+            paddingLeft: 24, 
+            paddingRight: 48,
+            includeFontPadding: false,
+            textAlignVertical: 'center'
+          }]}
           placeholder="Confirm New Password"
           placeholderTextColor={GREEN}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry={!showConfirmPassword}
+          selectionColor="#16543a"
+          cursorColor={confirmPassword ? "#16543a" : "transparent"}
         />
         <TouchableOpacity
           style={styles.eyeIcon}

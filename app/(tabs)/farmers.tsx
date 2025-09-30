@@ -1,9 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as NavigationBar from 'expo-navigation-bar';
 import { useRouter } from 'expo-router';
+import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
+import { db } from '../../lib/firebase';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -19,7 +22,7 @@ interface FeatureButton {
 export default function FarmersScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<FeatureButton | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -125,6 +128,182 @@ export default function FarmersScreen() {
   });
 
   const [editingForm, setEditingForm] = useState<string | null>(null);
+
+  // Save form data to AsyncStorage (user-specific)
+  const saveFormDataToStorage = async (data: typeof formData) => {
+    if (!user?.uid) {
+      console.log('❌ No user UID available, cannot save form data');
+      return;
+    }
+    
+    try {
+      const userKey = `farmerFormData_${user.uid}`;
+      await AsyncStorage.setItem(userKey, JSON.stringify(data));
+      console.log(`✅ Form data saved to AsyncStorage for user: ${user.uid}`);
+    } catch (error) {
+      console.error('❌ Error saving form data to AsyncStorage:', error);
+    }
+  };
+
+  // Load form data from AsyncStorage (user-specific)
+  const loadFormDataFromStorage = async () => {
+    if (!user?.uid) {
+      console.log('❌ No user UID available, cannot load form data');
+      return;
+    }
+    
+    try {
+      const userKey = `farmerFormData_${user.uid}`;
+      const savedData = await AsyncStorage.getItem(userKey);
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        setFormData(parsedData);
+        console.log(`✅ Form data loaded from AsyncStorage for user: ${user.uid}`);
+      } else {
+        console.log(`ℹ️ No saved form data found for user: ${user.uid}`);
+      }
+    } catch (error) {
+      console.error('❌ Error loading form data from AsyncStorage:', error);
+    }
+  };
+
+  // Helper function to update form data and save to AsyncStorage
+  const updateFormData = async (updater: (prev: typeof formData) => typeof formData) => {
+    const newFormData = updater(formData);
+    setFormData(newFormData);
+    await saveFormDataToStorage(newFormData);
+  };
+
+  // Function to clear all form data (for testing)
+  const clearFormData = async () => {
+    if (!user?.uid) {
+      console.log('❌ No user UID available, cannot clear form data');
+      return;
+    }
+    
+    try {
+      const userKey = `farmerFormData_${user.uid}`;
+      await AsyncStorage.removeItem(userKey);
+      setFormData({
+        demographics: {
+          age: '',
+          gender: '',
+          maritalStatus: '',
+          dependents: '',
+          education: '',
+          monthlyIncome: '',
+          isSubmitted: false
+        },
+        farmingProfile: {
+          yearsFarming: '',
+          farmCommodity: [],
+          livestock: [],
+          landOwnership: '',
+          farmSize: '',
+          farmingMethods: [],
+          otherCommodity: '',
+          otherLivestock: '',
+          otherFarmSize: '',
+          isSubmitted: false
+        },
+        economicFinancial: {
+          incomeSources: '',
+          farmingFinances: '',
+          farmingIncomePercentage: '',
+          governmentAssistance: '',
+          ngoAssistance: '',
+          industryAssistance: '',
+          otherIncome: '',
+          otherFinances: '',
+          isSubmitted: false
+        },
+        technologyInnovation: {
+          farmingEquipment: [],
+          newTechniques: '',
+          modernPractices: '',
+          agriculturalInfo: [],
+          otherEquipment: '',
+          otherInfo: '',
+          isSubmitted: false
+        },
+        supportResources: {
+          farmersAssociation: '',
+          governmentPrograms: '',
+          governmentSupport: [],
+          ngoSupport: [],
+          industrySupport: [],
+          extensionServices: '',
+          otherGovSupport: '',
+          otherNgoSupport: '',
+          otherIndustrySupport: '',
+          isSubmitted: false
+        },
+        addressesHousehold: {
+          residentialAddress: '',
+          farmAddress: '',
+          householdSize: '',
+          adultsInHousehold: '',
+          childrenInHousehold: '',
+          educationAttainment: '',
+          maritalStatus: '',
+          isSubmitted: false
+        },
+        homeAssets: {
+          electricity: '',
+          television: '',
+          refrigerator: '',
+          comfortRoom: '',
+          houseType: '',
+          monthlyRent: '',
+          houseOwnership: '',
+          incomeType: '',
+          monthlyExpenses: '',
+          farmingType: '',
+          isSubmitted: false
+        },
+        farmingDemographics: {
+          farmSizeSqm: '',
+          landOwnership: '',
+          tenantEarnings: '',
+          rentalAmount: '',
+          cropsCultivated: [],
+          livestockRaised: [],
+          farmingExperience: '',
+          isSubmitted: false
+        },
+        incomeMarketing: {
+          farmingPrimaryIncome: '',
+          annualFarmIncome: '',
+          incomeChange: '',
+          salesChannels: [],
+          otherIncomeSources: '',
+          monthlyIncome: '',
+          monthlyExpensesAmount: '',
+          isSubmitted: false
+        }
+      });
+      console.log(`✅ Form data cleared for user: ${user.uid}`);
+    } catch (error) {
+      console.error('❌ Error clearing form data:', error);
+    }
+  };
+
+  // Function to clear all users' form data (admin function)
+  const clearAllUsersFormData = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const farmerFormKeys = keys.filter(key => key.startsWith('farmerFormData_'));
+      
+      if (farmerFormKeys.length > 0) {
+        await AsyncStorage.multiRemove(farmerFormKeys);
+        console.log(`✅ Cleared form data for ${farmerFormKeys.length} users`);
+      } else {
+        console.log('ℹ️ No user form data found to clear');
+      }
+    } catch (error) {
+      console.error('❌ Error clearing all users form data:', error);
+    }
+  };
   
   const featureButtons: FeatureButton[] = [
     {
@@ -178,6 +357,13 @@ export default function FarmersScreen() {
     NavigationBar.setVisibilityAsync('hidden').catch(() => {});
   }, []);
 
+  // Load form data from AsyncStorage when user changes
+  useEffect(() => {
+    if (user?.uid) {
+      loadFormDataFromStorage();
+    }
+  }, [user?.uid]);
+
   useEffect(() => {
     if (Object.values(formData).filter(form => form.isSubmitted).length === 9) {
       const timer = setTimeout(() => {
@@ -197,18 +383,76 @@ export default function FarmersScreen() {
     setEditingForm(formId);
   };
 
-  const handleSubmitForm = (formId: string) => {
-    console.log(`Submitting form: ${formId}`);
-    setFormData(prev => ({
-      ...prev,
-      [formId]: {
-        ...prev[formId as keyof typeof prev],
-        isSubmitted: true
+  const handleSubmitForm = async (formId: string) => {
+    console.log('=== FORM SUBMISSION DEBUG ===');
+    console.log('Form ID:', formId);
+    console.log('User object:', user);
+    console.log('User UID:', user?.uid);
+    console.log('User email:', user?.email);
+    console.log('Profile name:', profile?.name);
+    console.log('Is user authenticated?', !!user);
+    console.log('Is user.uid available?', !!user?.uid);
+    console.log('Auth state:', user ? 'AUTHENTICATED' : 'NOT AUTHENTICATED');
+    
+    if (!user?.uid) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    try {
+      // Update local state and save to AsyncStorage
+      await updateFormData(prev => ({
+        ...prev,
+        [formId]: {
+          ...prev[formId as keyof typeof prev],
+          isSubmitted: true
+        }
+      }));
+
+
+      // Test: Try writing to a simple collection first
+      console.log('Testing write to test collection...');
+      try {
+        const testRef = doc(db, 'test', 'test-doc');
+        await setDoc(testRef, {
+          test: true,
+          timestamp: serverTimestamp(),
+          userId: user.uid
+        });
+        console.log('Test write successful!');
+      } catch (testError: any) {
+        console.error('Test write failed:', testError);
+        console.error('Test error code:', testError.code);
+        console.error('Test error message:', testError.message);
       }
-    }));
-    setEditingForm(null);
-    console.log(`Form ${formId} submitted successfully!`);
-    Alert.alert('Success', 'Form submitted successfully!');
+
+      // Try using addDoc instead of setDoc
+      console.log('Trying addDoc approach...');
+      const farmersCollection = collection(db, 'farmers');
+      const formDataToSave = {
+        ...formData[formId as keyof typeof formData],
+        isSubmitted: true,
+        submittedAt: serverTimestamp(),
+        userId: user.uid,
+        userEmail: user.email,
+        userName: profile.name,
+        formId: formId
+      };
+
+      console.log('Form data to save:', formDataToSave);
+
+      await addDoc(farmersCollection, formDataToSave);
+      console.log('addDoc successful!');
+
+      setEditingForm(null);
+      console.log(`Form ${formId} submitted successfully to database!`);
+      Alert.alert('Success', 'Form submitted successfully!');
+    } catch (error: any) {
+      console.error('Error submitting form:', error);
+      console.error('Error details:', error.message);
+      console.error('Error code:', error.code);
+      Alert.alert('Error', `Failed to submit form: ${error.message}`);
+    }
   };
 
   const isFormSubmitted = (formId: string) => {
@@ -273,7 +517,7 @@ export default function FarmersScreen() {
             placeholder="Enter age" 
             keyboardType="numeric"
             value={data.age}
-            onChangeText={(value) => setFormData(prev => ({
+            onChangeText={(value) => updateFormData(prev => ({
               ...prev,
               demographics: { ...prev.demographics, age: value }
             }))}
@@ -294,7 +538,7 @@ export default function FarmersScreen() {
                 ]}
                 onPress={() => {
                   if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
+                    updateFormData(prev => ({
                       ...prev,
                       demographics: { ...prev.demographics, gender: option }
                     }));
@@ -325,7 +569,7 @@ export default function FarmersScreen() {
                 ]}
                 onPress={() => {
                   if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
+                    updateFormData(prev => ({
                       ...prev,
                       demographics: { ...prev.demographics, maritalStatus: option }
                     }));
@@ -356,7 +600,7 @@ export default function FarmersScreen() {
                 ]}
                 onPress={() => {
                   if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
+                    updateFormData(prev => ({
                       ...prev,
                       demographics: { ...prev.demographics, dependents: option }
                     }));
@@ -390,7 +634,7 @@ export default function FarmersScreen() {
                 ]}
                 onPress={() => {
                   if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
+                    updateFormData(prev => ({
                       ...prev,
                       demographics: { ...prev.demographics, education: option }
                     }));
@@ -424,7 +668,7 @@ export default function FarmersScreen() {
                 ]}
                 onPress={() => {
                   if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
+                    updateFormData(prev => ({
                       ...prev,
                       demographics: { ...prev.demographics, monthlyIncome: option }
                     }));
@@ -2684,7 +2928,7 @@ export default function FarmersScreen() {
         {/* Skip Button */}
         <TouchableOpacity 
           style={{
-            backgroundColor: '#74bfa3',
+            backgroundColor: '#16543a',
             paddingHorizontal: 24,
             paddingVertical: 12,
             borderRadius: 20,

@@ -70,30 +70,54 @@ export default function SignupScreen() {
           </View>
           <Text style={styles.header}>Create{"\n"}New Account</Text>
           <TextInput
-            style={[styles.input, { textAlign: 'center' }]}
+            style={[styles.input, { 
+              textAlign: 'center', 
+              paddingLeft: 24, 
+              paddingRight: 24,
+              includeFontPadding: false,
+              textAlignVertical: 'center'
+            }]}
             placeholder="Name"
             placeholderTextColor={GREEN}
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
+            selectionColor="#16543a"
+            cursorColor={name ? "#16543a" : "transparent"}
           />
           <TextInput
-            style={[styles.input, { textAlign: 'center' }]}
+            style={[styles.input, { 
+              textAlign: 'center', 
+              paddingLeft: 24, 
+              paddingRight: 24,
+              includeFontPadding: false,
+              textAlignVertical: 'center'
+            }]}
             placeholder="Email"
             placeholderTextColor={GREEN}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
+            selectionColor="#16543a"
+            cursorColor={email ? "#16543a" : "transparent"}
           />
           <View style={{width: '100%'}}>
             <TextInput
-              style={[styles.input, styles.passwordInput, { textAlign: 'center' }]}
-              placeholder="Password"
+              style={[styles.input, styles.passwordInput, { 
+                textAlign: 'center', 
+                paddingLeft: 24, 
+                paddingRight: 48,
+                includeFontPadding: false,
+                textAlignVertical: 'center'
+              }]}
+              placeholder="        Password"
               placeholderTextColor={GREEN}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
+              selectionColor="#16543a"
+              cursorColor={password ? "#16543a" : "transparent"}
             />
             <TouchableOpacity
               style={styles.eyeIcon}
@@ -109,12 +133,20 @@ export default function SignupScreen() {
           
           <View style={{width: '100%'}}>
             <TextInput
-              style={[styles.input, styles.passwordInput, { textAlign: 'center' }]}
-              placeholder="Confirm Password"
+              style={[styles.input, styles.passwordInput, { 
+                textAlign: 'center', 
+                paddingLeft: 24, 
+                paddingRight: 48,
+                includeFontPadding: false,
+                textAlignVertical: 'center'
+              }]}
+              placeholder="         Confirm Password"
               placeholderTextColor={GREEN}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry={!showConfirmPassword}
+              selectionColor="#16543a"
+              cursorColor={confirmPassword ? "#16543a" : "transparent"}
             />
             <TouchableOpacity
               style={styles.eyeIcon}
@@ -207,9 +239,10 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     textAlign: 'center',
     fontWeight: '500',
+    textAlignVertical: 'center',
   },
   passwordInput: {
-    paddingLeft: 30,
+    paddingLeft: 22,
     paddingRight: 48, // extra space for eye icon
     textAlign: 'center',
   },

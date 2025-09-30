@@ -1,19 +1,129 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { Stack, useRouter } from 'expo-router';
-import React from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import React, { useState } from 'react';
+import { Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useAuth } from '../components/AuthContext';
+import { db } from '../lib/firebase';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
 
+// Sample crop/product data
+const CROP_TYPES = [
+  'Rice', 'Corn', 'Wheat', 'Soybean', 'Tomato', 'Potato', 'Onion', 'Carrot',
+  'Cabbage', 'Lettuce', 'Spinach', 'Pepper', 'Eggplant', 'Cucumber', 'Squash',
+  'Beans', 'Peas', 'Okra', 'Sweet Potato', 'Cassava', 'Banana', 'Mango',
+  'Papaya', 'Coconut', 'Coffee', 'Cacao', 'Sugarcane', 'Cotton', 'Tobacco',
+  'Sunflower', 'Peanut', 'Sesame', 'Herbs', 'Spices', 'Flowers', 'Ornamental Plants'
+];
+
 export default function HarvestReportScreen() {
   const router = useRouter();
-  const [refreshing, setRefreshing] = React.useState(false);
+  const { user, profile } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCrop, setSelectedCrop] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [amountType, setAmountType] = useState('kg');
+  const [customAmountType, setCustomAmountType] = useState('');
+  const [showCustomUnit, setShowCustomUnit] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 1000);
   }, []);
+
+  // Filter crops based on search query
+  const filteredCrops = CROP_TYPES.filter(crop =>
+    crop.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleCropSelect = (crop: string) => {
+    setSelectedCrop(crop);
+    setSearchQuery(crop);
+    setShowSuggestions(false);
+  };
+
+  const handleImagePicker = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        multiple: false,
+        copyToCacheDirectory: true
+      });
+      
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setSelectedImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error picking image:', error);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedCrop || !amount) {
+      Alert.alert('Missing Information', 'Please fill in all required fields.');
+      return;
+    }
+
+    if (!user || !profile) {
+      Alert.alert('Error', 'Please log in to submit reports.');
+      return;
+    }
+
+    setSubmitting(true);
+    
+    try {
+      // Prepare harvest data
+      const harvestData = {
+        userId: user.uid,
+        farmerName: profile.name,
+        farmerEmail: user.email,
+        crop: selectedCrop,
+        amount: parseFloat(amount),
+        amountType: amountType,
+        customAmountType: customAmountType || null,
+        imageUrl: selectedImage || null,
+        status: 'pending', // Admin can review and approve
+        submittedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      };
+
+      // Save to Firestore
+      const harvestRef = collection(db, 'harvestReports');
+      await addDoc(harvestRef, harvestData);
+      
+      Alert.alert(
+        'Success!',
+        'Harvest report submitted successfully and sent to admin for review.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setSelectedCrop('');
+              setSearchQuery('');
+              setAmount('');
+              setAmountType('kg');
+              setCustomAmountType('');
+              setShowCustomUnit(false);
+              setSelectedImage(null);
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error submitting harvest report:', error);
+      Alert.alert('Error', 'Failed to submit harvest report. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
@@ -47,45 +157,126 @@ export default function HarvestReportScreen() {
         }
       >
         <View style={styles.contentContainer}>
+          <Text style={styles.formSubtitle}>Record your harvest data and crop yields</Text>
 
-          {/* Main Content */}
-          <View style={styles.mainContent}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="basket" size={80} color={LIGHT_GREEN} />
+          {/* Crop/Product Selection */}
+          <View style={styles.formSection}>
+            <Text style={styles.sectionLabel}>Product/Crop *</Text>
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search for crops or products..."
+                value={searchQuery}
+                onChangeText={(text) => {
+                  setSearchQuery(text);
+                  setShowSuggestions(text.length > 0);
+                  if (text.length === 0) {
+                    setSelectedCrop('');
+                  }
+                }}
+                onFocus={() => setShowSuggestions(searchQuery.length > 0)}
+              />
+              <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
             </View>
             
-            <Text style={styles.title}>Harvest Report Coming Soon</Text>
-            <Text style={styles.subtitle}>
-              Document your harvest data, yields, and quality metrics. This feature will help you track your farming success and analyze your crop performance over time.
-            </Text>
-            
-            <View style={styles.infoCard}>
-              <View style={styles.infoItem}>
-                <Ionicons name="scale" size={20} color={GREEN} />
-                <Text style={styles.infoText}>Yield measurement tracking</Text>
+            {showSuggestions && filteredCrops.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                {filteredCrops.slice(0, 5).map((item, index) => (
+                  <TouchableOpacity
+                    key={item}
+                    style={styles.suggestionItem}
+                    onPress={() => handleCropSelect(item)}
+                  >
+                    <Ionicons name="leaf" size={16} color={GREEN} />
+                    <Text style={styles.suggestionText}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <View style={styles.infoItem}>
-                <Ionicons name="star" size={20} color={GREEN} />
-                <Text style={styles.infoText}>Quality assessment tools</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Ionicons name="calendar" size={20} color={GREEN} />
-                <Text style={styles.infoText}>Harvest date recording</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Ionicons name="analytics" size={20} color={GREEN} />
-                <Text style={styles.infoText}>Performance analytics</Text>
-              </View>
-            </View>
-
-            <TouchableOpacity 
-              style={styles.backToHomeButton}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <Ionicons name="home" size={20} color="#fff" />
-              <Text style={styles.backToHomeText}>Back to Home</Text>
-            </TouchableOpacity>
+            )}
           </View>
+
+          {/* Amount Section */}
+          <View style={styles.formSection}>
+            <Text style={styles.sectionLabel}>Harvest Amount *</Text>
+            <View style={styles.amountContainer}>
+              <TextInput
+                style={styles.amountInput}
+                placeholder="Enter amount"
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="numeric"
+              />
+              <View style={styles.amountTypeContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.amountTypeButton,
+                    amountType === 'kg' && styles.amountTypeButtonActive
+                  ]}
+                  onPress={() => setAmountType('kg')}
+                >
+                  <Text style={[
+                    styles.amountTypeText,
+                    amountType === 'kg' && styles.amountTypeTextActive
+                  ]}>kg</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.othersButton}
+              onPress={() => setShowCustomUnit(!showCustomUnit)}
+            >
+              <Text style={styles.othersButtonText}>Other's please specify</Text>
+            </TouchableOpacity>
+            
+            {showCustomUnit && (
+              <TextInput
+                style={styles.customAmountInput}
+                placeholder="Specify unit (e.g., bags, pieces, liters)"
+                value={customAmountType}
+                onChangeText={setCustomAmountType}
+              />
+            )}
+          </View>
+
+          {/* Image Upload Section */}
+          <View style={styles.formSection}>
+            <Text style={styles.sectionLabel}>Proof/Documentation</Text>
+            <Text style={styles.sectionDescription}>Upload a photo for proof or documentation</Text>
+            
+            {selectedImage ? (
+              <View style={styles.imagePreviewContainer}>
+                <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={() => setSelectedImage(null)}
+                >
+                  <Ionicons name="close-circle" size={24} color="#ff4444" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.imageUploadButton} onPress={handleImagePicker}>
+                <Ionicons name="camera" size={24} color={GREEN} />
+                <Text style={styles.imageUploadText}>Take Photo or Select from Gallery</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Submit Button */}
+          <TouchableOpacity
+            style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
+            <Ionicons 
+              name={submitting ? "hourglass" : "checkmark-circle"} 
+              size={20} 
+              color="#fff" 
+            />
+            <Text style={styles.submitButtonText}>
+              {submitting ? 'Submitting...' : 'Submit Report'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
       </View>
@@ -113,17 +304,20 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    paddingBottom: 40,
   },
   contentContainer: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 5,
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 15,
     paddingHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 5,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
@@ -138,81 +332,198 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
-  mainContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  iconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#f0f8f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 30,
-    borderWidth: 3,
-    borderColor: LIGHT_GREEN,
-  },
-  title: {
+  formTitle: {
     fontSize: 24,
     fontWeight: '800',
     color: GREEN,
-    marginBottom: 15,
     textAlign: 'center',
-    letterSpacing: -0.5,
+    marginBottom: 8,
   },
-  subtitle: {
+  formSubtitle: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 40,
-    paddingHorizontal: 20,
+    marginTop: 0,
+    marginBottom: 30,
   },
-  infoCard: {
+  formSection: {
+    marginBottom: 25,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  searchContainer: {
+    position: 'relative',
+  },
+  searchInput: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 25,
-    marginBottom: 40,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
-    width: '100%',
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  infoText: {
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingRight: 50,
     fontSize: 16,
     color: '#333',
-    marginLeft: 15,
-    fontWeight: '500',
   },
-  backToHomeButton: {
+  searchIcon: {
+    position: 'absolute',
+    right: 16,
+    top: 14,
+  },
+  suggestionsContainer: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    maxHeight: 200,
+    zIndex: 1000,
+  },
+  suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: GREEN,
-    paddingVertical: 15,
-    paddingHorizontal: 30,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 12,
+  },
+  amountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  amountInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
     borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#333',
+  },
+  amountTypeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  amountTypeButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  amountTypeButtonActive: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  amountTypeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  amountTypeTextActive: {
+    color: '#fff',
+  },
+  othersButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  othersButtonText: {
+    fontSize: 14,
+    color: GREEN,
+    fontWeight: '500',
+  },
+  customAmountInput: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#333',
+    marginTop: 12,
+  },
+  imageUploadButton: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageUploadText: {
+    fontSize: 16,
+    color: GREEN,
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: GREEN,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  backToHomeText: {
+  submitButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  submitButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 10,
+    marginLeft: 8,
   },
 });

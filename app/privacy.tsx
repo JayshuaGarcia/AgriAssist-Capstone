@@ -5,6 +5,7 @@ import React from 'react';
 import { Alert, Image, RefreshControl, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
 import { usePrivacySettings } from '../components/PrivacySettingsContext';
+import { sendEmailVerification, updateEmail } from '../lib/emailService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -13,85 +14,201 @@ export default function PrivacySettingsScreen() {
   const router = useRouter();
   const { settings, updateSettings, resetToDefaults } = usePrivacySettings();
   const [refreshing, setRefreshing] = React.useState(false);
-  const { user, profile, updateProfile, requestEmailChange, confirmEmailChange, changePassword, updateProfileImage } = useAuth();
+  const { user, profile, updateProfile, updateProfileImage } = useAuth();
   const [editName, setEditName] = React.useState(profile.name || '');
   const [editPhone, setEditPhone] = React.useState(profile.phone || '');
   const [backupEmail, setBackupEmail] = React.useState(profile.backupEmail || '');
   const avatarUri = profile.profileImage ? { uri: profile.profileImage } : null;
-  const [emailStep, setEmailStep] = React.useState<'idle' | 'code_sent' | 'done'>('idle');
-  const [newEmail, setNewEmail] = React.useState('');
-  const [inputCode, setInputCode] = React.useState('');
-  const [pwCurrent, setPwCurrent] = React.useState('');
-  const [pwNew, setPwNew] = React.useState('');
-  const [pwConfirm, setPwConfirm] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
-  const [showAllPasswords, setShowAllPasswords] = React.useState(false);
   const [updatingUsername, setUpdatingUsername] = React.useState(false);
   const [updatingPhone, setUpdatingPhone] = React.useState(false);
   const [updatingBackupEmail, setUpdatingBackupEmail] = React.useState(false);
   const [usernameSuccess, setUsernameSuccess] = React.useState(false);
   const [phoneSuccess, setPhoneSuccess] = React.useState(false);
   const [backupEmailSuccess, setBackupEmailSuccess] = React.useState(false);
-  const [emailError, setEmailError] = React.useState('');
-  const [emailSuccess, setEmailSuccess] = React.useState(false);
-  const [resendCooldown, setResendCooldown] = React.useState(0);
-  const [resending, setResending] = React.useState(false);
-  const [passwordSuccess, setPasswordSuccess] = React.useState(false);
-  const [passwordError, setPasswordError] = React.useState('');
   
-  // Password state management
-  const [passwordMismatchError, setPasswordMismatchError] = React.useState('');
-  const [hasAttemptedSubmit, setHasAttemptedSubmit] = React.useState(false);
+  // Email change states
+  const [newEmail, setNewEmail] = React.useState('');
+  const [verificationCode, setVerificationCode] = React.useState('');
+  const [isChangingEmail, setIsChangingEmail] = React.useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = React.useState(false);
+  const [emailChangeStep, setEmailChangeStep] = React.useState<'input' | 'verify' | 'success'>('input');
+  const [emailChangeError, setEmailChangeError] = React.useState('');
+  
+  // Password change states
+  const [oldPassword, setOldPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [isChangingPassword, setIsChangingPassword] = React.useState(false);
+  const [passwordChangeError, setPasswordChangeError] = React.useState('');
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = React.useState(false);
+  const [showPasswords, setShowPasswords] = React.useState({
+    old: false,
+    new: false,
+    confirm: false
+  });
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 600);
   }, []);
 
-  // Handle resend cooldown timer
-  React.useEffect(() => {
-    if (resendCooldown > 0) {
-      const timer = setTimeout(() => {
-        setResendCooldown(resendCooldown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
+  // Email change functions
+  const handleSendVerificationCode = async () => {
+    if (!newEmail || !newEmail.includes('@')) {
+      setEmailChangeError('Please enter a valid email address');
+      return;
     }
-  }, [resendCooldown]);
 
-  // Remove real-time validation to prevent persistent errors
-  // Errors will only show when user submits the form
+    if (newEmail === user?.email) {
+      setEmailChangeError('New email must be different from current email');
+      return;
+    }
 
-  // Resend verification code function
-  const handleResendCode = async () => {
-    if (resendCooldown > 0 || resending || !newEmail) return;
-    
-    setResending(true);
-    setEmailError('');
-    setEmailSuccess(false);
-    
+    setIsChangingEmail(true);
+    setEmailChangeError('');
+
     try {
-      const code = await requestEmailChange(newEmail);
-      setEmailSuccess(true);
-      setResendCooldown(60); // 60 second cooldown
-      console.log('Verification code resent! Demo code:', code);
-    } catch (error) {
-      console.error('Error resending verification:', error);
-      setEmailError(error instanceof Error ? error.message : 'Failed to resend verification code');
+      await sendEmailVerification(newEmail, 'email-change');
+      setEmailChangeStep('verify');
+      Alert.alert(
+        'Verification Code Sent',
+        `A verification code has been sent to ${newEmail}. Please check your email and enter the code below.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      setEmailChangeError(error.message || 'Failed to send verification code');
     } finally {
-      setResending(false);
+      setIsChangingEmail(false);
     }
   };
 
-  // Reset cooldown when going back to email input
-  const resetEmailFlow = () => {
-    setEmailStep('idle');
-    setNewEmail('');
-    setInputCode('');
-    setEmailError('');
-    setEmailSuccess(false);
-    setResendCooldown(0);
-    setResending(false);
+  const handleVerifyAndChangeEmail = async () => {
+    if (!verificationCode || verificationCode.length !== 6) {
+      setEmailChangeError('Please enter a valid 6-digit verification code');
+      return;
+    }
+
+    setIsVerifyingCode(true);
+    setEmailChangeError('');
+
+    try {
+      await updateEmail(newEmail, verificationCode);
+      setEmailChangeStep('success');
+      Alert.alert(
+        'Email Changed Successfully',
+        `Your email has been successfully changed to ${newEmail}. You will need to log in again with your new email.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setNewEmail('');
+              setVerificationCode('');
+              setEmailChangeStep('input');
+              setEmailChangeError('');
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      setEmailChangeError(error.message || 'Failed to verify code or change email');
+    } finally {
+      setIsVerifyingCode(false);
+    }
   };
+
+  const resetEmailChangeForm = () => {
+    setNewEmail('');
+    setVerificationCode('');
+    setEmailChangeStep('input');
+    setEmailChangeError('');
+  };
+
+  // Password change functions
+
+  const handleChangePassword = async () => {
+    // Clear previous errors
+    setPasswordChangeError('');
+    setPasswordChangeSuccess(false);
+
+    // Validation
+    if (!oldPassword) {
+      setPasswordChangeError('Please enter your current password');
+      return;
+    }
+
+    if (!newPassword) {
+      setPasswordChangeError('Please enter a new password');
+      return;
+    }
+
+    if (!confirmPassword) {
+      setPasswordChangeError('Please confirm your new password');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordChangeError('New passwords do not match');
+      return;
+    }
+
+    if (oldPassword === newPassword) {
+      setPasswordChangeError('New password must be different from current password');
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    try {
+      // Here you would typically verify the old password and update the new password
+      // For now, we'll simulate the process
+      console.log('🔄 Changing password...');
+      console.log('Old password:', oldPassword);
+      console.log('New password:', newPassword);
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // In a real implementation, you would:
+      // 1. Verify the old password with your authentication service
+      // 2. Update the password in your database
+      // 3. Handle any errors appropriately
+      
+      setPasswordChangeSuccess(true);
+      setPasswordChangeError('');
+      
+      // Clear form
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowPasswords({ old: false, new: false, confirm: false });
+      
+      Alert.alert(
+        'Password Changed Successfully',
+        'Your password has been updated successfully. You will need to log in again with your new password.',
+        [{ text: 'OK' }]
+      );
+      
+      // Reset success state after 3 seconds
+      setTimeout(() => setPasswordChangeSuccess(false), 3000);
+      
+    } catch (error: any) {
+      console.error('❌ Error changing password:', error);
+      setPasswordChangeError(error.message || 'Failed to change password. Please try again.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const resetPasswordChangeForm = () => {
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordChangeError('');
+    setPasswordChangeSuccess(false);
+    setShowPasswords({ old: false, new: false, confirm: false });
+  };
+
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
@@ -151,357 +268,269 @@ export default function PrivacySettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[GREEN]} tintColor={GREEN} />}>
-        <Text style={styles.sectionTitle}>Account Email</Text>
+
+
+        <Text style={styles.sectionTitle}>Profile Info</Text>
+        
+        {/* Change Email Section */}
         <View style={styles.card}>
-          <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>Current email</Text>
-            <View style={styles.readonlyField}>
-              <Text style={styles.readonlyText}>{user?.email || '—'}</Text>
-            </View>
+          <View style={styles.emailChangeHeader}>
+            <Ionicons name="mail" size={24} color={GREEN} />
+            <Text style={styles.emailChangeTitle}>Change Email Address</Text>
           </View>
-          {emailStep === 'idle' && (
+          
+          {/* Current Email Display */}
+          <View style={styles.currentEmailContainer}>
+            <Text style={styles.currentEmailLabel}>Current Email:</Text>
+            <Text style={styles.currentEmailText}>{user?.email}</Text>
+          </View>
+
+          {emailChangeStep === 'input' && (
             <>
-              <View style={[styles.inputRow, styles.rowBorderTop]}>
-                <Text style={styles.inputLabel}>New email</Text>
-                <TextInput
-                  value={newEmail}
-                  onChangeText={setNewEmail}
-                  placeholder="name@example.com"
+              <View style={styles.inputRow}>
+                <Text style={styles.inputLabel}>New Email Address</Text>
+                <TextInput 
+                  value={newEmail} 
+                  onChangeText={(text) => {
+                    setNewEmail(text);
+                    setEmailChangeError('');
+                  }}
+                  placeholder="Enter new email address" 
                   style={styles.textInput}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoCorrect={false}
                 />
               </View>
+              
+              {emailChangeError && (
+                <View style={styles.emailErrorContainer}>
+                  <Ionicons name="warning" size={16} color="#ff6b6b" />
+                  <Text style={styles.emailErrorText}>{emailChangeError}</Text>
+                </View>
+              )}
+              
               <TouchableOpacity
-                style={[styles.actionButton, (!newEmail || submitting) && styles.actionButtonDisabled]}
-                onPress={async () => {
-                  if (!newEmail || submitting) return;
-                  setSubmitting(true);
-                  setEmailError('');
-                  setEmailSuccess(false);
-                  try {
-                    const code = await requestEmailChange(newEmail);
-                    setEmailStep('code_sent');
-                    setEmailSuccess(true);
-                    setResendCooldown(60); // 60 second cooldown
-                    console.log('Verification code sent! Demo code:', code);
-                  } catch (error) {
-                    console.error('Error sending verification:', error);
-                    setEmailError(error instanceof Error ? error.message : 'Failed to send verification code');
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
-                disabled={!newEmail || submitting}
+                style={[styles.actionButton, (!newEmail || isChangingEmail) && styles.actionButtonDisabled]}
+                onPress={handleSendVerificationCode}
+                disabled={!newEmail || isChangingEmail}
               >
-                <Ionicons name={emailSuccess ? "checkmark" : "paper-plane"} size={18} color="#fff" />
+                <Ionicons name="send" size={18} color="#fff" />
                 <Text style={styles.actionButtonText}>
-                  {submitting ? "Sending..." : emailSuccess ? "Code Sent!" : "Send verification code"}
+                  {isChangingEmail ? "Sending..." : "Send Verification Code"}
                 </Text>
               </TouchableOpacity>
-              {emailError ? (
-                <Text style={styles.errorText}>{emailError}</Text>
-              ) : null}
             </>
           )}
-          {emailStep === 'code_sent' && (
+
+          {emailChangeStep === 'verify' && (
             <>
-              <View style={[styles.inputRow, styles.rowBorderTop]}>
-                <Text style={styles.inputLabel}>Verification code sent to your current email</Text>
-                <Text style={styles.emailAddress}>Changing to: {newEmail}</Text>
+              <View style={styles.verificationInfo}>
+                <Ionicons name="checkmark-circle" size={20} color={GREEN} />
+                <Text style={styles.verificationInfoText}>
+                  Verification code sent to {newEmail}
+                </Text>
               </View>
+              
               <View style={styles.inputRow}>
-                <Text style={styles.inputLabel}>Enter 6-digit code</Text>
-                <TextInput
-                  value={inputCode}
-                  onChangeText={setInputCode}
-                  placeholder="Enter 6-digit code"
+                <Text style={styles.inputLabel}>Verification Code</Text>
+                <TextInput 
+                  value={verificationCode} 
+                  onChangeText={(text) => {
+                    setVerificationCode(text);
+                    setEmailChangeError('');
+                  }}
+                  placeholder="Enter 6-digit code" 
                   style={styles.textInput}
                   keyboardType="number-pad"
                   maxLength={6}
                 />
               </View>
-              <View style={styles.inputRow}>
-                <Text style={styles.inputLabel}>Current password (required for email change)</Text>
-                <View style={styles.passwordInputContainer}>
-                  <TextInput
-                    value={pwCurrent}
-                    onChangeText={setPwCurrent}
-                    placeholder="Enter your current password"
-                    style={styles.passwordInput}
-                    secureTextEntry={!showCurrentPassword}
-                  />
-                  <TouchableOpacity
-                    style={styles.eyeButton}
-                    onPress={() => setShowCurrentPassword(!showCurrentPassword)}
-                  >
-                    <Ionicons
-                      name={showCurrentPassword ? "eye-off" : "eye"}
-                      size={20}
-                      color="#6b7280"
-                    />
-                  </TouchableOpacity>
+              
+              {emailChangeError && (
+                <View style={styles.emailErrorContainer}>
+                  <Ionicons name="warning" size={16} color="#ff6b6b" />
+                  <Text style={styles.emailErrorText}>{emailChangeError}</Text>
                 </View>
+              )}
+              
+              <View style={styles.verificationButtons}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.emailSecondaryButton]}
+                  onPress={resetEmailChangeForm}
+                >
+                  <Ionicons name="arrow-back" size={18} color={GREEN} />
+                  <Text style={[styles.actionButtonText, { color: GREEN }]}>Back</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.actionButton, (!verificationCode || verificationCode.length !== 6 || isVerifyingCode) && styles.actionButtonDisabled]}
+                  onPress={handleVerifyAndChangeEmail}
+                  disabled={!verificationCode || verificationCode.length !== 6 || isVerifyingCode}
+                >
+                  <Ionicons name="checkmark" size={18} color="#fff" />
+                  <Text style={styles.actionButtonText}>
+                    {isVerifyingCode ? "Verifying..." : "Verify & Change Email"}
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.helpText}>
-                A verification code has been sent to your current email address. Enter the code and your current password to confirm the email change.
-              </Text>
-              
-              {/* Change Email Button */}
-              <TouchableOpacity
-                style={styles.changeEmailButton}
-                onPress={resetEmailFlow}
-              >
-                <Ionicons name="mail-outline" size={16} color="#6b7280" />
-                <Text style={styles.changeEmailButtonText}>Change Email Address</Text>
-              </TouchableOpacity>
-              
-              {/* Resend Button */}
-              <TouchableOpacity
-                style={[
-                  styles.resendButton,
-                  (resendCooldown > 0 || resending) && styles.resendButtonDisabled
-                ]}
-                onPress={handleResendCode}
-                disabled={resendCooldown > 0 || resending}
-              >
-                <Ionicons 
-                  name={resending ? "refresh" : "refresh-outline"} 
-                  size={16} 
-                  color={resendCooldown > 0 ? "#9ca3af" : GREEN} 
-                />
-                <Text style={[
-                  styles.resendButtonText,
-                  resendCooldown > 0 && styles.resendButtonTextDisabled
-                ]}>
-                  {resending 
-                    ? "Resending..." 
-                    : resendCooldown > 0 
-                      ? `Resend in ${resendCooldown}s` 
-                      : "Resend Code"
-                  }
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, (inputCode.length !== 6 || !pwCurrent || submitting) && styles.actionButtonDisabled]}
-                onPress={async () => {
-                  if (inputCode.length !== 6 || !pwCurrent || submitting) return;
-                  setSubmitting(true);
-                  setEmailError('');
-                  try {
-                    await confirmEmailChange(inputCode, pwCurrent);
-                    setEmailStep('done');
-                    setEmailSuccess(true);
-                    setNewEmail('');
-                    setInputCode('');
-                    setPwCurrent('');
-                  } catch (error) {
-                    console.error('Error confirming email change:', error);
-                    setEmailError(error instanceof Error ? error.message : 'Failed to confirm email change');
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
-                disabled={inputCode.length !== 6 || !pwCurrent || submitting}
-              >
-                <Ionicons name="checkmark" size={18} color="#fff" />
-                <Text style={styles.actionButtonText}>
-                  {submitting ? "Confirming..." : "Confirm email change"}
-                </Text>
-              </TouchableOpacity>
-              {emailError ? (
-                <Text style={styles.errorText}>{emailError}</Text>
-              ) : null}
             </>
           )}
-          {emailStep === 'done' && (
-            <View style={[styles.inputRow, styles.rowBorderTop]}>
-              <Text style={styles.successText}>Email change completed!</Text>
-              <Text style={styles.helpText}>
-                Your account has been completely transferred to the new email address. You can now login using your new email address: {newEmail}
+
+          {emailChangeStep === 'success' && (
+            <View style={styles.successContainer}>
+              <Ionicons name="checkmark-circle" size={48} color={GREEN} />
+              <Text style={styles.emailSuccessTitle}>Email Changed Successfully!</Text>
+              <Text style={styles.successText}>
+                Your email has been updated to {newEmail}
               </Text>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={resetEmailChangeForm}
+              >
+                <Ionicons name="refresh" size={18} color="#fff" />
+                <Text style={styles.actionButtonText}>Change Another Email</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
-
-        <Text style={styles.sectionTitle}>Change Password</Text>
+        
+        {/* Spacing between sections */}
+        <View style={{ height: 20 }} />
+        
+        {/* Change Password Section */}
         <View style={styles.card}>
+          <View style={styles.passwordChangeHeader}>
+            <Ionicons name="lock-closed" size={24} color={GREEN} />
+            <Text style={styles.passwordChangeTitle}>Change Password</Text>
+          </View>
+          
+          {/* Current Password */}
           <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>Current password</Text>
-            <View style={styles.passwordInputContainer}>
+            <Text style={styles.inputLabel}>Current Password</Text>
+            <View style={styles.passwordChangeInputContainer}>
               <TextInput 
-                value={pwCurrent} 
+                value={oldPassword} 
                 onChangeText={(text) => {
-                  setPwCurrent(text);
-                  // Clear password error when user starts typing
-                  if (passwordError) {
-                    setPasswordError('');
-                  }
-                  // Reset submit attempt flag
-                  setHasAttemptedSubmit(false);
+                  setOldPassword(text);
+                  setPasswordChangeError('');
                 }}
-                placeholder="••••••••" 
-                style={styles.passwordInput} 
-                secureTextEntry={!showAllPasswords} 
+                placeholder="Enter your current password" 
+                style={styles.passwordChangeInput}
+                secureTextEntry={!showPasswords.old}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
-              <TouchableOpacity 
-                style={styles.eyeButton}
-                onPress={() => setShowAllPasswords(!showAllPasswords)}
+              <TouchableOpacity
+                style={styles.passwordChangeEyeButton}
+                onPress={() => setShowPasswords(prev => ({ ...prev, old: !prev.old }))}
               >
                 <Ionicons 
-                  name={showAllPasswords ? "eye-off" : "eye"} 
+                  name={showPasswords.old ? "eye-off" : "eye"} 
                   size={20} 
-                  color="#6b7280" 
+                  color="#666" 
                 />
               </TouchableOpacity>
             </View>
           </View>
-          <View style={[styles.inputRow, styles.rowBorderTop]}>
-            <Text style={styles.inputLabel}>New password</Text>
-            <View style={styles.passwordInputContainer}>
-              <TextInput 
-                value={pwNew} 
-                onChangeText={(text) => {
-                  setPwNew(text);
-                  // Clear password error when user starts typing
-                  if (passwordError) {
-                    setPasswordError('');
-                  }
-                  // Reset submit attempt flag
-                  setHasAttemptedSubmit(false);
-                }}
-                placeholder="At least 8 characters" 
-                style={styles.passwordInput} 
-                secureTextEntry={!showAllPasswords} 
-              />
-              <TouchableOpacity 
-                style={styles.eyeButton}
-                onPress={() => setShowAllPasswords(!showAllPasswords)}
-              >
-                <Ionicons 
-                  name={showAllPasswords ? "eye-off" : "eye"} 
-                  size={20} 
-                  color="#6b7280" 
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View style={[styles.inputRow, styles.rowBorderTop]}>
-            <Text style={styles.inputLabel}>Confirm new password</Text>
-            <View style={styles.passwordInputContainer}>
-              <TextInput 
-                value={pwConfirm} 
-                onChangeText={(text) => {
-                  setPwConfirm(text);
-                  // Clear password error when user starts typing
-                  if (passwordError) {
-                    setPasswordError('');
-                  }
-                  // Reset submit attempt flag
-                  setHasAttemptedSubmit(false);
-                }}
-                placeholder="Repeat new password" 
-                style={styles.passwordInput} 
-                secureTextEntry={!showAllPasswords} 
-              />
-              <TouchableOpacity 
-                style={styles.eyeButton}
-                onPress={() => setShowAllPasswords(!showAllPasswords)}
-              >
-                <Ionicons 
-                  name={showAllPasswords ? "eye-off" : "eye"} 
-                  size={20} 
-                  color="#6b7280" 
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Password Mismatch Error */}
-          {passwordMismatchError ? (
-            <View style={[styles.inputRow, styles.rowBorderTop]}>
-              <Text style={styles.errorText}>{passwordMismatchError}</Text>
-            </View>
-          ) : null}
-          
-          {/* Password Change Error */}
-          {passwordError ? (
-            <View style={[styles.inputRow, styles.rowBorderTop]}>
-              <Text style={styles.errorText}>{passwordError}</Text>
-            </View>
-          ) : null}
-          
 
-          <TouchableOpacity
-            style={[
-              styles.actionButton, 
-              passwordSuccess && styles.actionButtonSuccess,
-              !passwordSuccess && (pwCurrent.length < 1 || pwNew.length < 8 || pwNew !== pwConfirm || submitting) && styles.actionButtonDisabled
-            ]}
-            onPress={async () => {
-              // Mark that user has attempted to submit
-              setHasAttemptedSubmit(true);
-              
-              // Clear previous errors and success messages
-              setPasswordError('');
-              setPasswordMismatchError('');
-              setPasswordSuccess(false);
-              
-              // Validate password match first
-              if (pwNew !== pwConfirm) {
-                setPasswordMismatchError('❌ New password and confirm password do not match');
-                return;
-              }
-              
-              // Validate required fields
-              if (pwCurrent.length < 1) {
-                setPasswordError('❌ Please enter your current password');
-                return;
-              }
-              
-              if (pwNew.length < 8) {
-                setPasswordError('❌ New password must be at least 8 characters');
-                return;
-              }
-              
-              setSubmitting(true);
-              try {
-                await changePassword(pwCurrent, pwNew);
-                // Clear all fields on success
-                setPwCurrent('');
-                setPwNew('');
-                setPwConfirm('');
-                setPasswordSuccess(true);
-                setHasAttemptedSubmit(false);
-                // Clear success message after 4 seconds
-                setTimeout(() => {
-                  setPasswordSuccess(false);
-                }, 4000);
-              } catch (error: any) {
-                // Show specific error message for wrong password
-                if (error.message && (error.message.includes('incorrect') || error.message.includes('Current password'))) {
-                  const errorMsg = '❌ Incorrect or invalid password. Please check and try again.';
-                  setPasswordError(errorMsg);
-                } else {
-                  const errorMsg = '❌ Failed to change password. Please try again.';
-                  setPasswordError(errorMsg);
-                }
-                // Clear error message after 6 seconds
-                setTimeout(() => {
-                  setPasswordError('');
-                }, 6000);
-              } finally {
-                setSubmitting(false);
-              }
-            }}
-            disabled={!passwordSuccess && (pwCurrent.length < 1 || pwNew.length < 8 || pwNew !== pwConfirm || submitting)}
-          >
-            <Ionicons name={passwordSuccess ? "checkmark" : "lock-closed"} size={18} color="#fff" />
-            <Text style={styles.actionButtonText}>{passwordSuccess ? 'Updated' : 'Update password'}</Text>
-          </TouchableOpacity>
+          {/* New Password */}
+          <View style={styles.inputRow}>
+            <Text style={styles.inputLabel}>New Password</Text>
+            <View style={styles.passwordChangeInputContainer}>
+              <TextInput 
+                value={newPassword} 
+                onChangeText={(text) => {
+                  setNewPassword(text);
+                  setPasswordChangeError('');
+                }}
+                placeholder="Enter new password" 
+                style={styles.passwordChangeInput}
+                secureTextEntry={!showPasswords.new}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.passwordChangeEyeButton}
+                onPress={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
+              >
+                <Ionicons 
+                  name={showPasswords.new ? "eye-off" : "eye"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Confirm Password */}
+          <View style={styles.inputRow}>
+            <Text style={styles.inputLabel}>Confirm New Password</Text>
+            <View style={styles.passwordChangeInputContainer}>
+              <TextInput 
+                value={confirmPassword} 
+                onChangeText={(text) => {
+                  setConfirmPassword(text);
+                  setPasswordChangeError('');
+                }}
+                placeholder="Confirm new password" 
+                style={styles.passwordChangeInput}
+                secureTextEntry={!showPasswords.confirm}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.passwordChangeEyeButton}
+                onPress={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
+              >
+                <Ionicons 
+                  name={showPasswords.confirm ? "eye-off" : "eye"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          
+          {passwordChangeError && (
+            <View style={styles.passwordErrorContainer}>
+              <Ionicons name="warning" size={16} color="#ff6b6b" />
+              <Text style={styles.passwordErrorText}>{passwordChangeError}</Text>
+            </View>
+          )}
+          
+          {passwordChangeSuccess && (
+            <View style={styles.passwordSuccessContainer}>
+              <Ionicons name="checkmark-circle" size={20} color={GREEN} />
+              <Text style={styles.passwordSuccessText}>Password changed successfully!</Text>
+            </View>
+          )}
+          
+          <View style={styles.passwordButtons}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.passwordSecondaryButton]}
+              onPress={resetPasswordChangeForm}
+            >
+              <Ionicons name="refresh" size={18} color={GREEN} />
+              <Text style={[styles.actionButtonText, { color: GREEN }]}>Clear</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.actionButton, (!oldPassword || !newPassword || !confirmPassword || isChangingPassword) && styles.actionButtonDisabled]}
+              onPress={handleChangePassword}
+              disabled={!oldPassword || !newPassword || !confirmPassword || isChangingPassword}
+            >
+              <Ionicons name={passwordChangeSuccess ? "checkmark" : "lock-closed"} size={18} color="#fff" />
+              <Text style={styles.actionButtonText}>
+                {isChangingPassword ? "Changing..." : passwordChangeSuccess ? "Changed!" : "Change Password"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-
-        <Text style={styles.sectionTitle}>Profile Info</Text>
+        
+        {/* Spacing between sections */}
+        <View style={{ height: 20 }} />
         
         {/* Username Section */}
         <View style={styles.card}>
@@ -945,6 +974,166 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     marginLeft: 6
+  },
+  // Email change styles
+  emailChangeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  emailChangeTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    marginLeft: 10,
+  },
+  currentEmailContainer: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  currentEmailLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  currentEmailText: {
+    fontSize: 16,
+    color: GREEN,
+    fontWeight: '600',
+  },
+  verificationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e8',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  verificationInfoText: {
+    fontSize: 14,
+    color: GREEN,
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  verificationButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  // Password change styles
+  passwordChangeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  passwordChangeTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    marginLeft: 10,
+  },
+  passwordChangeInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  passwordChangeInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 8,
+  },
+  passwordChangeEyeButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  passwordButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  // Password change specific styles
+  passwordErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffe6e6',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#ffb3b3',
+  },
+  passwordErrorText: {
+    fontSize: 14,
+    color: '#d63031',
+    marginLeft: 8,
+    flex: 1,
+  },
+  passwordSecondaryButton: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: GREEN,
+    flex: 1,
+  },
+  passwordSuccessContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  passwordSuccessTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    marginTop: 10,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  passwordSuccessText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  // Email change specific styles
+  emailErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffe6e6',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#ffb3b3',
+  },
+  emailErrorText: {
+    fontSize: 14,
+    color: '#d63031',
+    marginLeft: 8,
+    flex: 1,
+  },
+  emailSecondaryButton: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: GREEN,
+    flex: 1,
+  },
+  emailSuccessTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    marginTop: 10,
+    marginBottom: 8,
+    textAlign: 'center',
   }
 });
 

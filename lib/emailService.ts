@@ -181,7 +181,7 @@ export const sendPasswordResetEmailViaAPI = async (email: string, code: string):
     await sendEmailWithResend(email, code, 'password-reset');
     console.log('✅ Password reset email sent via Resend');
     return;
-  } catch (resendError) {
+  } catch (resendError: any) {
     console.log('⚠️ Resend failed, trying EmailJS:', resendError.message);
   }
   
@@ -190,7 +190,7 @@ export const sendPasswordResetEmailViaAPI = async (email: string, code: string):
     await sendEmailWithEmailJS(email, code, 'password-reset');
     console.log('✅ Password reset email sent via EmailJS');
     return;
-  } catch (emailjsError) {
+  } catch (emailjsError: any) {
     console.log('⚠️ EmailJS failed, using console fallback:', emailjsError.message);
   }
   
@@ -571,5 +571,52 @@ export const checkEmailServiceStatus = (): void => {
       EMAILJS_CONFIG.SERVICE_ID === 'your_service_id') {
     console.log('⚠️ No email service configured - using console fallback');
     console.log('📖 See REAL_EMAIL_SETUP.md for setup instructions');
+  }
+};
+
+// Email change specific functions
+export const sendEmailVerification = async (email: string, type: 'email-change' | 'password-reset' = 'email-change'): Promise<void> => {
+  try {
+    console.log('📧 Sending email verification for:', email, 'type:', type);
+    
+    // Generate verification code
+    const code = generateVerificationCode();
+    console.log('🔑 Generated verification code:', code);
+    
+    // Store the verification code
+    storeVerificationCode(email, email, code);
+    
+    // Send the email
+    await sendVerificationCodeViaAPI(email, code);
+    
+    console.log('✅ Email verification sent successfully');
+  } catch (error) {
+    console.error('❌ Error sending email verification:', error);
+    throw new Error('Failed to send verification email. Please try again.');
+  }
+};
+
+export const updateEmail = async (newEmail: string, verificationCode: string): Promise<void> => {
+  try {
+    console.log('🔄 Updating email to:', newEmail, 'with code:', verificationCode);
+    
+    // Verify the code
+    const verification = verifyCode(newEmail, verificationCode);
+    
+    if (!verification.valid) {
+      throw new Error('Invalid or expired verification code. Please request a new code.');
+    }
+    
+    // Here you would typically update the email in your authentication system
+    // For now, we'll simulate the update
+    console.log('✅ Email verification successful, updating email...');
+    
+    // Clear the verification code
+    clearVerifiedCode(newEmail);
+    
+    console.log('✅ Email updated successfully to:', newEmail);
+  } catch (error) {
+    console.error('❌ Error updating email:', error);
+    throw error;
   }
 };

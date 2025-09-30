@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
-import { Alert, Dimensions, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../../components/AnnouncementContext';
 import { useAuth } from '../../components/AuthContext';
 import { useNotification } from '../../components/NotificationContext';
 import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
+import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../../constants/CommodityData';
 import { useNavigationBar } from '../../hooks/useNavigationBar';
+import { daPriceService, updateCommodityWithDAPrices } from '../../lib/daPriceService';
 import { db } from '../../lib/firebase';
 
 const GREEN = '#16543a';
@@ -74,8 +76,18 @@ export default function HomeScreen() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [userMessages, setUserMessages] = useState<any[]>([]);
   const [shownAnnouncementIds, setShownAnnouncementIds] = useState<Set<string>>(new Set());
+  
+  // Price monitoring states
+  const [priceRefreshing, setPriceRefreshing] = useState(false);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [commodities, setCommodities] = useState<Commodity[]>(COMMODITY_DATA);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [showCommodityModal, setShowCommodityModal] = useState(false);
+  const [priceSearchQuery, setPriceSearchQuery] = useState('');
 
-
+ 
 
   // Function to add message (this would be called when user or admin sends a message)
   const addMessage = (message: any) => {
@@ -751,6 +763,13 @@ export default function HomeScreen() {
     }
   }, [activeNav, user?.uid]);
 
+  // Load price data when price monitoring tab is active
+  useEffect(() => {
+    if (activeNav === 'tutorial') {
+      fetchPriceData();
+    }
+  }, [activeNav]);
+
   useEffect(() => {
     if (forecastDays.length > 0 && selectedDateIndex < forecastDays.length) {
       const selectedDay = forecastDays[selectedDateIndex];
@@ -857,23 +876,82 @@ export default function HomeScreen() {
 
   const handleNavigation = (screen: string) => {
     setActiveNav(screen);
-    switch (screen) {
-      case 'home':
-        // Already on home
-        break;
-      case 'tutorial':
-        // Navigate to tutorial (placeholder for now)
-        break;
-      case 'search':
-        // Navigate to search (placeholder for now)
-        break;
-      case 'profile':
-        // Navigate to profile (placeholder for now)
-        break;
-      default:
-        break;
+    // No need to navigate to separate pages anymore
+  };
+
+  // Price monitoring functions
+  const fetchPriceData = async () => {
+    setPriceLoading(true);
+    setPriceError(null);
+
+    try {
+      console.log('🌾 Fetching DA Philippines daily retail prices...');
+      
+      // Fetch current prices from DA service
+      const priceData = await daPriceService.getCurrentPrices(COMMODITY_DATA);
+      
+      // Fetch forecasts from DA service
+      const forecastData = await daPriceService.getPriceForecasts(COMMODITY_DATA);
+      
+      console.log('📊 DA price data received:', priceData.length, 'items');
+      console.log('🔮 DA forecast data received:', forecastData.length, 'items');
+      
+      // Update commodities with DA price data
+      const updatedCommodities = commodities.map(commodity => {
+        const price = priceData.find(p => p.commodityId === commodity.id);
+        const forecast = forecastData.find(f => f.commodityId === commodity.id);
+        
+        if (price) {
+          return updateCommodityWithDAPrices(commodity, price, forecast);
+        }
+        return commodity;
+      });
+
+      console.log('📊 Updated commodities sample:', {
+        count: updatedCommodities.length,
+        withPrices: updatedCommodities.filter(c => c.currentPrice).length,
+        firstCommodity: updatedCommodities[0] ? {
+          name: updatedCommodities[0].name,
+          category: updatedCommodities[0].category,
+          currentPrice: updatedCommodities[0].currentPrice,
+          hasPrice: !!updatedCommodities[0].currentPrice
+        } : null
+      });
+      
+      setCommodities(updatedCommodities);
+      setLastUpdated(new Date().toLocaleTimeString());
+      console.log('✅ Successfully updated', updatedCommodities.length, 'commodities with DA data');
+    } catch (error: any) {
+      setPriceError(error.message || 'Failed to fetch DA price data');
+      console.error('Error fetching DA price data:', error);
+    } finally {
+      setPriceLoading(false);
     }
   };
+
+  const onPriceRefresh = async () => {
+    setPriceRefreshing(true);
+    await fetchPriceData();
+    setPriceRefreshing(false);
+  };
+
+  const filteredCommodities = React.useMemo(() => {
+    let filtered = commodities;
+    
+    // Filter by category first
+    if (selectedCategory) {
+      filtered = filtered.filter(commodity => commodity.category === selectedCategory);
+    }
+    
+    // Filter by search query
+    if (priceSearchQuery.trim()) {
+      filtered = filtered.filter(commodity => 
+        commodity.name.toLowerCase().includes(priceSearchQuery.toLowerCase().trim())
+      );
+    }
+    
+    return filtered;
+  }, [selectedCategory, priceSearchQuery, commodities]);
 
   const handleSignOut = async () => {
     try {
@@ -882,6 +960,155 @@ export default function HomeScreen() {
       router.replace('/login');
     }
   };
+
+  // Price monitoring render functions
+  const renderCommodityItem = ({ item }: { item: Commodity }) => (
+    <View style={styles.priceCommodityCard}>
+      <View style={styles.priceCommodityHeader}>
+        <View style={styles.priceCommodityInfo}>
+          <Text style={styles.priceCommodityName}>{item.name}</Text>
+          <Text style={styles.priceCommodityCategory}>{item.category}</Text>
+        </View>
+        <View style={styles.priceContainer}>
+          {item.currentPrice ? (
+            <>
+              <Text style={styles.priceCurrentPrice}>₱{item.currentPrice.toFixed(2)}</Text>
+              <Text style={styles.priceUnit}>/{item.unit}</Text>
+            </>
+          ) : (
+            <Text style={styles.priceNoPriceText}>No data</Text>
+          )}
+        </View>
+      </View>
+      
+      {item.priceChange !== undefined && (
+        <View style={styles.priceChangeContainer}>
+          <View style={[
+            styles.priceChangeBadge,
+            item.priceChange >= 0 ? styles.priceIncrease : styles.priceDecrease
+          ]}>
+            <Ionicons 
+              name={item.priceChange >= 0 ? "trending-up" : "trending-down"} 
+              size={16} 
+              color="#fff" 
+            />
+            <Text style={styles.priceChangeText}>
+              {item.priceChange >= 0 ? '+' : ''}₱{Math.abs(item.priceChange).toFixed(2)} 
+              ({item.priceChangePercent !== undefined && item.priceChangePercent >= 0 ? '+' : ''}{item.priceChangePercent?.toFixed(1) || '0.0'}%)
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {item.forecast && (
+        <View style={styles.priceForecastContainer}>
+          <Text style={styles.priceForecastTitle}>📈 Forecast</Text>
+          <View style={styles.priceForecastGrid}>
+            <View style={styles.priceForecastItem}>
+              <Text style={styles.priceForecastLabel}>Next Week</Text>
+              <Text style={styles.priceForecastPrice}>₱{item.forecast?.nextWeek?.toFixed(2) || '0.00'}</Text>
+            </View>
+            <View style={styles.priceForecastItem}>
+              <Text style={styles.priceForecastLabel}>Next Month</Text>
+              <Text style={styles.priceForecastPrice}>₱{item.forecast?.nextMonth?.toFixed(2) || '0.00'}</Text>
+            </View>
+          </View>
+          <View style={[
+            styles.priceTrendBadge,
+            item.forecast.trend === 'up' ? styles.priceTrendUp : 
+            item.forecast.trend === 'down' ? styles.priceTrendDown : styles.priceTrendStable
+          ]}>
+            <Ionicons 
+              name={
+                item.forecast.trend === 'up' ? 'arrow-up' :
+                item.forecast.trend === 'down' ? 'arrow-down' : 'remove'
+              } 
+              size={12} 
+              color="#fff" 
+            />
+            <Text style={styles.priceTrendText}>
+              {item.forecast.trend.toUpperCase()} TREND ({item.forecast.confidence}%)
+            </Text>
+          </View>
+          
+          {item.forecast.factors && item.forecast.factors.length > 0 && (
+            <View style={styles.priceFactorsContainer}>
+              <Text style={styles.priceFactorsTitle}>Key Factors:</Text>
+              {item.forecast.factors.slice(0, 3).map((factor, index) => (
+                <Text key={index} style={styles.priceFactorText}>• {factor}</Text>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
+      {item.lastUpdated && (
+        <Text style={styles.priceLastUpdated}>Updated: {item.lastUpdated}</Text>
+      )}
+    </View>
+  );
+
+  const renderCommodityModal = () => (
+    <Modal
+      visible={showCommodityModal}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowCommodityModal(false)}
+    >
+      <View style={styles.priceModalOverlay}>
+        <View style={styles.priceModalContent}>
+          <View style={styles.priceModalHeader}>
+            <Text style={styles.priceModalTitle}>Select Commodity</Text>
+            <TouchableOpacity
+              style={styles.priceModalCloseButton}
+              onPress={() => setShowCommodityModal(false)}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.priceModalScrollView}>
+            {Object.values(COMMODITY_CATEGORIES).map(category => (
+              <TouchableOpacity
+                key={category}
+                style={[
+                  styles.priceModalItem,
+                  selectedCategory === category && styles.priceModalItemActive
+                ]}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  setShowCommodityModal(false);
+                }}
+              >
+                <Ionicons 
+                  name={
+                    category === 'KADIWA RICE-FOR-ALL' ? 'leaf' :
+                    category === 'IMPORTED COMMERCIAL RICE' ? 'leaf' :
+                    category === 'LOCAL COMMERCIAL RICE' ? 'leaf' :
+                    category === 'CORN' ? 'flower' :
+                    category === 'FISH' ? 'fish' :
+                    category === 'LIVESTOCK & POULTRY PRODUCTS' ? 'restaurant' :
+                    category === 'LOWLAND VEGETABLES' ? 'nutrition' :
+                    category === 'HIGHLAND VEGETABLES' ? 'nutrition' :
+                    category === 'SPICES' ? 'flame' :
+                    category === 'FRUITS' ? 'happy' : 'basket'
+                  }
+                  size={20} 
+                  color={selectedCategory === category ? "#fff" : GREEN} 
+                />
+                <Text style={[
+                  styles.priceModalItemText,
+                  selectedCategory === category && styles.priceModalItemTextActive
+                ]}>
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 
   return (
     <View style={styles.container}>
@@ -896,8 +1123,148 @@ export default function HomeScreen() {
         </>
       )}
       
-      <ScrollView style={[styles.content, { paddingTop: activeNav === 'home' ? 60 : 0 }]} showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[GREEN]} tintColor={GREEN} />}>
+      {activeNav === 'tutorial' ? (
+        // Price Monitoring - Use FlatList directly without ScrollView wrapper
+        <View style={[styles.priceMonitoringContainer, { paddingTop: 10 }]}>
+          {/* Header */}
+          <View style={styles.priceHeader}>
+            <Text style={styles.priceHeaderTitle}>Price Monitoring</Text>
+          </View>
+
+          {/* Last Updated Info */}
+          {lastUpdated && (
+            <View style={styles.priceUpdateInfo}>
+              <Ionicons name="time" size={16} color={LIGHT_GREEN} />
+              <Text style={styles.priceUpdateText}>Last updated: {lastUpdated}</Text>
+            </View>
+          )}
+          
+          {/* Data Source Info */}
+          <View style={styles.priceDataSourceInfo}>
+            <Ionicons name="library" size={16} color={LIGHT_GREEN} />
+            <Text style={styles.priceDataSourceText}>Data Source: DA Philippines Weekly Average Retail Prices (Seasonal Forecasts)</Text>
+          </View>
+
+          {/* Error Display */}
+          {priceError && (
+            <View style={styles.priceErrorContainer}>
+              <Ionicons name="warning" size={20} color="#ff6b6b" />
+              <Text style={styles.priceErrorText}>{priceError}</Text>
+            </View>
+          )}
+
+          {/* Search Bar */}
+          <View style={styles.priceSearchContainer}>
+            <View style={styles.priceSearchInputContainer}>
+              <Ionicons name="search" size={20} color="#666" style={styles.priceSearchIcon} />
+              <TextInput
+                style={styles.priceSearchInput}
+                placeholder="Search for a product..."
+                placeholderTextColor="#999"
+                value={priceSearchQuery}
+                onChangeText={setPriceSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {priceSearchQuery.length > 0 && (
+                <TouchableOpacity
+                  style={styles.priceClearButton}
+                  onPress={() => setPriceSearchQuery('')}
+                >
+                  <Ionicons name="close-circle" size={20} color="#666" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Filter Buttons */}
+          <View style={styles.priceFilterButtonsContainer}>
+            <TouchableOpacity
+              style={[
+                styles.priceFilterButton,
+                selectedCategory === null && styles.priceFilterButtonActive
+              ]}
+              onPress={() => setSelectedCategory(null)}
+            >
+              <Ionicons 
+                name="apps" 
+                size={20} 
+                color={selectedCategory === null ? "#fff" : GREEN} 
+              />
+              <Text style={[
+                styles.priceFilterButtonText,
+                selectedCategory === null && styles.priceFilterButtonTextActive
+              ]}>
+                All
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.priceFilterButton,
+                selectedCategory !== null && styles.priceFilterButtonActive
+              ]}
+              onPress={() => setShowCommodityModal(true)}
+            >
+              <Ionicons 
+                name="basket" 
+                size={20} 
+                color={selectedCategory !== null ? "#fff" : GREEN} 
+              />
+              <Text style={[
+                styles.priceFilterButtonText,
+                selectedCategory !== null && styles.priceFilterButtonTextActive
+              ]}>
+                {selectedCategory || 'Commodities'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Commodity List */}
+          {priceLoading ? (
+            <View style={styles.priceLoadingContainer}>
+              <ActivityIndicator size="large" color={GREEN} />
+              <Text style={styles.priceLoadingText}>Fetching latest prices...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredCommodities}
+              renderItem={renderCommodityItem}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[styles.priceCommodityList, { paddingBottom: 100 }]}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={priceRefreshing}
+                  onRefresh={onPriceRefresh}
+                  colors={[GREEN]}
+                  tintColor={GREEN}
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.priceEmptyState}>
+                  <Ionicons name="search" size={60} color={LIGHT_GREEN} />
+                  <Text style={styles.priceEmptyTitle}>No commodities found</Text>
+                  <Text style={styles.priceEmptySubtitle}>
+                    {priceSearchQuery.trim() 
+                      ? `No products found matching "${priceSearchQuery}"`
+                      : selectedCategory 
+                        ? `No commodities found in ${selectedCategory} category`
+                        : 'Try selecting a different category or check your internet connection.'
+                    }
+                  </Text>
+                </View>
+              }
+            />
+          )}
+          
+          {/* Commodity Selection Modal */}
+          {renderCommodityModal()}
+        </View>
+      ) : (
+        // Home content - Use ScrollView
+        <ScrollView style={[styles.content, { paddingTop: activeNav === 'home' ? 60 : 0 }]} showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[GREEN]} tintColor={GREEN} />}>
         {/* Home Navigation Buttons */}
         {activeNav === 'home' && (
           <>
@@ -940,26 +1307,16 @@ export default function HomeScreen() {
                   <Text style={styles.toolDescription}>Weather & crop predictions</Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity 
-                  style={styles.toolCard}
-                  onPress={() => router.push('/price-monitoring')}
-                >
-                  <View style={styles.toolIconContainer}>
-                    <Ionicons name="analytics" size={28} color={GREEN} />
-        </View>
-                  <Text style={styles.toolTitle}>Price Monitoring</Text>
-                  <Text style={styles.toolDescription}>Market price tracking</Text>
-                </TouchableOpacity>
                 
                 <TouchableOpacity 
                   style={styles.toolCard}
-                  onPress={() => router.push('/planting-report')}
+                  onPress={() => setActiveNav('announcements')}
                 >
                   <View style={styles.toolIconContainer}>
-                    <Ionicons name="leaf" size={28} color={GREEN} />
+                    <Ionicons name="megaphone" size={28} color={GREEN} />
                   </View>
-                  <Text style={styles.toolTitle}>Planting Report</Text>
-                  <Text style={styles.toolDescription}>Crop planning & tracking</Text>
+                  <Text style={[styles.toolTitle, { fontSize: 14 }]}>Announcements</Text>
+                  <Text style={[styles.toolDescription, { fontSize: 12 }]}>Farm updates & news</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
@@ -975,17 +1332,17 @@ export default function HomeScreen() {
                 
                 <TouchableOpacity 
                   style={styles.toolCard}
-                  onPress={() => setActiveNav('announcements')}
+                  onPress={() => router.push('/planting-report')}
                 >
                   <View style={styles.toolIconContainer}>
-                    <Ionicons name="megaphone" size={28} color={GREEN} />
+                    <Ionicons name="leaf" size={28} color={GREEN} />
                   </View>
-                  <Text style={[styles.toolTitle, { fontSize: 14 }]}>Announcements</Text>
-                  <Text style={[styles.toolDescription, { fontSize: 12 }]}>Farm updates & news</Text>
+                  <Text style={styles.toolTitle}>Planting Report</Text>
+                  <Text style={styles.toolDescription}>Crop planning & tracking</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
-                  style={styles.toolCard}
+                  style={[styles.toolCard, styles.centeredToolCard]}
                   onPress={() => setActiveNav('messages')}
                 >
                   <View style={styles.toolIconContainer}>
@@ -1639,7 +1996,11 @@ export default function HomeScreen() {
             </View>
           </View>
         )}
-      </ScrollView>
+
+        {/* Commodity Selection Modal */}
+        {renderCommodityModal()}
+        </ScrollView>
+      )}
       
       {/* Bottom Navigation Bar */}
       <View style={styles.bottomNav}>
@@ -1864,6 +2225,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f0f0f0',
     minHeight: 140,
+  },
+  centeredToolCard: {
+    alignSelf: 'center',
+    marginLeft: 'auto',
+    marginRight: 'auto',
   },
   toolIconContainer: {
     width: 70,
@@ -2845,4 +3211,386 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  // Price monitoring styles
+  priceMonitoringContainer: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  priceHeader: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    marginBottom: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  priceHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: GREEN,
+    textAlign: 'center',
+  },
+  priceUpdateInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    backgroundColor: '#f0f8f0',
+  },
+  priceUpdateText: {
+    fontSize: 12,
+    color: LIGHT_GREEN,
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  priceDataSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: '#f0f8f0',
+  },
+  priceDataSourceText: {
+    fontSize: 11,
+    color: GREEN,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  priceErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffe6e6',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    marginVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ffb3b3',
+  },
+  priceErrorText: {
+    fontSize: 14,
+    color: '#d63031',
+    marginLeft: 8,
+    flex: 1,
+  },
+  priceSearchContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+  },
+  priceSearchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  priceSearchIcon: {
+    marginRight: 10,
+  },
+  priceSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 0,
+  },
+  priceClearButton: {
+    padding: 5,
+    marginLeft: 10,
+  },
+  priceFilterButtonsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'space-between',
+  },
+  priceFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: LIGHT_GREEN,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    flex: 0.48,
+    justifyContent: 'center',
+  },
+  priceFilterButtonActive: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  priceFilterButtonText: {
+    fontSize: 16,
+    color: GREEN,
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+  priceFilterButtonTextActive: {
+    color: '#fff',
+  },
+  priceLoadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  priceLoadingText: {
+    color: GREEN,
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 15,
+  },
+  priceCommodityList: {
+    paddingHorizontal: 20,
+    paddingTop: 0,
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
+  priceCommodityCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 10,
+    marginTop: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  priceCommodityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  priceCommodityInfo: {
+    flex: 1,
+  },
+  priceCommodityName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f3d2a',
+    marginBottom: 4,
+  },
+  priceCommodityCategory: {
+    fontSize: 14,
+    color: LIGHT_GREEN,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  priceContainer: {
+    alignItems: 'flex-end',
+  },
+  priceCurrentPrice: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: GREEN,
+  },
+  priceUnit: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  priceNoPriceText: {
+    fontSize: 16,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  priceChangeContainer: {
+    marginBottom: 12,
+  },
+  priceChangeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  priceIncrease: {
+    backgroundColor: '#e8f5e8',
+  },
+  priceDecrease: {
+    backgroundColor: '#ffeaea',
+  },
+  priceChangeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+    color: GREEN,
+  },
+  priceForecastContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+  },
+  priceForecastTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f3d2a',
+    marginBottom: 12,
+  },
+  priceForecastGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  priceForecastItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  priceForecastLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  priceForecastPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: GREEN,
+  },
+  priceTrendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  priceTrendUp: {
+    backgroundColor: '#4caf50',
+  },
+  priceTrendDown: {
+    backgroundColor: '#f44336',
+  },
+  priceTrendStable: {
+    backgroundColor: '#ff9800',
+  },
+  priceTrendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+    marginLeft: 4,
+  },
+  priceFactorsContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  priceFactorsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0f3d2a',
+    marginBottom: 4,
+  },
+  priceFactorText: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 2,
+    lineHeight: 16,
+  },
+  priceLastUpdated: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'right',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  priceEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  priceEmptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f3d2a',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  priceEmptySubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  priceModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  priceModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  priceModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  priceModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+  },
+  priceModalCloseButton: {
+    padding: 5,
+  },
+  priceModalScrollView: {
+    maxHeight: 400,
+  },
+  priceModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  priceModalItemActive: {
+    backgroundColor: '#f0f8f0',
+  },
+  priceModalItemText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 12,
+    fontWeight: '500',
+  },
+  priceModalItemTextActive: {
+    color: GREEN,
+    fontWeight: '600',
+  },
+
 });
