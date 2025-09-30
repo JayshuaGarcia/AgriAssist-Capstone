@@ -1,37 +1,25 @@
 {
   "cli": {
-    "version": ">= 5.9.1"
+    "version": ">= 5.9.1",
+    "appVersionSource": "remote"
   },
   "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "resourceClass": "m-medium"
-      },
-      "env": {
-        "EXPO_UPDATES_ENABLED": "false"
-      }
-    },
     "preview": {
-      "distribution": "internal",
-      "ios": {
-        "resourceClass": "m-medium"
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
       },
       "env": {
         "EXPO_UPDATES_ENABLED": "false"
       }
     },
     "production": {
-      "ios": {
-        "resourceClass": "m-medium"
+      "android": {
+        "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_UPDATES_ENABLED": "false"
+        "EXPO_UPDATES_ENABLED": "true"
       }
     }
-  },
-  "submit": {
-    "production": {}
   }
-} 
+}
