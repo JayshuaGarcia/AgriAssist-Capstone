@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -28,7 +28,7 @@ export default function AboutScreen() {
       {/* Content */}
       <View style={styles.content}>
         <View style={styles.logoContainer}>
-          <Ionicons name="leaf" size={80} color={GREEN} />
+          <Image source={require('../assets/images/Logo.png')} style={styles.logoImage} resizeMode="contain" />
         </View>
         
         <Text style={styles.appName}>AgriAssist</Text>
@@ -103,10 +103,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f0f8f0',
-    borderRadius: 60,
+    borderRadius: 20,
     marginBottom: 20,
     borderWidth: 2,
     borderColor: '#e0f2e0',
+  },
+  logoImage: {
+    width: 80,
+    height: 80,
+    resizeMode: 'contain',
   },
   appName: {
     fontSize: 32,

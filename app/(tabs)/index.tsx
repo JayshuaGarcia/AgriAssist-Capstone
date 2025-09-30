@@ -7,6 +7,7 @@ import { useAnnouncements } from '../../components/AnnouncementContext';
 import { useAuth } from '../../components/AuthContext';
 import { useNotification } from '../../components/NotificationContext';
 import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
+import { useNavigationBar } from '../../hooks/useNavigationBar';
 import { db } from '../../lib/firebase';
 
 const GREEN = '#16543a';
@@ -59,6 +60,9 @@ export default function HomeScreen() {
   const { user, profile, logout } = useAuth();
   const { announcements, loading: announcementsLoading, error: announcementsError, loadAnnouncements } = useAnnouncements();
   const { showNotification } = useNotification();
+  
+  // Configure navigation bar to be hidden (same as admin)
+  useNavigationBar('hidden');
   const [activeNav, setActiveNav] = useState('home');
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1732,7 +1736,7 @@ const styles = StyleSheet.create({
   },
   homeContainer: {
     marginTop: 20,
-    paddingBottom: 20,
+    paddingBottom: 120, // Increased padding to ensure Requirements section is fully visible above bottom navigation
   },
   heroSection: {
     flexDirection: 'column',
@@ -1890,6 +1894,7 @@ const styles = StyleSheet.create({
   quickAccessSection: {
     backgroundColor: '#fff',
     padding: 25,
+    paddingBottom: 30, // Extra bottom padding for better visibility
     borderRadius: 25,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1898,6 +1903,7 @@ const styles = StyleSheet.create({
     elevation: 6,
     borderWidth: 1,
     borderColor: '#f0f0f0',
+    marginBottom: 20, // Additional margin to separate from bottom navigation
   },
   quickAccessTitle: {
     fontSize: 22,
@@ -2214,6 +2220,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
     paddingVertical: 12,
+    paddingBottom: 20, // Extra bottom padding for safe area
     paddingHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },

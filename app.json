@@ -16,11 +16,30 @@
         "foregroundImage": "./assets/images/Logo.png",
         "backgroundColor": "#16543a"
       },
-      "package": "com.agriassist.app"
+      "package": "com.agriassist.app",
+      "navigationBar": {
+        "visible": false,
+        "backgroundColor": "transparent",
+        "height": 0
+      },
+      "softwareKeyboardLayoutMode": "pan",
+      "statusBar": {
+        "hidden": true,
+        "backgroundColor": "transparent"
+      },
+      "edgeToEdge": false
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-navigation-bar",
+        {
+          "backgroundColor": "transparent",
+          "height": 0,
+          "visible": false
+        }
+      ]
     ],
     "updates": {
       "enabled": false,

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
+import { useNavigationBar } from '../hooks/useNavigationBar';
 
 const GREEN = '#16543a';
 const BUTTON_GREEN = '#39796b';
@@ -18,6 +19,9 @@ export default function LoginScreen() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const { login, forgotPassword, loading: authLoading } = useAuth();
+  
+  // Hide the Android navigation bar
+  useNavigationBar();
   const router = useRouter();
 
   const handleLogin = async () => {
@@ -48,22 +52,8 @@ export default function LoginScreen() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      Alert.alert('Error', 'Please enter your email address first');
-      return;
-    }
-
-    try {
-      await forgotPassword(email);
-      Alert.alert(
-        'Password Reset Email Sent',
-        'Please check your email for instructions to reset your password.',
-        [{ text: 'OK' }]
-      );
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    }
+  const handleForgotPassword = () => {
+    router.push('/forgot-password');
   };
 
   return (
@@ -132,6 +122,7 @@ export default function LoginScreen() {
               {loading || authLoading ? 'Logging In...' : 'Log In'}
             </Text>
           </TouchableOpacity>
+          
           
           <View style={styles.signupContainer}>
             <Text style={styles.signupText}>Don't Have an Account yet? </Text>

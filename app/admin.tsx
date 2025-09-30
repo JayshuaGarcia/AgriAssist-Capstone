@@ -9,6 +9,7 @@ import { useAuth } from '../components/AuthContext';
 import { useNotification } from '../components/NotificationContext';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
 import { OFFICIAL_PRODUCTS, Product } from '../constants/ProductData';
+import { useNavigationBar } from '../hooks/useNavigationBar';
 import { db } from '../lib/firebase';
 
 const { width } = Dimensions.get('window');
@@ -17,6 +18,9 @@ const GREEN = '#16543a';
 export default function AdminPage() {
   const router = useRouter();
   const { user, profile, logout } = useAuth();
+  
+  // Configure navigation bar to be hidden
+  useNavigationBar('hidden');
 
   // Check admin authentication
   useEffect(() => {

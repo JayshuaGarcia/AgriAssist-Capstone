@@ -4,6 +4,7 @@ import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
+import { useNavigationBar } from '../hooks/useNavigationBar';
 import { db } from '../lib/firebase';
 
 const GREEN = '#16543a';
@@ -18,6 +19,9 @@ export default function UserChatPage() {
   const params = useLocalSearchParams();
   const { contactId, contactName, contactEmail } = params;
   const { user } = useAuth();
+  
+  // Configure navigation bar to be hidden (same as admin)
+  useNavigationBar('hidden');
 
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');

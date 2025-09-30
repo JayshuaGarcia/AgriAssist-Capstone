@@ -2,9 +2,12 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { forceFullScreen, useFullScreen } from '@/hooks/useFullScreen';
+import { forceHideNavigationBar, useNavigationBar } from '@/hooks/useNavigationBar';
 import { AnnouncementProvider } from '../components/AnnouncementContext';
 import { AuthProvider } from '../components/AuthContext';
 import { NotificationProvider } from '../components/NotificationContext';
@@ -18,6 +21,16 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+
+  // Hide the Android navigation bar completely
+  useNavigationBar('hidden');
+  useFullScreen();
+  
+  // Force hide navigation bar on app start
+  useEffect(() => {
+    forceHideNavigationBar();
+    forceFullScreen();
+  }, []);
 
   if (!loaded) {
     // Async font loading only occurs in development.
@@ -35,6 +48,7 @@ export default function RootLayout() {
               <Stack>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 <Stack.Screen name="login" options={{ headerShown: false }} />
+                <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
                 <Stack.Screen name="signup" options={{ headerShown: false }} />
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="notifications" options={{ headerShown: false }} />

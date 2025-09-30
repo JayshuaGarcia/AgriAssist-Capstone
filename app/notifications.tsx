@@ -37,37 +37,10 @@ export default function NotificationSettingsScreen() {
         <View style={styles.card}>
           <SettingRow
             icon="notifications"
-            label="Push notifications"
-            description="Receive alerts on your device"
+            label="Notification"
+            description="Receive notifications for messages and new announcements"
             value={settings.pushEnabled}
             onValueChange={(v) => updateSettings({ pushEnabled: v })}
-          />
-          <SettingRow
-            icon="mail"
-            label="Email notifications"
-            description="Send updates to your inbox"
-            value={settings.emailEnabled}
-            onValueChange={(v) => updateSettings({ emailEnabled: v })}
-            borderTop
-          />
-          <SettingRow
-            icon="chatbubbles"
-            label="SMS notifications"
-            description="Text message alerts"
-            value={settings.smsEnabled}
-            onValueChange={(v) => updateSettings({ smsEnabled: v })}
-            borderTop
-          />
-        </View>
-
-        <Text style={styles.sectionTitle}>Summaries</Text>
-        <View style={styles.card}>
-          <SettingRow
-            icon="calendar"
-            label="Daily summary"
-            description="One digest per day"
-            value={settings.dailySummaryEnabled}
-            onValueChange={(v) => updateSettings({ dailySummaryEnabled: v })}
           />
         </View>
 
@@ -84,8 +57,8 @@ function SettingRow({ icon, label, description, value, onValueChange, borderTop 
   return (
     <View style={[styles.row, borderTop && styles.rowBorderTop]}>
       <View style={styles.rowLeft}>
-        <Ionicons name={icon} size={22} color={GREEN} />
-        <View style={{ marginLeft: 12 }}>
+        <Ionicons name={icon} size={20} color={GREEN} />
+        <View style={{ marginLeft: 10, flex: 1 }}>
           <Text style={styles.rowLabel}>{label}</Text>
           <Text style={styles.rowDescription}>{description}</Text>
         </View>
@@ -95,6 +68,7 @@ function SettingRow({ icon, label, description, value, onValueChange, borderTop 
         onValueChange={onValueChange}
         thumbColor={value ? GREEN : '#f4f3f4'}
         trackColor={{ false: '#d1d5db', true: LIGHT_GREEN }}
+        style={{ marginLeft: 8 }}
       />
     </View>
   );
@@ -158,7 +132,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 18
+    paddingVertical: 18,
+    paddingHorizontal: 4
   },
   rowBorderTop: {
     borderTopWidth: 1,
@@ -166,17 +141,20 @@ const styles = StyleSheet.create({
   },
   rowLeft: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12
   },
   rowLabel: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: GREEN,
     marginBottom: 2,
   },
   rowDescription: {
-    fontSize: 12,
-    color: '#555'
+    fontSize: 11,
+    color: '#555',
+    lineHeight: 14
   },
   resetButton: {
     marginTop: 16,
