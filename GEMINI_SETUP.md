@@ -137,3 +137,4 @@ Once the basic integration is working, you can enhance the feature with:
 - Price alerts and notifications
 - Regional price comparisons
 - Export functionality for price data
+

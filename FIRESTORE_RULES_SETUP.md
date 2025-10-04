@@ -174,3 +174,4 @@ These rules ensure that:
 - Admins can access all data for management purposes
 - All operations require authentication
 - Data is properly isolated between users
+

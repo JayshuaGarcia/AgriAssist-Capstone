@@ -3256,6 +3256,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
     minWidth: 160,
+    marginTop: -10,
+    marginBottom: 20,
   },
   submitButtonText: {
     color: WHITE,

@@ -1295,7 +1295,8 @@ export default function HomeScreen() {
                 <Text style={styles.sectionSubtitle}>Professional farming solutions</Text>
               </View>
               
-              <View style={styles.toolsGrid}>
+              {/* Top Row - Tools & Communication */}
+              <View style={styles.toolsRow}>
                 <TouchableOpacity 
                   style={styles.toolCard}
                   onPress={() => setActiveNav('forecast')}
@@ -1307,7 +1308,6 @@ export default function HomeScreen() {
                   <Text style={styles.toolDescription}>Weather & crop predictions</Text>
                 </TouchableOpacity>
                 
-                
                 <TouchableOpacity 
                   style={styles.toolCard}
                   onPress={() => setActiveNav('announcements')}
@@ -1318,7 +1318,10 @@ export default function HomeScreen() {
                   <Text style={[styles.toolTitle, { fontSize: 14 }]}>Announcements</Text>
                   <Text style={[styles.toolDescription, { fontSize: 12 }]}>Farm updates & news</Text>
                 </TouchableOpacity>
-                
+              </View>
+              
+              {/* Bottom Row - Reports */}
+              <View style={styles.toolsRow}>
                 <TouchableOpacity 
                   style={styles.toolCard}
                   onPress={() => router.push('/harvest-report')}
@@ -1340,7 +1343,10 @@ export default function HomeScreen() {
                   <Text style={styles.toolTitle}>Planting Report</Text>
                   <Text style={styles.toolDescription}>Crop planning & tracking</Text>
                 </TouchableOpacity>
-                
+              </View>
+              
+              {/* Messages - Centered */}
+              <View style={styles.messagesContainer}>
                 <TouchableOpacity 
                   style={[styles.toolCard, styles.centeredToolCard]}
                   onPress={() => setActiveNav('messages')}
@@ -2209,6 +2215,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+  },
+  toolsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  messagesContainer: {
+    alignItems: 'center',
+    marginTop: 10,
   },
   toolCard: {
     width: '48%',

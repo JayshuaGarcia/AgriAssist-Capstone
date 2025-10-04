@@ -176,3 +176,4 @@ const currentPrice = basePrice + variance; // ₱45-47/kg
 | **Market Analysis** | Generic | Detailed insights |
 
 The current system is a **demonstration** showing how the interface would work with real data, but the actual prices are simulated for testing purposes.
+

@@ -4,7 +4,7 @@
     "slug": "agriassist",
     "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/images/agriassist-logo.png",
+    "icon": "./assets/images/Iconlogo.png",
     "splash": {
       "image": "./assets/images/agriassist-logo.png",
       "resizeMode": "contain",
@@ -14,12 +14,14 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.agriassist.app"
+      "bundleIdentifier": "com.agriassist.app",
+      "icon": "./assets/images/Iconlogo.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/agriassist-logo.png",
-        "backgroundColor": "#16543a"
+        "foregroundImage": "./assets/images/Iconlogo.png",
+        "backgroundColor": "#16543a",
+        "monochromeImage": "./assets/images/Iconlogo.png"
       },
       "package": "com.agriassist.app",
       "softwareKeyboardLayoutMode": "pan"
@@ -28,13 +30,14 @@
       "expo-router",
       "expo-font",
       [
-        "expo-navigation-bar",
-        {
-          "backgroundColor": "transparent",
-          "visible": false,
-          "behavior": "overlay-swipe"
-        }
-      ]
+  "expo-navigation-bar",
+  {
+    "backgroundColor": "#000000", 
+    "visible": false,
+    "behavior": "overlay-swipe"
+  }
+]
+
     ],
     "updates": {
       "enabled": false,

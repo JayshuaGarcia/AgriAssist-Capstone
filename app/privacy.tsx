@@ -200,14 +200,6 @@ export default function PrivacySettingsScreen() {
     }
   };
 
-  const resetPasswordChangeForm = () => {
-    setOldPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setPasswordChangeError('');
-    setPasswordChangeSuccess(false);
-    setShowPasswords({ old: false, new: false, confirm: false });
-  };
 
 
   return (
@@ -507,26 +499,16 @@ export default function PrivacySettingsScreen() {
             </View>
           )}
           
-          <View style={styles.passwordButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.passwordSecondaryButton]}
-              onPress={resetPasswordChangeForm}
-            >
-              <Ionicons name="refresh" size={18} color={GREEN} />
-              <Text style={[styles.actionButtonText, { color: GREEN }]}>Clear</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.actionButton, (!oldPassword || !newPassword || !confirmPassword || isChangingPassword) && styles.actionButtonDisabled]}
-              onPress={handleChangePassword}
-              disabled={!oldPassword || !newPassword || !confirmPassword || isChangingPassword}
-            >
-              <Ionicons name={passwordChangeSuccess ? "checkmark" : "lock-closed"} size={18} color="#fff" />
-              <Text style={styles.actionButtonText}>
-                {isChangingPassword ? "Changing..." : passwordChangeSuccess ? "Changed!" : "Change Password"}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.actionButton, (!oldPassword || !newPassword || !confirmPassword || isChangingPassword) && styles.actionButtonDisabled]}
+            onPress={handleChangePassword}
+            disabled={!oldPassword || !newPassword || !confirmPassword || isChangingPassword}
+          >
+            <Ionicons name={passwordChangeSuccess ? "checkmark" : "lock-closed"} size={18} color="#fff" />
+            <Text style={styles.actionButtonText}>
+              {isChangingPassword ? "Changing..." : passwordChangeSuccess ? "Changed!" : "Change Password"}
+            </Text>
+          </TouchableOpacity>
         </View>
         
         {/* Spacing between sections */}
@@ -1056,11 +1038,6 @@ const styles = StyleSheet.create({
   passwordChangeEyeButton: {
     padding: 4,
     marginLeft: 8,
-  },
-  passwordButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
   },
   // Password change specific styles
   passwordErrorContainer: {

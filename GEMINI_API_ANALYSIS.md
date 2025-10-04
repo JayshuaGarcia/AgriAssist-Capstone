@@ -152,3 +152,4 @@ const currentPrice = basePrice * weekendMultiplier; // ₱47.25/kg
 ```
 
 The current system provides a **demonstration** of the concept, but for **production use**, the Gemini API needs to be fixed to provide real, accurate price data from DA Philippines.
+

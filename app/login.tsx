@@ -97,7 +97,7 @@ export default function LoginScreen() {
                 includeFontPadding: false,
                 textAlignVertical: 'center'
               }]}
-              placeholder="Password"
+              placeholder="      Password"
               placeholderTextColor={GREEN}
               value={password}
               onChangeText={setPassword}

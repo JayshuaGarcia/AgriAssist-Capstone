@@ -125,3 +125,4 @@ The new system uses:
 - **Commodity-Specific Logic**: Different behavior per commodity type
 
 This provides **significantly more accurate prices** that reflect real DA Philippines monitoring patterns and market behavior.
+

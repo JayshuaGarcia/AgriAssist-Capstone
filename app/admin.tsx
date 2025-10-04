@@ -1441,7 +1441,8 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                 <Text style={styles.sectionSubtitle}>Manage your agricultural system</Text>
               </View>
               
-              <View style={styles.toolsGrid}>
+              {/* Top Row - Communication Tools */}
+              <View style={styles.toolsRow}>
                 <TouchableOpacity 
                   style={styles.toolCard}
                   onPress={() => setActiveNav('announcements')}
@@ -1463,7 +1464,10 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                   <Text style={styles.toolTitle}>Messages</Text>
                   <Text style={styles.toolDescription}>Communicate with farmers</Text>
                 </TouchableOpacity>
-                
+              </View>
+              
+              {/* Bottom Row - Records Tools */}
+              <View style={styles.toolsRow}>
                 <TouchableOpacity 
                   style={styles.toolCard}
                   onPress={() => setActiveNav('planting-records')}
@@ -1485,7 +1489,10 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                   <Text style={styles.toolTitle}>Harvest Records</Text>
                   <Text style={styles.toolDescription}>View and manage harvest data</Text>
                 </TouchableOpacity>
-                
+              </View>
+              
+              {/* Farmers Records - Centered */}
+              <View style={styles.farmersRecordsContainer}>
                 <TouchableOpacity 
                   style={[styles.toolCard, styles.centeredToolCard]}
                   onPress={() => setActiveNav('farmers-records')}
@@ -3379,6 +3386,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+  },
+  toolsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  farmersRecordsContainer: {
+    alignItems: 'center',
+    marginTop: 10,
   },
   toolCard: {
     width: '48%',
