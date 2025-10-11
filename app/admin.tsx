@@ -196,6 +196,16 @@ export default function AdminPage() {
   const [harvestRecords, setHarvestRecords] = useState<any[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(false);
   
+  // Global analytics state (for planting)
+  const [globalAnalytics, setGlobalAnalytics] = useState<any>(null);
+  const [globalLoading, setGlobalLoading] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  
+  // Global harvest analytics state
+  const [globalHarvestAnalytics, setGlobalHarvestAnalytics] = useState<any>(null);
+  const [globalHarvestLoading, setGlobalHarvestLoading] = useState(false);
+  const [selectedHarvestMonth, setSelectedHarvestMonth] = useState(new Date());
+  
   // Grouped records state (messaging style)
   const [groupedPlantingRecords, setGroupedPlantingRecords] = useState<any[]>([]);
   const [groupedHarvestRecords, setGroupedHarvestRecords] = useState<any[]>([]);
@@ -975,8 +985,273 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
   useEffect(() => {
     if (activeNav === 'planting-records' || activeNav === 'harvest-records') {
       loadRecords();
+      loadGlobalAnalytics();
     }
   }, [activeNav]);
+
+  // Reload analytics when selectedMonth changes
+  useEffect(() => {
+    if (activeNav === 'planting-records') {
+      loadGlobalAnalytics();
+    }
+  }, [selectedMonth]);
+
+  // Load global analytics
+  const loadGlobalAnalytics = async () => {
+    setGlobalLoading(true);
+    try {
+      // Get all planting reports
+      const allReportsQuery = query(collection(db, 'plantingReports'));
+      const allReportsSnapshot = await getDocs(allReportsQuery);
+      let allReports = allReportsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // Filter by selected month if provided
+      if (selectedMonth) {
+        const targetMonth = selectedMonth.getMonth() + 1; // 1-12
+        const targetYear = selectedMonth.getFullYear();
+        const currentDate = new Date();
+        const currentMonth = currentDate.getMonth() + 1;
+        const currentYear = currentDate.getFullYear();
+        
+        allReports = allReports.filter(report => {
+          // If report has month/year data, filter by it
+          if (report.plantingMonth && report.plantingYear) {
+            return report.plantingMonth === targetMonth && report.plantingYear === targetYear;
+          }
+          // If report doesn't have month/year data (old reports), only show for current month
+          else if (targetMonth === currentMonth && targetYear === currentYear) {
+            return true; // Show old reports only for current month
+          }
+          return false; // Don't show old reports for other months
+        });
+      }
+
+      // Get unique users
+      const uniqueUsers = [...new Set(allReports.map(report => report.userId))];
+      
+      // Calculate global crop distribution
+      const globalCropCounts: { [key: string]: number } = {};
+      const cropUserCounts: { [key: string]: Set<string> } = {};
+      
+      allReports.forEach(report => {
+        const plantCount = typeof report.plantCount === 'number' ? report.plantCount : parseInt(report.plantCount) || 0;
+        globalCropCounts[report.crop] = (globalCropCounts[report.crop] || 0) + plantCount;
+        
+        // Track unique users for each crop
+        if (!cropUserCounts[report.crop]) {
+          cropUserCounts[report.crop] = new Set();
+        }
+        cropUserCounts[report.crop].add(report.userId);
+      });
+
+      const totalGlobalPlants = Object.values(globalCropCounts).reduce((sum, count) => sum + count, 0);
+      
+      // Find most popular crop
+      const mostPopularCrop = Object.keys(globalCropCounts).reduce((a, b) => 
+        globalCropCounts[a] > globalCropCounts[b] ? a : b, ''
+      );
+
+      // Create color palette for crops
+      const colors = [
+        '#16543a', '#74bfa3', '#a8d5ba', '#c8e6c9', '#e8f5e8',
+        '#2E8B57', '#3CB371', '#20B2AA', '#48CAE4', '#90E0EF',
+        '#FF6B6B', '#FF8E53', '#FF6B35', '#F7931E', '#FFD23F'
+      ];
+
+      // Create distribution with colors
+      const cropDistribution = Object.entries(globalCropCounts)
+        .map(([crop, count], index) => ({
+          crop,
+          count,
+          userCount: cropUserCounts[crop] ? cropUserCounts[crop].size : 0,
+          percentage: totalGlobalPlants > 0 ? Math.round((count / totalGlobalPlants) * 100) : 0,
+          color: colors[index % colors.length]
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      setGlobalAnalytics({
+        totalPlants: totalGlobalPlants,
+        totalUsers: uniqueUsers.length,
+        mostPopularCrop,
+        cropDistribution
+      });
+
+    } catch (error) {
+      console.error('Error loading global analytics:', error);
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
+
+  // Calculate global analytics
+  const calculateGlobalAnalytics = (reports: any[]) => {
+    const cropDistribution: { [key: string]: { total: number, userCount: number } } = {};
+    const farmersPerCrop: { [key: string]: Set<string> } = {};
+    
+    reports.forEach(report => {
+      const crop = report.crop;
+      const userId = report.userId || report.farmerEmail || report.userEmail;
+      
+      if (!cropDistribution[crop]) {
+        cropDistribution[crop] = { total: 0, userCount: 0 };
+        farmersPerCrop[crop] = new Set();
+      }
+      
+      cropDistribution[crop].total += report.plantCount || 0;
+      farmersPerCrop[crop].add(userId);
+    });
+
+    // Update userCount with actual unique users
+    Object.keys(cropDistribution).forEach(crop => {
+      cropDistribution[crop].userCount = farmersPerCrop[crop].size;
+    });
+
+    const sortedCrops = Object.entries(cropDistribution)
+      .map(([crop, data]) => ({ crop, ...data }))
+      .sort((a, b) => b.total - a.total);
+
+    const sortedFarmers = Object.entries(farmersPerCrop)
+      .map(([crop, farmers]) => ({ crop, farmerCount: farmers.size }))
+      .sort((a, b) => b.farmerCount - a.farmerCount);
+
+    return {
+      cropDistribution: sortedCrops,
+      farmersPerCrop: sortedFarmers,
+      totalPlants: reports.reduce((sum, report) => sum + (report.plantCount || 0), 0),
+      totalUsers: new Set(reports.map(r => r.userId || r.farmerEmail || r.userEmail)).size
+    };
+  };
+
+  // Load global harvest analytics
+  const loadGlobalHarvestAnalytics = async (month: Date) => {
+    setGlobalHarvestLoading(true);
+    try {
+      // Get all harvest reports
+      const harvestQuery = query(collection(db, 'harvestReports'));
+      const harvestSnapshot = await getDocs(harvestQuery);
+      const allHarvestReports = harvestSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // Filter by month - only show records from the selected month
+      const targetMonth = month.getMonth();
+      const targetYear = month.getFullYear();
+      
+      const filteredReports = allHarvestReports.filter(report => {
+        if (!report.harvestDate) return false;
+        
+        const reportDate = new Date(report.harvestDate);
+        const reportMonth = reportDate.getMonth();
+        const reportYear = reportDate.getFullYear();
+        
+        return reportMonth === targetMonth && reportYear === targetYear;
+      });
+
+      // Calculate global analytics
+      calculateGlobalHarvestAnalytics(filteredReports);
+      
+      console.log('✅ Loaded global harvest analytics for', month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), ':', filteredReports.length, 'records');
+    } catch (error) {
+      console.error('Error loading global harvest analytics:', error);
+    } finally {
+      setGlobalHarvestLoading(false);
+    }
+  };
+
+  const calculateGlobalHarvestAnalytics = (reports: any[]) => {
+    if (reports.length === 0) {
+      setGlobalHarvestAnalytics({
+        totalHarvested: 0,
+        totalUsers: 0,
+        mostPopularCrop: '',
+        cropDistribution: []
+      });
+      return;
+    }
+
+    // Calculate total harvested globally
+    const totalHarvested = reports.reduce((sum, report) => {
+      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
+      return sum + harvest;
+    }, 0);
+
+    // Get unique users
+    const uniqueUsers = new Set(reports.map(report => report.userEmail));
+    const totalUsers = uniqueUsers.size;
+
+    // Calculate harvest distribution by crop
+    const cropHarvestMap = new Map();
+    const cropUserMap = new Map();
+
+    reports.forEach(report => {
+      const crop = report.crop;
+      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
+      const userEmail = report.userEmail;
+      
+      // Track harvest amounts
+      if (cropHarvestMap.has(crop)) {
+        const existing = cropHarvestMap.get(crop);
+        cropHarvestMap.set(crop, {
+          count: existing.count + 1,
+          totalHarvest: existing.totalHarvest + harvest
+        });
+      } else {
+        cropHarvestMap.set(crop, {
+          count: 1,
+          totalHarvest: harvest
+        });
+      }
+
+      // Track unique users per crop
+      if (!cropUserMap.has(crop)) {
+        cropUserMap.set(crop, new Set());
+      }
+      cropUserMap.get(crop).add(userEmail);
+    });
+
+    // Convert to array and calculate percentages
+    const cropDistribution = Array.from(cropHarvestMap.entries()).map(([crop, data]) => ({
+      crop,
+      count: data.count,
+      userCount: cropUserMap.get(crop)?.size || 0,
+      totalHarvest: data.totalHarvest,
+      percentage: totalHarvested > 0 ? (data.totalHarvest / totalHarvested) * 100 : 0,
+      color: getCropHarvestColor(crop)
+    })).sort((a, b) => b.totalHarvest - a.totalHarvest);
+
+    // Find most popular crop
+    const mostPopularCrop = cropDistribution.length > 0 ? cropDistribution[0].crop : '';
+
+    setGlobalHarvestAnalytics({
+      totalHarvested,
+      totalUsers,
+      mostPopularCrop,
+      cropDistribution
+    });
+  };
+
+  const getCropHarvestColor = (crop: string) => {
+    // Use consistent green colors like planting report
+    const colors = ['#4CAF50', '#66BB6A', '#81C784', '#A5D6A7', '#C8E6C9', '#E8F5E8'];
+    const index = crop.length % colors.length;
+    return colors[index];
+  };
+
+  // Check if harvest data exists for selected month
+  const hasHarvestDataForMonth = (month: Date) => {
+    if (!globalHarvestAnalytics || !globalHarvestAnalytics.cropDistribution) return false;
+    return globalHarvestAnalytics.cropDistribution.length > 0;
+  };
+
+  // Check if data exists for selected month
+  const hasDataForMonth = (month: Date) => {
+    if (!globalAnalytics) return false;
+    return globalAnalytics.cropDistribution && globalAnalytics.cropDistribution.length > 0;
+  };
 
   // Load farmers data when navigating to farmers-records section
   useEffect(() => {
@@ -1051,8 +1326,8 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         record.id === reportId ? { ...record, read: true } : record
       );
       
-      setGroupedPlantingRecords(groupRecordsByUser(updatedPlanting));
-      setGroupedHarvestRecords(groupRecordsByUser(updatedHarvest));
+      setGroupedPlantingRecords(groupRecordsByUser(updatedPlanting, 'planting'));
+      setGroupedHarvestRecords(groupRecordsByUser(updatedHarvest, 'harvest'));
     }, 100);
   };
 
@@ -1075,7 +1350,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         setPlantingRecords(plantingData);
         
         // Group planting records by user
-        const groupedPlanting = groupRecordsByUser(plantingData);
+        const groupedPlanting = groupRecordsByUser(plantingData, 'planting');
         setGroupedPlantingRecords(groupedPlanting);
         
         console.log('✅ Loaded planting records:', plantingData.length);
@@ -1098,7 +1373,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         setHarvestRecords(harvestData);
         
         // Group harvest records by user
-        const groupedHarvest = groupRecordsByUser(harvestData);
+        const groupedHarvest = groupRecordsByUser(harvestData, 'harvest');
         setGroupedHarvestRecords(groupedHarvest);
         
         console.log('✅ Loaded harvest records:', harvestData.length);
@@ -1109,6 +1384,10 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
         setGroupedHarvestRecords([]);
       }
       
+      // Load global analytics for both planting and harvest
+      await loadGlobalAnalytics();
+      await loadGlobalHarvestAnalytics(selectedHarvestMonth);
+      
       console.log('✅ Records loading completed');
     } catch (error) {
       console.error('❌ Error loading records:', error);
@@ -1118,14 +1397,73 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
     }
   };
 
+  // Crop icon and Tagalog name functions
+  const getCropIcon = (crop: string) => {
+    const cropIcons: { [key: string]: string } = {
+      'Rice': '🌾', 'Corn': '🌽', 'Tomato': '🍅', 'Eggplant': '🍆', 'Squash': '🎃',
+      'Cabbage': '🥬', 'Carrot': '🥕', 'Onion': '🧅', 'Garlic': '🧄', 'Potato': '🥔',
+      'Sweet Potato': '🍠', 'Cassava': '🌿', 'Banana': '🍌', 'Mango': '🥭', 'Papaya': '🍈',
+      'Pineapple': '🍍', 'Coconut': '🥥', 'Coffee': '☕', 'Cacao': '🍫', 'Sugarcane': '🎋',
+      'Peanut': '🥜', 'Soybean': '🫘', 'Mung Bean': '🫘', 'Beans': '🫘', 'Bataw': '🫘',
+      'Chili': '🌶️', 'Bell Pepper': '🫑', 'Cucumber': '🥒', 'Lettuce': '🥬', 'Spinach': '🥬',
+      'Kangkong': '🥬', 'Ampalaya': '🥒', 'Okra': '🥒', 'Radish': '🥕', 'Turnip': '🥕',
+      'Ginger': '🫚', 'Turmeric': '🫚', 'Lemongrass': '🌿', 'Basil': '🌿', 'Oregano': '🌿',
+      'Mint': '🌿', 'Parsley': '🌿', 'Cilantro': '🌿', 'Rosemary': '🌿', 'Thyme': '🌿'
+    };
+    return cropIcons[crop] || '🌱';
+  };
+
+  const getCropTagalogName = (crop: string) => {
+    const cropTagalog: { [key: string]: string } = {
+      'Rice': 'Palay', 'Corn': 'Mais', 'Tomato': 'Kamatis', 'Eggplant': 'Talong', 'Squash': 'Kalabasa',
+      'Cabbage': 'Repolyo', 'Carrot': 'Karot', 'Onion': 'Sibuyas', 'Garlic': 'Bawang', 'Potato': 'Patatas',
+      'Sweet Potato': 'Kamote', 'Cassava': 'Kamoteng Kahoy', 'Banana': 'Saging', 'Mango': 'Mangga', 'Papaya': 'Papaya',
+      'Pineapple': 'Pinya', 'Coconut': 'Niyog', 'Coffee': 'Kape', 'Cacao': 'Kakaw', 'Sugarcane': 'Tubo',
+      'Peanut': 'Mani', 'Soybean': 'Soybean', 'Mung Bean': 'Munggo', 'Beans': 'Patani', 'Bataw': 'Bataw',
+      'Chili': 'Sili', 'Bell Pepper': 'Paminta', 'Cucumber': 'Pipino', 'Lettuce': 'Lettuce', 'Spinach': 'Spinach',
+      'Kangkong': 'Kangkong', 'Ampalaya': 'Ampalaya', 'Okra': 'Okra', 'Radish': 'Labanos', 'Turnip': 'Singkamas',
+      'Ginger': 'Luya', 'Turmeric': 'Luyang Dilaw', 'Lemongrass': 'Tanglad', 'Basil': 'Balanoy', 'Oregano': 'Oregano',
+      'Mint': 'Mentha', 'Parsley': 'Perehil', 'Cilantro': 'Wansoy', 'Rosemary': 'Rosemary', 'Thyme': 'Thyme'
+    };
+    return cropTagalog[crop] || crop;
+  };
+
   // Function to group records by user account
-  const groupRecordsByUser = (records: any[]) => {
+  const groupRecordsByUser = (records: any[], recordType: 'planting' | 'harvest' = 'planting') => {
     const userGroups: { [key: string]: any } = {};
     
-    records.forEach(record => {
-      const userId = record.userId || record.farmerEmail;
-      const userName = record.farmerName || 'Unknown User';
-      const userEmail = record.farmerEmail || 'unknown@email.com';
+    // For harvest records, filter to only show the latest harvest per planting report
+    let processedRecords = records;
+    if (recordType === 'harvest') {
+      const plantingReportMap = new Map();
+      
+      // Group harvest records by plantingReportId and keep only the latest one
+      records.forEach(record => {
+        const plantingReportId = record.plantingReportId;
+        if (plantingReportId) {
+          const existingRecord = plantingReportMap.get(plantingReportId);
+          if (!existingRecord) {
+            plantingReportMap.set(plantingReportId, record);
+          } else {
+            // Compare dates and keep the latest one
+            const currentDate = record.submittedAt?.toDate?.() || record.updatedAt?.toDate?.() || new Date(0);
+            const existingDate = existingRecord.submittedAt?.toDate?.() || existingRecord.updatedAt?.toDate?.() || new Date(0);
+            
+            if (currentDate > existingDate) {
+              plantingReportMap.set(plantingReportId, record);
+            }
+          }
+        }
+      });
+      
+      processedRecords = Array.from(plantingReportMap.values());
+      console.log(`📊 Filtered harvest records: ${records.length} → ${processedRecords.length} (removed duplicates)`);
+    }
+    
+    processedRecords.forEach(record => {
+      const userId = record.userId || record.farmerEmail || record.userEmail;
+      const userName = record.farmerName || record.userName || 'Unknown User';
+      const userEmail = record.farmerEmail || record.userEmail || 'unknown@email.com';
       
       if (!userGroups[userId]) {
         userGroups[userId] = {
@@ -1144,7 +1482,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
       }
       
       // Track latest report date
-      const reportDate = record.submittedAt?.toDate?.() || new Date();
+      const reportDate = record.submittedAt?.toDate?.() || record.updatedAt?.toDate?.() || new Date();
       if (!userGroups[userId].latestReportDate || reportDate > userGroups[userId].latestReportDate) {
         userGroups[userId].latestReportDate = reportDate;
       }
@@ -1169,7 +1507,7 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
     setRecords(updatedRecords);
     
     // Update grouped records
-    const updatedGrouped = groupRecordsByUser(updatedRecords);
+    const updatedGrouped = groupRecordsByUser(updatedRecords, reportType);
     setGroupedRecords(updatedGrouped);
   };
 
@@ -2228,6 +2566,331 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
               Reports grouped by farmer account
             </Text>
 
+            {/* View Records Button */}
+            <TouchableOpacity 
+              style={styles.viewRecordsButton}
+              onPress={() => {
+                setReportType('planting');
+                setShowUserReports(true);
+                setSelectedUserAccount(null);
+              }}
+            >
+              <Ionicons name="list" size={24} color="#2E7D32" />
+              <Text style={styles.viewRecordsButtonTitle}>View Records</Text>
+              <Text style={styles.viewRecordsButtonSubtitle}>View your submitted planting reports</Text>
+            </TouchableOpacity>
+
+            {/* Global Planting Trends */}
+            <View style={styles.globalTrendsCard}>
+              <View style={styles.globalTrendsHeader}>
+                <Text style={styles.globalTrendsTitle}>🌍 Global Planting Trends</Text>
+              </View>
+
+              {globalLoading ? (
+                <View style={styles.analyticsLoadingContainer}>
+                  <Text style={styles.analyticsLoadingText}>Loading analytics...</Text>
+                </View>
+              ) : (
+                <>
+                  {/* Global Crop Distribution */}
+                  <View style={styles.barChartContainer}>
+                    <Text style={styles.barChartTitle}>Global Crop Distribution</Text>
+                    
+                    {/* Month Navigation */}
+                    <View style={styles.monthNavigationContainer}>
+                      <TouchableOpacity 
+                        style={styles.monthNavButton}
+                        onPress={() => {
+                          const newMonth = new Date(selectedMonth);
+                          newMonth.setMonth(newMonth.getMonth() - 1);
+                          setSelectedMonth(newMonth);
+                          loadGlobalAnalytics();
+                        }}
+                      >
+                        <Ionicons name="chevron-back" size={20} color="#2E7D32" />
+                      </TouchableOpacity>
+                      
+                      <Text style={styles.monthDisplay}>
+                        {selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                      </Text>
+                      
+                      <TouchableOpacity 
+                        style={styles.monthNavButton}
+                        onPress={() => {
+                          const newMonth = new Date(selectedMonth);
+                          newMonth.setMonth(newMonth.getMonth() + 1);
+                          setSelectedMonth(newMonth);
+                          loadGlobalAnalytics();
+                        }}
+                      >
+                        <Ionicons name="chevron-forward" size={20} color="#2E7D32" />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {!hasDataForMonth(selectedMonth) ? (
+                      <View style={styles.noDataContainer}>
+                        <Text style={styles.noDataText}>No data available for {selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+                        <Text style={styles.noDataSubtext}>No planting records found for this month</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.horizontalBarChartWrapper}>
+                        {globalAnalytics?.cropDistribution
+                          .sort((a, b) => b.count - a.count) // Sort by plant count (total plants)
+                          .slice(0, 10).map((item: any, index: number) => {
+                          const rank = index + 1;
+                          const maxValue = Math.max(...globalAnalytics.cropDistribution.map((c: any) => c.count));
+                          const barWidth = (item.count / maxValue) * 100;
+                          
+                          return (
+                            <View key={item.crop} style={[
+                              styles.horizontalBarItem,
+                              rank === 1 && styles.horizontalBarItemFirst,
+                              rank === 2 && styles.horizontalBarItemSecond,
+                              rank === 3 && styles.horizontalBarItemThird
+                            ]}>
+                              <View style={[
+                                styles.horizontalBarSideNumber,
+                                rank === 1 && styles.horizontalBarSideNumberFirst,
+                                rank === 2 && styles.horizontalBarSideNumberSecond,
+                                rank === 3 && styles.horizontalBarSideNumberThird
+                              ]}>
+                                <Text style={[
+                                  styles.horizontalBarSideNumberText,
+                                  rank === 1 && styles.horizontalBarSideNumberTextFirst,
+                                  rank === 2 && styles.horizontalBarSideNumberTextSecond,
+                                  rank === 3 && styles.horizontalBarSideNumberTextThird
+                                ]}>
+                                  {rank}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.horizontalBarLabelContainer}>
+                                <View style={styles.rankContainer}>
+                                  <View style={[
+                                    styles.horizontalBarRankWrapper,
+                                    rank === 1 && styles.horizontalBarRankFirst,
+                                    rank === 2 && styles.horizontalBarRankSecond,
+                                    rank === 3 && styles.horizontalBarRankThird
+                                  ]}>
+                                    <Text style={[
+                                      styles.horizontalBarRank,
+                                      rank === 1 && styles.horizontalBarRankFirst,
+                                      rank === 2 && styles.horizontalBarRankSecond,
+                                      rank === 3 && styles.horizontalBarRankThird
+                                    ]}>
+                                      {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}
+                                    </Text>
+                                  </View>
+                                </View>
+                                
+                                <View style={styles.cropInfoContainer}>
+                                  <View style={styles.cropNameRow}>
+                                    <Text style={styles.cropIcon}>{getCropIcon(item.crop)}</Text>
+                                    <Text style={styles.horizontalBarCropName}>{item.crop}</Text>
+                                    <Text style={styles.cropTagalogName}> / {getCropTagalogName(item.crop)}</Text>
+                                  </View>
+                                </View>
+                                
+                                <View style={styles.percentageContainer}>
+                                  <Text style={styles.horizontalBarPercentageText}>
+                                    {item.percentage}%
+                                  </Text>
+                                </View>
+                              </View>
+                              
+                                <View style={styles.horizontalBarContainer}>
+                                  <View style={[
+                                    styles.horizontalBar, 
+                                    { 
+                                      width: `${barWidth}%`,
+                                      backgroundColor: '#81C784'
+                                    }
+                                  ]}>
+                                    <View style={styles.horizontalBarValueOverlay}>
+                                      <Text style={styles.horizontalBarValueOnBar}>
+                                        {item.count.toLocaleString()}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Notes */}
+                  <View style={styles.notesContainer}>
+                    <Text style={styles.notesText}>
+                      Total: {globalAnalytics?.totalPlants.toLocaleString()} plants across all farmers
+                    </Text>
+                  </View>
+
+                  {/* Divider */}
+                  <View style={styles.dividerContainer}>
+                    <View style={styles.dividerLine} />
+                    <View style={styles.dividerButton}>
+                      <Text style={styles.dividerText}>Analytics Breakdown</Text>
+                    </View>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  {/* Farmers Growing Each Crop */}
+                  <View style={styles.farmersGrowingCard}>
+                    <Text style={styles.farmersGrowingTitle}>Farmers Growing Each Crop</Text>
+                    
+                    {!hasDataForMonth(selectedMonth) ? (
+                      <View style={styles.noDataContainer}>
+                        <Text style={styles.noDataText}>No data available for {selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+                        <Text style={styles.noDataSubtext}>No planting records found for this month</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.horizontalBarChartWrapper}>
+                        {globalAnalytics?.cropDistribution
+                          .sort((a, b) => b.userCount - a.userCount) // Sort by farmer count
+                          .slice(0, 10).map((item: any, index: number) => {
+                          const rank = index + 1;
+                          const maxUsers = Math.max(...globalAnalytics.cropDistribution.map(crop => crop.userCount));
+                          const barWidth = maxUsers > 0 ? (item.userCount / maxUsers) * 100 : 0;
+                          
+                          return (
+                            <View key={item.crop} style={[
+                              styles.horizontalBarItem,
+                              rank === 1 && styles.horizontalBarItemFirst,
+                              rank === 2 && styles.horizontalBarItemSecond,
+                              rank === 3 && styles.horizontalBarItemThird
+                            ]}>
+                              <View style={[
+                                styles.horizontalBarSideNumber,
+                                rank === 1 && styles.horizontalBarSideNumberFirst,
+                                rank === 2 && styles.horizontalBarSideNumberSecond,
+                                rank === 3 && styles.horizontalBarSideNumberThird
+                              ]}>
+                                <Text style={styles.horizontalBarSideNumberText}>
+                                  {rank}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.horizontalBarLabelContainer}>
+                                <View style={styles.rankContainer}>
+                                  <View style={[
+                                    styles.horizontalBarRankWrapper,
+                                    rank === 1 && styles.horizontalBarRankFirst,
+                                    rank === 2 && styles.horizontalBarRankSecond,
+                                    rank === 3 && styles.horizontalBarRankThird
+                                  ]}>
+                                    <Text style={[
+                                      styles.horizontalBarRank,
+                                      rank === 1 && styles.horizontalBarRankFirst,
+                                      rank === 2 && styles.horizontalBarRankSecond,
+                                      rank === 3 && styles.horizontalBarRankThird
+                                    ]}>
+                                      {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}
+                                    </Text>
+                                  </View>
+                                </View>
+                                
+                                <View style={styles.cropInfoContainer}>
+                                  <View style={styles.cropNameRow}>
+                                    <Text style={styles.cropIcon}>{getCropIcon(item.crop)}</Text>
+                                    <Text style={styles.horizontalBarCropName}>{item.crop}</Text>
+                                    <Text style={styles.cropTagalogName}> / {getCropTagalogName(item.crop)}</Text>
+                                  </View>
+                                </View>
+                                
+                                <View style={styles.percentageContainer}>
+                                  <Text style={styles.horizontalBarPercentageText}>
+                                    {item.userCount} farmer{item.userCount !== 1 ? 's' : ''}
+                                  </Text>
+                                </View>
+                              </View>
+                              
+                              <View style={styles.horizontalBarContainer}>
+                                <View 
+                                  style={[
+                                    styles.horizontalBar, 
+                                    { 
+                                      width: `${barWidth}%`,
+                                      backgroundColor: '#81C784'
+                                    }
+                                  ]} 
+                                >
+                                  <View style={styles.horizontalBarValueOverlay}>
+                                    <Text style={styles.horizontalBarValueOnBar}>
+                                      {item.userCount}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Notes */}
+                  <View style={styles.notesContainer}>
+                    <Text style={styles.notesText}>
+                      Number of different farmers growing each crop type
+                    </Text>
+                  </View>
+
+                </>
+              )}
+            </View>
+
+            {/* Summary Cards - Outside Global Trends */}
+            {globalAnalytics && (
+              <View style={styles.highlightsContainer}>
+                <View style={[styles.highlightCard, styles.highlightCard1]}>
+                  <Ionicons name="trophy" size={20} color="#FFD700" />
+                  <Text style={styles.highlightTitle}>Most Popular Crop</Text>
+                  <Text style={styles.highlightValue}>{globalAnalytics.mostPopularCrop || 'N/A'}</Text>
+                </View>
+                
+                <View style={[styles.highlightCard, styles.highlightCard2]}>
+                  <Ionicons name="leaf" size={20} color="#2E8B57" />
+                  <Text style={styles.highlightTitle}>Total Crops Planted</Text>
+                  <Text style={styles.highlightValue}>{globalAnalytics.totalPlants.toLocaleString()}+</Text>
+                </View>
+                
+                <View style={[styles.highlightCard, styles.highlightCard3]}>
+                  <Ionicons name="people" size={20} color="#4A90E2" />
+                  <Text style={styles.highlightTitle}>Active Farmers</Text>
+                  <Text style={styles.highlightValue}>{globalAnalytics.totalUsers} Users</Text>
+                </View>
+              </View>
+            )}
+
+                        </View>
+        </ScrollView>
+      )}
+
+      {/* All Planting Records View - Grouped by User */}
+      {activeNav === 'planting-records' && showUserReports && !selectedUserAccount && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setShowUserReports(false)}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>All Planting Records</Text>
+              <View style={{ width: 24 }} />
+                      </View>
+                      
+            <Text style={styles.sectionDescription}>
+              All planting reports grouped by farmer
+            </Text>
+
             {loadingRecords ? (
               <View style={styles.loadingContainer}>
                 <Text style={styles.loadingText}>Loading planting records...</Text>
@@ -2271,8 +2934,8 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                         )}
                         <Text style={styles.messageTimeText}>
                           {userGroup.latestReportDate?.toLocaleDateString() || 'Unknown'}
-                          </Text>
-                        </View>
+                        </Text>
+                      </View>
                     </View>
                     <View style={styles.messagePreviewContainer}>
                       <Text style={styles.messagePreviewText}>
@@ -2282,14 +2945,14 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                     </View>
                   </TouchableOpacity>
                 ))}
-                            </View>
-                          )}
-                        </View>
+              </View>
+            )}
+          </View>
         </ScrollView>
       )}
 
-      {/* User Reports Detail View */}
-      {activeNav === 'planting-records' && showUserReports && (
+      {/* Individual User Reports View */}
+      {activeNav === 'planting-records' && showUserReports && selectedUserAccount && (
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -2299,7 +2962,10 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
             <View style={styles.headerRow}>
               <TouchableOpacity 
                 style={styles.backButton}
-                onPress={() => setShowUserReports(false)}
+                onPress={() => {
+                  setSelectedUserAccount(null);
+                  setShowUserReports(false);
+                }}
               >
                 <Ionicons name="arrow-back" size={24} color={GREEN} />
               </TouchableOpacity>
@@ -2338,6 +3004,30 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                         {report.customAreaType && ` (${report.customAreaType})`}
                               </Text>
                             </View>
+                    {report.expectedHarvestDate && (
+                      <View style={styles.reportDetailsContainer}>
+                        <Ionicons name="calendar-outline" size={16} color="#666" />
+                        <Text style={styles.reportDetails}>
+                          Expected Harvest: {report.expectedHarvestDate}
+                        </Text>
+                      </View>
+                    )}
+                    {report.plantCount && (
+                      <View style={styles.reportDetailsContainer}>
+                        <Ionicons name="leaf-outline" size={16} color="#666" />
+                        <Text style={styles.reportDetails}>
+                          Plants/Seeds: {report.plantCount}
+                        </Text>
+                      </View>
+                    )}
+                    {report.expectedHarvest && (
+                      <View style={styles.reportDetailsContainer}>
+                        <Ionicons name="basket-outline" size={16} color="#666" />
+                        <Text style={styles.reportDetails}>
+                          Expected Yield: {report.expectedHarvest} kg
+                        </Text>
+                      </View>
+                    )}
                     <View style={styles.reportDateContainer}>
                               <Ionicons name="calendar" size={16} color="#999" />
                       <Text style={styles.reportDate}>
@@ -2391,6 +3081,309 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
               Reports grouped by farmer account
             </Text>
 
+            {/* View Records Button */}
+            <TouchableOpacity 
+              style={styles.viewRecordsButton}
+              onPress={() => {
+                setReportType('harvest');
+                setShowUserReports(true);
+                setSelectedUserAccount(null);
+              }}
+            >
+              <Ionicons name="list" size={24} color="#2E7D32" />
+              <Text style={styles.viewRecordsButtonTitle}>View Records</Text>
+              <Text style={styles.viewRecordsButtonSubtitle}>View your submitted harvest reports</Text>
+            </TouchableOpacity>
+
+            {/* Global Harvest Trends Section */}
+            <View style={styles.globalTrendsCard}>
+              <View style={styles.globalTrendsHeader}>
+                <Text style={styles.globalTrendsTitle}>🌍 Global Harvest Trends</Text>
+              </View>
+
+              {/* Loading State */}
+              {globalHarvestLoading ? (
+                <View style={styles.analyticsLoadingContainer}>
+                  <ActivityIndicator size="large" color={GREEN} />
+                  <Text style={styles.analyticsLoadingText}>Loading global trends...</Text>
+                </View>
+              ) : (
+                <>
+                  {/* Horizontal Bar Chart with Rankings */}
+                  <View style={styles.barChartContainer}>
+                    <Text style={styles.barChartTitle}>Global Harvest Distribution</Text>
+                    
+                    {/* Month Navigation */}
+                    <View style={styles.monthNavigationContainer}>
+                      <TouchableOpacity
+                        style={styles.monthNavButton}
+                        onPress={async () => {
+                          const newDate = new Date(selectedHarvestMonth);
+                          newDate.setMonth(newDate.getMonth() - 1);
+                          setSelectedHarvestMonth(newDate);
+                          await loadGlobalHarvestAnalytics(newDate);
+                        }}
+                      >
+                        <Ionicons name="chevron-back" size={20} color={GREEN} />
+                      </TouchableOpacity>
+                      
+                      <Text style={styles.monthDisplay}>
+                        {selectedHarvestMonth.toLocaleDateString('en-US', { 
+                          month: 'long', 
+                          year: 'numeric' 
+                        })}
+                      </Text>
+                  
+                      <TouchableOpacity
+                        style={styles.monthNavButton}
+                        onPress={async () => {
+                          const newDate = new Date(selectedHarvestMonth);
+                          newDate.setMonth(newDate.getMonth() + 1);
+                          setSelectedHarvestMonth(newDate);
+                          await loadGlobalHarvestAnalytics(newDate);
+                        }}
+                      >
+                        <Ionicons name="chevron-forward" size={20} color={GREEN} />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {hasHarvestDataForMonth(selectedHarvestMonth) && globalHarvestAnalytics ? (
+                      <>
+                        <View style={styles.horizontalBarChartWrapper}>
+                          {globalHarvestAnalytics.cropDistribution.map((item: any, index: number) => {
+                            const rank = index + 1;
+                            const maxValue = Math.max(...globalHarvestAnalytics.cropDistribution.map((crop: any) => crop.totalHarvest));
+                            const barWidth = (item.totalHarvest / maxValue) * 100; // Percentage width
+                            
+                            return (
+                              <View key={item.crop} style={[
+                                styles.horizontalBarItem,
+                                rank === 1 && styles.horizontalBarItemFirst,
+                                rank === 2 && styles.horizontalBarItemSecond,
+                                rank === 3 && styles.horizontalBarItemThird
+                              ]}>
+                                <View style={styles.horizontalBarSideNumber}>
+                                  <Text style={[
+                                    styles.horizontalBarSideNumberText,
+                                    rank === 1 && styles.horizontalBarSideNumberFirst,
+                                    rank === 2 && styles.horizontalBarSideNumberSecond,
+                                    rank === 3 && styles.horizontalBarSideNumberThird
+                                  ]}>
+                                    {rank}
+                                  </Text>
+                                </View>
+                                <View style={styles.horizontalBarLabelContainer}>
+                                  <View style={styles.rankContainer}>
+                                    <Text style={[
+                                      styles.horizontalBarRank,
+                                      rank === 1 && styles.horizontalBarRankFirst,
+                                      rank === 2 && styles.horizontalBarRankSecond,
+                                      rank === 3 && styles.horizontalBarRankThird
+                                    ]}>
+                                      {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.cropInfoContainer}>
+                                    <View style={styles.cropNameRow}>
+                                      <Text style={styles.cropIcon}>{getCropIcon(item.crop)}</Text>
+                                      <Text style={styles.horizontalBarCropName}>{item.crop}</Text>
+                                      <Text style={styles.cropTagalogName}> / {getCropTagalogName(item.crop)}</Text>
+                                    </View>
+                                  </View>
+                                  <View style={styles.percentageContainer}>
+                                    <Text style={styles.horizontalBarPercentageText}>
+                                      {item.percentage.toFixed(1)}%
+                                    </Text>
+                                  </View>
+                                </View>
+                                <View style={styles.horizontalBarContainer}>
+                                  <View style={styles.horizontalBar}>
+                                    <View 
+                                      style={[
+                                        styles.horizontalBarFill,
+                                        { 
+                                          width: `${barWidth}%`,
+                                          backgroundColor: '#81C784'
+                                        }
+                                      ]}
+                                    />
+                                    <View style={styles.horizontalBarValue}>
+                                      <Text style={styles.horizontalBarValueText}>
+                                        {item.totalHarvest.toFixed(1)} kg
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                        
+                        {/* Notes */}
+                        <View style={styles.notesContainer}>
+                          <Text style={styles.notesText}>Total: {globalHarvestAnalytics.totalHarvested.toFixed(1)} kg harvested across all farmers</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.noDataContainer}>
+                        <Ionicons name="leaf-outline" size={48} color="#ccc" />
+                        <Text style={styles.noDataText}>No harvest data for {selectedHarvestMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+                        <Text style={styles.noDataSubtext}>Try selecting a different month</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Divider */}
+                  <View style={styles.dividerContainer}>
+                    <View style={styles.dividerLine} />
+                    <View style={styles.dividerButton}>
+                      <Text style={styles.dividerText}>Analytics Breakdown</Text>
+                    </View>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  {/* Farmers Growing Each Crop */}
+                  <View style={styles.farmersGrowingCard}>
+                    <Text style={styles.farmersGrowingTitle}>Farmers Harvesting Each Crop</Text>
+                    
+                    {globalHarvestAnalytics && globalHarvestAnalytics.cropDistribution.length > 0 ? (
+                      <View style={styles.horizontalBarChartWrapper}>
+                        {globalHarvestAnalytics.cropDistribution
+                          .sort((a: any, b: any) => b.userCount - a.userCount)
+                          .map((item: any, index: number) => {
+                            const rank = index + 1;
+                            const maxValue = Math.max(...globalHarvestAnalytics.cropDistribution.map((crop: any) => crop.userCount));
+                            const barWidth = (item.userCount / maxValue) * 100;
+                            
+                            return (
+                              <View key={item.crop} style={[
+                                styles.horizontalBarItem,
+                                rank === 1 && styles.horizontalBarItemFirst,
+                                rank === 2 && styles.horizontalBarItemSecond,
+                                rank === 3 && styles.horizontalBarItemThird
+                              ]}>
+                                <View style={styles.horizontalBarSideNumber}>
+                                  <Text style={[
+                                    styles.horizontalBarSideNumberText,
+                                    rank === 1 && styles.horizontalBarSideNumberFirst,
+                                    rank === 2 && styles.horizontalBarSideNumberSecond,
+                                    rank === 3 && styles.horizontalBarSideNumberThird
+                                  ]}>
+                                    {rank}
+                                  </Text>
+                                </View>
+                                <View style={styles.horizontalBarLabelContainer}>
+                                  <View style={styles.rankContainer}>
+                                    <Text style={[
+                                      styles.horizontalBarRank,
+                                      rank === 1 && styles.horizontalBarRankFirst,
+                                      rank === 2 && styles.horizontalBarRankSecond,
+                                      rank === 3 && styles.horizontalBarRankThird
+                                    ]}>
+                                      {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.cropInfoContainer}>
+                                    <View style={styles.cropNameRow}>
+                                      <Text style={styles.cropIcon}>{getCropIcon(item.crop)}</Text>
+                                      <Text style={styles.horizontalBarCropName}>{item.crop}</Text>
+                                      <Text style={styles.cropTagalogName}> / {getCropTagalogName(item.crop)}</Text>
+                                    </View>
+                                  </View>
+                                  <View style={styles.farmerCountContainer}>
+                                    <Text style={styles.farmerCountText}>
+                                      {item.userCount} farmers
+                                    </Text>
+                                  </View>
+                                </View>
+                                <View style={styles.horizontalBarContainer}>
+                                  <View style={styles.horizontalBar}>
+                                    <View 
+                                      style={[
+                                        styles.horizontalBarFill,
+                                        { 
+                                          width: `${barWidth}%`,
+                                          backgroundColor: '#81C784'
+                                        }
+                                      ]}
+                                    />
+                                    <View style={styles.horizontalBarValue}>
+                                      <Text style={styles.horizontalBarValueText}>
+                                        {item.userCount}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          })}
+                      </View>
+                    ) : (
+                      <View style={styles.noDataContainer}>
+                        <Ionicons name="people-outline" size={48} color="#ccc" />
+                        <Text style={styles.noDataText}>No farmer data available</Text>
+                        <Text style={styles.noDataSubtext}>Start harvesting to see farmer trends</Text>
+                      </View>
+                    )}
+                    
+                    {/* Notes */}
+                    <View style={styles.notesContainer}>
+                      <Text style={styles.notesText}>Number of different farmers harvesting each crop type</Text>
+                    </View>
+
+                  </View>
+                </>
+              )}
+            </View>
+
+            {/* Summary Cards - Outside Global Trends */}
+            {globalHarvestAnalytics && (
+              <View style={styles.highlightsContainer}>
+                <View style={styles.highlightCard}>
+                  <Ionicons name="trophy" size={24} color="#FFD700" />
+                  <Text style={styles.highlightTitle}>Most Harvested</Text>
+                  <Text style={styles.highlightValue}>{globalHarvestAnalytics.mostPopularCrop || 'None'}</Text>
+                </View>
+                <View style={styles.highlightCard}>
+                  <Ionicons name="basket" size={24} color="#4CAF50" />
+                  <Text style={styles.highlightTitle}>Total Harvest</Text>
+                  <Text style={styles.highlightValue}>{globalHarvestAnalytics.totalHarvested.toFixed(1)} kg</Text>
+                </View>
+                <View style={styles.highlightCard}>
+                  <Ionicons name="document-text" size={24} color="#2196F3" />
+                  <Text style={styles.highlightTitle}>Reports</Text>
+                  <Text style={styles.highlightValue}>{globalHarvestAnalytics.totalUsers}</Text>
+                </View>
+              </View>
+            )}
+
+                        </View>
+        </ScrollView>
+      )}
+
+      {/* All Harvest Records View - Grouped by User */}
+      {activeNav === 'harvest-records' && showUserReports && !selectedUserAccount && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setShowUserReports(false)}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>All Harvest Records</Text>
+              <View style={{ width: 24 }} />
+                      </View>
+                      
+            <Text style={styles.sectionDescription}>
+              All harvest reports grouped by farmer
+            </Text>
+
             {loadingRecords ? (
               <View style={styles.loadingContainer}>
                 <Text style={styles.loadingText}>Loading harvest records...</Text>
@@ -2434,8 +3427,8 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                         )}
                         <Text style={styles.messageTimeText}>
                           {userGroup.latestReportDate?.toLocaleDateString() || 'Unknown'}
-                          </Text>
-                        </View>
+                        </Text>
+                      </View>
                     </View>
                     <View style={styles.messagePreviewContainer}>
                       <Text style={styles.messagePreviewText}>
@@ -2445,14 +3438,14 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                     </View>
                   </TouchableOpacity>
                 ))}
-                            </View>
-                          )}
-                        </View>
+              </View>
+            )}
+          </View>
         </ScrollView>
       )}
 
-      {/* User Harvest Reports Detail View */}
-      {activeNav === 'harvest-records' && showUserReports && (
+      {/* Individual User Harvest Reports View */}
+      {activeNav === 'harvest-records' && showUserReports && selectedUserAccount && (
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -2462,7 +3455,10 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
             <View style={styles.headerRow}>
               <TouchableOpacity 
                 style={styles.backButton}
-                onPress={() => setShowUserReports(false)}
+                onPress={() => {
+                  setSelectedUserAccount(null);
+                  setShowUserReports(false);
+                }}
               >
                 <Ionicons name="arrow-back" size={24} color={GREEN} />
               </TouchableOpacity>
@@ -2497,10 +3493,19 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                     <View style={styles.reportDetailsContainer}>
                               <Ionicons name="basket" size={16} color="#666" />
                       <Text style={styles.reportDetails}>
-                        Harvest Amount: {report.amount} {report.amountType}
-                        {report.customAmountType && ` (${report.customAmountType})`}
+                        Expected: {report.expectedHarvest} kg • Actual: {report.actualHarvest} kg
                               </Text>
-                            </View>
+                    </View>
+                    
+                    {/* Show decline reason if harvest was lower than expected */}
+                    {report.declineReason && (
+                      <View style={styles.reportDetailsContainer}>
+                        <Ionicons name="alert-circle" size={16} color="#ff6b35" />
+                        <Text style={styles.declineReasonText}>
+                          Reason for Lower Harvest: {report.declineReason}
+                        </Text>
+                      </View>
+                    )}
                     <View style={styles.reportDateContainer}>
                               <Ionicons name="calendar" size={16} color="#999" />
                       <Text style={styles.reportDate}>
@@ -2674,6 +3679,48 @@ LIVESTOCK & POULTRY | Beef Rump, Local | 465.27`;
                     <Text style={styles.detailLabel}>Crop:</Text>
                     <Text style={styles.detailValue}>{selectedReport.crop}</Text>
                   </View>
+                  {selectedReport.plantingDate && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="calendar" size={20} color={GREEN} />
+                      <Text style={styles.detailLabel}>Planting Date:</Text>
+                      <Text style={styles.detailValue}>{selectedReport.plantingDate}</Text>
+                    </View>
+                  )}
+                  {selectedReport.expectedHarvestDate && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="calendar-outline" size={20} color={GREEN} />
+                      <Text style={styles.detailLabel}>Expected Harvest Date:</Text>
+                      <Text style={styles.detailValue}>{selectedReport.expectedHarvestDate}</Text>
+                    </View>
+                  )}
+                  {selectedReport.plantCount && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="leaf-outline" size={20} color={GREEN} />
+                      <Text style={styles.detailLabel}>Number of Plants/Seeds:</Text>
+                      <Text style={styles.detailValue}>{selectedReport.plantCount}</Text>
+                    </View>
+                  )}
+                  {selectedReport.expectedHarvest && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="basket-outline" size={20} color={GREEN} />
+                      <Text style={styles.detailLabel}>Expected Harvest:</Text>
+                      <Text style={styles.detailValue}>{selectedReport.expectedHarvest} kg</Text>
+                    </View>
+                  )}
+                  {selectedReport.actualHarvest && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="basket" size={20} color={GREEN} />
+                      <Text style={styles.detailLabel}>Actual Harvest:</Text>
+                      <Text style={styles.detailValue}>{selectedReport.actualHarvest} kg</Text>
+                    </View>
+                  )}
+                  {selectedReport.declineReason && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="alert-circle" size={20} color="#ff6b35" />
+                      <Text style={styles.detailLabel}>Reason for Lower Harvest:</Text>
+                      <Text style={styles.detailDeclineReason}>{selectedReport.declineReason}</Text>
+                    </View>
+                  )}
                 </View>
                 
                 {selectedReport.areaPlanted && (
@@ -3767,18 +4814,21 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     paddingHorizontal: 20,
   },
+  noDataText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
+  },
+  noDataSubtext: {
+    fontSize: 14,
+    color: '#999',
+  },
   noDataTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#999',
     marginTop: 16,
     marginBottom: 8,
-  },
-  noDataText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    lineHeight: 20,
   },
   // Profile and Settings Styles
   profileHeader: {
@@ -4783,6 +5833,443 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 20,
   },
+  viewRecordsButton: {
+    backgroundColor: '#fff',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 2,
+    borderColor: '#E8F5E8',
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderLeftColor: '#2E7D32',
+    borderRightColor: '#2E7D32',
+  },
+  viewRecordsButtonTitle: {
+    color: '#2E7D32',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  viewRecordsButtonSubtitle: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  globalTrendsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginHorizontal: 5,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  globalTrendsHeader: {
+    marginBottom: 20,
+  },
+  globalTrendsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    textAlign: 'center',
+  },
+  analyticsLoadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  analyticsLoadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  barChartContainer: {
+    marginBottom: 20,
+  },
+  barChartTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  horizontalBarChartWrapper: {
+    marginBottom: 10,
+  },
+  horizontalBarItem: {
+    marginBottom: 8,
+    paddingVertical: 4,
+  },
+  horizontalBarItemFirst: {
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderRadius: 8,
+    paddingVertical: 6,
+  },
+  horizontalBarItemSecond: {
+    backgroundColor: 'rgba(192, 192, 192, 0.1)',
+    borderRadius: 8,
+    paddingVertical: 6,
+  },
+  horizontalBarItemThird: {
+    backgroundColor: 'rgba(205, 127, 50, 0.1)',
+    borderRadius: 8,
+    paddingVertical: 6,
+  },
+  horizontalBarSideNumber: {
+    position: 'absolute',
+    left: -14,
+    top: '50%',
+    transform: [{ translateY: -14 }],
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    borderWidth: 3,
+    borderColor: '#d0d0d0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  horizontalBarSideNumberFirst: {
+    backgroundColor: '#fff',
+    borderColor: '#d0d0d0',
+  },
+  horizontalBarSideNumberSecond: {
+    backgroundColor: '#fff',
+    borderColor: '#d0d0d0',
+  },
+  horizontalBarSideNumberThird: {
+    backgroundColor: '#fff',
+    borderColor: '#d0d0d0',
+  },
+  horizontalBarSideNumberText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  horizontalBarSideNumberTextFirst: {
+    color: '#FFD700',
+  },
+  horizontalBarSideNumberTextSecond: {
+    color: '#C0C0C0',
+  },
+  horizontalBarSideNumberTextThird: {
+    color: '#CD7F32',
+  },
+  horizontalBarLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 40,
+    marginRight: 8,
+    marginBottom: 8,
+    justifyContent: 'space-between',
+  },
+  rankContainer: {
+    width: 50,
+    alignItems: 'flex-start',
+  },
+  horizontalBarRankWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  horizontalBarRankFirst: {
+    // No background - medals appear without circular container
+  },
+  horizontalBarRankSecond: {
+    // No background - medals appear without circular container
+  },
+  horizontalBarRankThird: {
+    // No background - medals appear without circular container
+  },
+  horizontalBarRank: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  cropInfoContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  cropNameRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  horizontalBarLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+  },
+  percentageContainer: {
+    width: 60,
+    alignItems: 'flex-end',
+  },
+  farmerCountContainer: {
+    width: 80,
+    alignItems: 'flex-end',
+  },
+  horizontalBarPercentageText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  horizontalBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 40,
+    marginRight: 8,
+  },
+  horizontalBar: {
+    flex: 1,
+    height: 16,
+    backgroundColor: '#E8F5E8',
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+    marginRight: 8,
+  },
+  horizontalBarFill: {
+    height: '100%',
+    borderRadius: 8,
+  },
+  horizontalBarValueText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#333',
+  },
+  farmersGrowingCard: {
+    marginTop: 20,
+  },
+  farmersGrowingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  notesContainer: {
+    marginTop: 15,
+    paddingHorizontal: 10,
+  },
+  notesText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    paddingHorizontal: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#d0d0d0',
+  },
+  dividerButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 16,
+    marginHorizontal: 10,
+  },
+  dividerText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  monthNavigationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  monthNavButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+  },
+  monthDisplay: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginHorizontal: 20,
+    minWidth: 120,
+    textAlign: 'center',
+  },
+  cropIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  horizontalBarCropNameContainer: {
+    position: 'absolute',
+    top: -25,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  horizontalBarCropContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  horizontalBarCropIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  horizontalBarPercentageWrapper: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  horizontalBarValueOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  horizontalBarValueOnBar: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '700',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  summaryStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 12,
+  },
+  summaryStatCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  summaryStatValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: GREEN,
+    marginBottom: 4,
+  },
+  summaryStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  popularCropCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  popularCropLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  popularCropName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+  },
+  analyticsDivider: {
+    alignSelf: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  analyticsDividerText: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  chartSection: {
+    marginBottom: 20,
+  },
+  horizontalBarChart: {
+    gap: 8,
+  },
+  horizontalBarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  horizontalBarCropName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 6,
+  },
+  cropTagalogName: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 2,
+  },
+  horizontalBarValue: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  farmerCountText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
   placeholderContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -5247,6 +6734,12 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 8,
   },
+  declineReasonText: {
+    fontSize: 14,
+    color: '#ff6b35',
+    marginLeft: 8,
+    fontStyle: 'italic',
+  },
   reportDateContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5400,6 +6893,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     fontWeight: '500',
+    flex: 1,
+  },
+  detailDeclineReason: {
+    fontSize: 14,
+    color: '#ff6b35',
+    fontWeight: '500',
+    fontStyle: 'italic',
     flex: 1,
   },
   detailImageContainer: {
@@ -5935,6 +7435,54 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  highlightsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  highlightCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  highlightCard1: {
+    backgroundColor: '#FFF8E1',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFD700',
+  },
+  highlightCard2: {
+    backgroundColor: '#E8F5E8',
+    borderLeftWidth: 4,
+    borderLeftColor: '#2E8B57',
+  },
+  highlightCard3: {
+    backgroundColor: '#E3F2FD',
+    borderLeftWidth: 4,
+    borderLeftColor: '#4A90E2',
+  },
+  highlightTitle: {
+    fontSize: 11,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  highlightValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+    textAlign: 'center',
   }
 });
 
