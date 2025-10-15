@@ -1,0 +1,28 @@
+{
+  "extends": "./node_modules/expo/tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
+    "skipLibCheck": true,
+    "module": "es2015",
+    "target": "es2015",
+    "downlevelIteration": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "noImplicitAny": false,
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "types/**/*.d.ts"
+  ]
+}
