@@ -1,5 +1,4 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet, View, Text, TouchableOpacity, TextInput, Dimensions } from 'react-native';
+import { Platform, StyleSheet, View, Text, TouchableOpacity, TextInput, Dimensions, Image } from 'react-native';
 import React, { useState, useEffect } from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
