@@ -1,20 +1,16 @@
-import { 
-  collection, 
-  doc, 
-  getDocs, 
-  getDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
-  limit,
-  type DocumentData,
-  type QuerySnapshot,
-  type DocumentSnapshot
+import {
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    orderBy,
+    query,
+    updateDoc,
+    where
 } from 'firebase/firestore';
-import { db } from '../FirebaseConfig';
+import { db } from '../lib/firebase';
 
 // Define interfaces for your agricultural data
 export interface Farmer {

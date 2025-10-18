@@ -47,37 +47,46 @@ class PriceMonitoringService {
         const matchingPriceData = this.findMatchingPriceData(latestPriceData, commodity);
         
         if (matchingPriceData) {
-          console.log(`✅ Found match for ${commodity.name}: ${matchingPriceData.Commodity} - ${matchingPriceData.Type} = ₱${matchingPriceData.Amount}`);
-          // Get trend data for this commodity
-          const trendData = await getPriceTrends(
-            matchingPriceData.Commodity, 
-            matchingPriceData.Type
-          );
+          // Check if price is valid (not null, undefined, or NaN)
+          const isValidPrice = matchingPriceData.Amount !== null && 
+                              matchingPriceData.Amount !== undefined && 
+                              !isNaN(matchingPriceData.Amount);
           
-          let trend;
-          if (trendData && trendData.length > 1) {
-            const currentPrice = matchingPriceData.Amount;
-            const previousPrice = trendData[trendData.length - 2].Amount;
-            const change = currentPrice - previousPrice;
-            const changePercentage = (change / previousPrice) * 100;
+          if (isValidPrice) {
+            console.log(`✅ Found match for ${commodity.name}: ${matchingPriceData.Commodity} - ${matchingPriceData.Type} = ₱${matchingPriceData.Amount}`);
+            // Get trend data for this commodity
+            const trendData = await getPriceTrends(
+              matchingPriceData.Commodity, 
+              matchingPriceData.Type
+            );
             
-            trend = {
-              previousPrice,
-              change,
-              changePercentage: Math.round(changePercentage * 100) / 100
-            };
-          }
+            let trend;
+            if (trendData && trendData.length > 1) {
+              const currentPrice = matchingPriceData.Amount;
+              const previousPrice = trendData[trendData.length - 2].Amount;
+              const change = currentPrice - previousPrice;
+              const changePercentage = (change / previousPrice) * 100;
+              
+              trend = {
+                previousPrice,
+                change,
+                changePercentage: Math.round(changePercentage * 100) / 100
+              };
+            }
 
-          priceMonitoringData.push({
-            commodityId: commodity.id,
-            currentPrice: matchingPriceData.Amount,
-            priceDate: matchingPriceData.Date,
-            specification: matchingPriceData.Specification,
-            source: 'stored_data',
-            trend
-          });
-          
-          console.log(`✅ Matched ${commodity.name} with ${matchingPriceData.Commodity} - ${matchingPriceData.Type} (₱${matchingPriceData.Amount})`);
+            priceMonitoringData.push({
+              commodityId: commodity.id,
+              currentPrice: matchingPriceData.Amount,
+              priceDate: matchingPriceData.Date,
+              specification: matchingPriceData.Specification,
+              source: 'stored_data',
+              trend
+            });
+            
+            console.log(`✅ Matched ${commodity.name} with ${matchingPriceData.Commodity} - ${matchingPriceData.Type} (₱${matchingPriceData.Amount})`);
+          } else {
+            console.log(`⚠️ Found match for ${commodity.name} but price is invalid: ${matchingPriceData.Amount}`);
+          }
         } else {
           console.log(`❌ No match for ${commodity.name}`);
         }
@@ -120,6 +129,17 @@ class PriceMonitoringService {
       
       // Direct type match
       if (itemType.includes(commodityName) || commodityName.includes(itemType)) {
+        return true;
+      }
+      
+      // Match by commodity type if available
+      if (commodity.type && itemType.includes(commodity.type.toLowerCase())) {
+        return true;
+      }
+      
+      // Match by specification if available
+      if (commodity.specification && item.Specification && 
+          item.Specification.toLowerCase().includes(commodity.specification.toLowerCase())) {
         return true;
       }
       

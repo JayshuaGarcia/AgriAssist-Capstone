@@ -1,12 +1,10 @@
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  type User,
-  type UserCredential 
+import {
+    createUserWithEmailAndPassword,
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    signOut
 } from 'firebase/auth';
-import { auth } from '../FirebaseConfig';
+import { auth } from '../lib/firebase';
 
 export interface AuthUser {
   uid: string;

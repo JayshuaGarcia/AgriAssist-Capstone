@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
@@ -10,13 +9,13 @@ import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
 import { useNotification } from '../components/NotificationContext';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
-import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../constants/CommodityData';
-import { OFFICIAL_PRODUCTS, Product } from '../constants/ProductData';
+import { Commodity, COMMODITY_DATA } from '../constants/CommodityData';
+import { useLatestPrices } from '../hooks/useLatestPrices';
 import { useNavigationBar } from '../hooks/useNavigationBar';
-import { daPriceService, updateCommodityWithDAPrices } from '../lib/daPriceService';
+import { useCategories, useCommodityManagement } from '../hooks/useOfflineCommodities';
+import { useOfflineMLForecasts } from '../hooks/useOfflineMLForecasts';
 import { db } from '../lib/firebase';
-import { priceMonitoringService } from '../lib/priceMonitoringService';
-import { addOrUpdatePriceRecord, clearAsyncStorageWithConfirmation, debugAsyncStorageState, getAsyncStorageInfo, getLatestPriceData, getPriceData, storeProvidedPriceData } from '../lib/storageUtils';
+import { LatestPrice } from '../services/offlineLatestPricesService';
 
 const { width } = Dimensions.get('window');
 const GREEN = '#16543a';
@@ -174,35 +173,49 @@ export default function AdminPage() {
 
 
   // Load price data when price monitoring tab is active
-  useEffect(() => {
-    if (activeNav === 'price-monitoring') {
-      fetchPriceData();
-    }
-  }, [activeNav]);
+  // Firebase data is real-time, no need to manually fetch
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
-  const [products, setProducts] = useState<Product[]>(OFFICIAL_PRODUCTS);
+  const [products, setProducts] = useState<Commodity[]>(COMMODITY_DATA);
   const [hasUploadedPDF, setHasUploadedPDF] = useState(false);
   
   // Price monitoring states
-  const [priceRefreshing, setPriceRefreshing] = useState(false);
-  const [priceLoading, setPriceLoading] = useState(false);
-  const [commodities, setCommodities] = useState<Commodity[]>(COMMODITY_DATA);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [priceError, setPriceError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [showCommodityModal, setShowCommodityModal] = useState(false);
   const [priceSearchQuery, setPriceSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
+  const [adminRefreshing, setAdminRefreshing] = useState(false);
+  
+  // Offline latest prices hook
+  const { latestPrices, loading: priceLoading, error: priceError, refreshing: priceRefreshing, refreshLatestPrices, addOrUpdatePrice } = useLatestPrices();
+  const { categories } = useCategories();
+  const { addCommodity, updateCommodity, deleteCommodity, loading: commodityLoading } = useCommodityManagement();
+  
+  // Offline ML forecasts hook
+  const { forecasts: mlForecasts, loading: mlLoading, error: mlError, refreshing: mlRefreshing, refreshMLForecasts, refreshFirebaseMLForecasts } = useOfflineMLForecasts();
+  
+  // Get last updated time from latest prices
+  const lastUpdated = React.useMemo(() => {
+    if (latestPrices.length > 0) {
+      const latestPrice = latestPrices
+        .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())[0];
+      
+      if (latestPrice?.lastUpdated) {
+        return new Date(latestPrice.lastUpdated).toLocaleTimeString();
+      }
+    }
+    return null;
+  }, [latestPrices]);
   
   // Manual entry states
   const [showManualModal, setShowManualModal] = useState(false);
-  const [manualSelectedProduct, setManualSelectedProduct] = useState<Product | null>(null);
+  const [manualSelectedProduct, setManualSelectedProduct] = useState<Commodity | null>(null);
   const [manualAmount, setManualAmount] = useState('');
   const [manualDate, setManualDate] = useState(new Date());
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [productSearchText, setProductSearchText] = useState('');
+  const [productPickerSelectedCategory, setProductPickerSelectedCategory] = useState<string | null>(null);
+  const [showProductCommodityModal, setShowProductCommodityModal] = useState(false);
   
   // Records state
   const [plantingRecords, setPlantingRecords] = useState<any[]>([]);
@@ -259,47 +272,6 @@ export default function AdminPage() {
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [showFarmerDetail, setShowFarmerDetail] = useState(false);
   
-  // Sample Excel price data
-  const sampleExcelData = {
-    "items": [
-      {
-        "commodity": "Rice",
-        "specification": "Fancy White Rice",
-        "average": 56.15,
-        "date": "2025-01-15"
-      },
-      {
-        "commodity": "Rice",
-        "specification": "Premium 5% broken",
-        "average": 45.25,
-        "date": "2025-01-15"
-      },
-      {
-        "commodity": "Corn",
-        "specification": "White Corn",
-        "average": 28.50,
-        "date": "2025-01-15"
-      },
-      {
-        "commodity": "Vegetables",
-        "specification": "Tomatoes",
-        "average": 35.75,
-        "date": "2025-01-15"
-      },
-      {
-        "commodity": "Fruits",
-        "specification": "Bananas",
-        "average": 25.30,
-        "date": "2025-01-15"
-      },
-      {
-        "commodity": "Livestock",
-        "specification": "Chicken (per kg)",
-        "average": 180.00,
-        "date": "2025-01-15"
-      }
-    ]
-  };
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -307,122 +279,7 @@ export default function AdminPage() {
   );
 
   
-  // Load sample data function
-  const loadSampleData = () => {
-    setDailyPriceData(sampleExcelData);
-    Alert.alert('Sample Data Loaded', 'Sample Excel price data has been loaded successfully.');
-  };
   
-  // Excel upload function
-  const handleExcelUpload = async () => {
-    try {
-      setIsProcessing(true);
-      setProcessingProgress(10);
-      
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        copyToCacheDirectory: true,
-      });
-      
-      if (result.canceled || !result.assets || result.assets.length === 0) {
-        setIsProcessing(false);
-        return;
-      }
-      
-      setProcessingProgress(30);
-      
-      const fileUri = result.assets[0].uri;
-      const fileName = result.assets[0].name || 'uploaded_file.xlsx';
-      
-      // Simulate Excel processing
-      setProcessingProgress(50);
-      
-      // Extract data from Excel (simplified version)
-      const extractedData = await extractDataFromExcel(fileUri);
-      setProcessingProgress(70);
-      
-      // Convert extracted data to structured format
-      const excelData = convertExcelToJSON(extractedData, fileName);
-      setProcessingProgress(90);
-      
-      // Validate and set the data
-      if (excelData.items && excelData.items.length > 0) {
-        setDailyPriceData(excelData);
-        setHasUploadedPDF(true);
-        setProcessingProgress(100);
-        
-        Alert.alert(
-          'Excel Processed Successfully!', 
-          `Processed ${fileName}\n\n` +
-          `📊 Found ${excelData.items.length} price records\n` +
-          `📅 Data includes: Commodity, Specification, Average Price, Date\n\n` +
-          `The Excel file has been processed and data is now available for viewing.`
-        );
-      } else {
-        throw new Error('No valid price data found in Excel file');
-      }
-      
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      Alert.alert('Excel Processing Failed', `Error: ${errorMessage}\n\nPlease ensure the Excel file contains columns: Commodity, Specification, Average, Date.`);
-    } finally {
-      setIsProcessing(false);
-      setProcessingProgress(0);
-    }
-  };
-  // Extract data from Excel (simplified version)
-  const extractDataFromExcel = async (excelUri: string): Promise<any> => {
-    try {
-      // For now, we'll simulate the extraction and use sample data
-      // In a real implementation, you would use a library like xlsx or send to backend
-      
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Return sample Excel data structure
-      return {
-        headers: ['Commodity', 'Specification', 'Average', 'Date'],
-        rows: [
-          ['Rice', 'Fancy White Rice', 56.15, '2025-01-15'],
-          ['Rice', 'Premium 5% broken', 45.25, '2025-01-15'],
-          ['Corn', 'White Corn', 28.50, '2025-01-15'],
-          ['Vegetables', 'Tomatoes', 35.75, '2025-01-15'],
-          ['Fruits', 'Bananas', 25.30, '2025-01-15'],
-          ['Livestock', 'Chicken (per kg)', 180.00, '2025-01-15']
-        ]
-      };
-      
-    } catch (error) {
-      throw new Error('Failed to extract data from Excel file');
-    }
-  };
-  
-  // Convert Excel data to JSON structure
-  const convertExcelToJSON = (excelData: any, fileName: string): any => {
-    try {
-      const items: any[] = [];
-      
-      // Process each row of data
-      for (const row of excelData.rows) {
-        if (row.length >= 4) {
-          const item = {
-            commodity: row[0] || 'N/A',
-            specification: row[1] || 'N/A',
-            average: parseFloat(row[2]) || null,
-            date: row[3] || 'N/A'
-          };
-          items.push(item);
-        }
-      }
-      
-      return {
-        items: items
-      };
-      
-    } catch (error) {
-      throw new Error('Failed to convert Excel data to JSON structure');
-    }
-  };
   
   // Filter daily price items
   const filteredDailyPriceItems = dailyPriceData?.items?.filter((item: any) =>
@@ -440,335 +297,236 @@ export default function AdminPage() {
   };
 
   const handleDebugMatching = async () => {
-    try {
-      const debugInfo = await debugAsyncStorageState();
-      console.log('🔍 Debug Info:', debugInfo);
-      
-      if (debugInfo.hasData) {
-        Alert.alert(
-          'Debug Info', 
-          `✅ Data Found!\n\n📊 Records: ${debugInfo.dataCount}\n📋 Sample: ${JSON.stringify(debugInfo.sampleData, null, 2)}`
-        );
-      } else {
-        Alert.alert('Debug Info', '❌ No price data found in AsyncStorage\n\nTry storing the price data first!');
-      }
-    } catch (error) {
-      console.error('Error debugging:', error);
-      Alert.alert('Error', 'Failed to debug storage');
-    }
+    Alert.alert('Debug Info', '🔍 Firebase Debug Info:\n\n✅ Real-time data from Firebase\n📊 No local storage debugging needed\n🔄 Data updates automatically');
   };
 
-  const handleStorePriceData = async () => {
-    try {
-      await storeProvidedPriceData();
-      Alert.alert('Success', 'Price data stored successfully!');
-    } catch (error) {
-      console.error('Error storing price data:', error);
-      Alert.alert('Error', 'Failed to store price data');
-    }
-  };
 
   const handleLoadLatestData = async () => {
-    try {
-      // First ensure data is stored
-      await storeProvidedPriceData();
-      
-      // Get the latest data info
-      const latestData = await getLatestPriceData();
-      
-      if (latestData) {
-        const latestDate = new Date(Math.max(...latestData.map((p: any) => new Date(p.Date).getTime())));
-        Alert.alert(
-          'Latest Data Loaded', 
-          `✅ Successfully loaded latest price data!\n\n📊 Records: ${latestData.length}\n📅 Latest Date: ${latestDate.toLocaleDateString()}\n\nGo to Price Monitoring to see the updated prices.`
-        );
-      } else {
-        Alert.alert('Error', 'Failed to load latest data');
-      }
-    } catch (error) {
-      console.error('Error loading latest data:', error);
-      Alert.alert('Error', 'Failed to load latest data');
-    }
+    Alert.alert('Info', '📊 Latest Data:\n\n✅ Data is automatically synced from Firebase\n🔄 Real-time updates across all devices\n📱 No manual loading needed');
   };
 
   // AsyncStorage management functions
   const handleClearAsyncStorage = async () => {
-    try {
-      Alert.alert(
-        'Clear All Local Storage',
-        'This will remove ALL data stored locally on this device, including:\n\n• Farmer form data\n• Password reset data\n• Price records\n• Announcements\n• Firebase auth data\n\nThis action cannot be undone. Continue?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Clear All',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await clearAsyncStorageWithConfirmation();
-                Alert.alert('Success', 'All AsyncStorage data has been cleared successfully.');
-                // Refresh the page to reflect changes
-                onRefresh();
-              } catch (error) {
-                Alert.alert('Error', `Failed to clear AsyncStorage: ${error}`);
-              }
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      Alert.alert('Error', `Failed to clear AsyncStorage: ${error}`);
-    }
+    Alert.alert('Info', '📊 Data Management:\n\n✅ Price data is now stored in Firebase\n🔄 Real-time sync across all devices\n📱 Local storage clearing not needed for price data');
   };
 
   const handleGetAsyncStorageInfo = async () => {
-    try {
-      const info = await getAsyncStorageInfo();
-      Alert.alert(
-        'AsyncStorage Information',
-        `Total Keys: ${info.totalKeys}\n\nData Types:\n${Object.entries(info.dataTypes)
-          .map(([type, count]) => `• ${type}: ${count}`)
-          .join('\n')}\n\nKeys:\n${info.keys.slice(0, 10).join('\n')}${info.keys.length > 10 ? '\n...' : ''}`
-      );
-    } catch (error) {
-      Alert.alert('Error', `Failed to get AsyncStorage info: ${error}`);
-    }
+    Alert.alert('Info', '📊 Data Storage:\n\n✅ Price data is now stored in Firebase\n🔄 Real-time sync across all devices\n📱 Local storage info not relevant for price data');
   };
 
   const handleViewPriceData = async () => {
-    try {
-      const priceData = await getPriceData();
-      if (!priceData) {
-        Alert.alert('No Data', 'No price data found in AsyncStorage.');
-        return;
-      }
-      
-      Alert.alert(
-        'Stored Price Data',
-        `Records: ${priceData.data?.length || 0}\nStored: ${priceData.metadata?.storedAt}\nSource: ${priceData.metadata?.dataSource}\n\nSample data:\n${JSON.stringify(priceData.data?.slice(0, 2), null, 2)}`
-      );
-    } catch (error) {
-      Alert.alert('Error', `Failed to retrieve price data: ${error}`);
-    }
+    Alert.alert('Info', '📊 Price Data:\n\n✅ View real-time price data in Price Monitoring tab\n🔄 Data is automatically synced from Firebase\n📱 No local storage viewing needed');
   };
 
   const handleUpdatePriceMonitoring = async () => {
-    try {
-      Alert.alert(
-        'Update Price Monitoring',
-        'This will update the price monitoring screens with the latest data from AsyncStorage. Continue?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Update',
-            onPress: async () => {
-              try {
-                const latestData = await getLatestPriceData();
-                if (!latestData || latestData.length === 0) {
-                  Alert.alert('No Data', 'No price data found in AsyncStorage to update monitoring.');
-                  return;
-                }
-
-                const stats = await priceMonitoringService.getPriceStatistics();
-                
-                Alert.alert(
-                  'Price Monitoring Updated',
-                  `✅ Successfully updated price monitoring!\n\n📊 Statistics:\n• Total commodities: ${stats.totalCommodities}\n• With prices: ${stats.commoditiesWithPrices}\n• Average price change: ${stats.averagePriceChange}%\n• Last updated: ${new Date(stats.lastUpdated).toLocaleString()}\n\n🔄 The price monitoring screens will now show the latest data from your stored JSON.`
-                );
-              } catch (error) {
-                Alert.alert('Error', `Failed to update price monitoring: ${error}`);
-              }
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      Alert.alert('Error', `Failed to update price monitoring: ${error}`);
-    }
+    Alert.alert('Info', '📊 Price Monitoring:\n\n✅ Real-time updates from Firebase\n🔄 No manual updates needed\n📱 Data syncs automatically across all devices');
   };
 
   const handleDebugPriceMatching = async () => {
-    try {
-      // First check AsyncStorage state
-      const storageState = await debugAsyncStorageState();
-      
-      let debugMessage = `📊 Debug Information:\n\n`;
-      debugMessage += `🗄️ AsyncStorage State:\n`;
-      debugMessage += `• Has data: ${storageState.hasData ? 'YES' : 'NO'}\n`;
-      debugMessage += `• Data count: ${storageState.dataCount}\n`;
-      debugMessage += `• Storage keys: ${storageState.rawKeys.length}\n\n`;
-      
-      if (!storageState.hasData) {
-        debugMessage += `❌ NO DATA IN STORAGE!\n\n`;
-        debugMessage += `🔧 Next steps:\n`;
-        debugMessage += `1. Click "Store Price Data" button\n`;
-        debugMessage += `2. Wait for success message\n`;
-        debugMessage += `3. Try this debug again`;
-        Alert.alert('Debug Results', debugMessage);
-        return;
-      }
-      
-      // Get latest data and test matching
-      const latestData = await getLatestPriceData();
-      const currentPrices = await priceMonitoringService.getCurrentPrices();
-      
-      debugMessage += `📈 Processing Results:\n`;
-      debugMessage += `• Total price records: ${latestData?.length || 0}\n`;
-      debugMessage += `• Matched commodities: ${currentPrices.length}\n\n`;
-      
-      if (storageState.sampleData) {
-        debugMessage += `📋 Sample stored data:\n`;
-        debugMessage += `• ${storageState.sampleData[0]?.Commodity} - ${storageState.sampleData[0]?.Type}: ₱${storageState.sampleData[0]?.Amount}\n`;
-        if (storageState.sampleData[1]) {
-          debugMessage += `• ${storageState.sampleData[1]?.Commodity} - ${storageState.sampleData[1]?.Type}: ₱${storageState.sampleData[1]?.Amount}\n`;
-        }
-        debugMessage += `\n`;
-      }
-      
-      if (currentPrices.length > 0) {
-        debugMessage += `✅ Matched prices:\n`;
-        currentPrices.slice(0, 3).forEach(price => {
-          debugMessage += `• ${price.commodityId}: ₱${price.currentPrice}\n`;
-        });
-        debugMessage += `\n🎉 SUCCESS! Data is working.`;
-      } else {
-        debugMessage += `❌ No matches found!\n\n`;
-        debugMessage += `🔧 Possible issues:\n`;
-        debugMessage += `• Commodity names don't match\n`;
-        debugMessage += `• Data format is incorrect\n`;
-        debugMessage += `• Check console logs for details`;
-      }
+    Alert.alert('Debug Info', '📊 Firebase Debug:\n\n✅ Real-time data from Firebase\n🔄 No local storage debugging needed\n📱 Check Price Monitoring tab for live data');
+  };
 
-      Alert.alert('Debug Results', debugMessage);
-    } catch (error: any) {
-      console.error('Debug error:', error);
-      Alert.alert('Debug Error', `Failed to debug: ${error.message || error}`);
+  // Category emoji function
+  const getCategoryEmoji = (category: string) => {
+    switch (category) {
+      case 'KADIWA RICE-FOR-ALL':
+      case 'IMPORTED COMMERCIAL RICE':
+      case 'LOCAL COMMERCIAL RICE':
+        return '🌾';
+      case 'CORN PRODUCTS':
+        return '🌽';
+      case 'FISH PRODUCTS':
+        return '🐟';
+      case 'BEEF MEAT PRODUCTS':
+        return '🥩';
+      case 'PORK MEAT PRODUCTS':
+        return '🥓';
+      case 'POULTRY PRODUCTS':
+        return '🐔';
+      case 'LIVESTOCK AND POULTRY PRODUCTS':
+        return '🐄';
+      case 'OTHER LIVESTOCK MEAT PRODUCTS':
+        return '🐄';
+      case 'LOWLAND VEGETABLES':
+      case 'HIGHLAND VEGETABLES':
+        return '🥬';
+      case 'SPICES':
+        return '🌶️';
+      case 'FRUITS':
+        return '🍎';
+      case 'OTHER BASIC COMMODITIES':
+        return '📋';
+      default:
+        return '📋';
     }
+  };
+
+  const getProductEmoji = (name: string, category: string) => {
+    const lowerName = name.toLowerCase();
+    
+    // Specific product emojis
+    // Beef products
+    if (lowerName.includes('beef')) {
+      if (lowerName.includes('brisket')) return '🥩';
+      if (lowerName.includes('chuck')) return '🥩';
+      if (lowerName.includes('flank')) return '🥩';
+      if (lowerName.includes('loin')) return '🥩';
+      if (lowerName.includes('rib')) return '🥩';
+      if (lowerName.includes('rump')) return '🥩';
+      if (lowerName.includes('sirloin')) return '🥩';
+      if (lowerName.includes('tenderloin')) return '🥩';
+      if (lowerName.includes('tongue')) return '👅';
+      return '🥩';
+    }
+    
+    // Pork products
+    if (lowerName.includes('pork')) {
+      if (lowerName.includes('belly') || lowerName.includes('liempo')) return '🥓';
+      if (lowerName.includes('chop')) return '🥓';
+      if (lowerName.includes('loin')) return '🥓';
+      if (lowerName.includes('head')) return '🐷';
+      if (lowerName.includes('offal')) return '🐷';
+      return '🥓';
+    }
+    
+    // Poultry products
+    if (lowerName.includes('chicken')) {
+      if (lowerName.includes('breast')) return '🍗';
+      if (lowerName.includes('thigh')) return '🍗';
+      if (lowerName.includes('wing')) return '🍗';
+      if (lowerName.includes('leg')) return '🍗';
+      if (lowerName.includes('egg')) return '🥚';
+      if (lowerName.includes('liver')) return '🍗';
+      if (lowerName.includes('neck')) return '🍗';
+      if (lowerName.includes('feet')) return '🍗';
+      return '🐔';
+    }
+    
+    if (lowerName.includes('duck')) return '🦆';
+    
+    // Fish products
+    if (lowerName.includes('bangus')) return '🐟';
+    if (lowerName.includes('tilapia')) return '🐟';
+    if (lowerName.includes('galunggong')) return '🐟';
+    if (lowerName.includes('alumahan')) return '🐟';
+    if (lowerName.includes('mackerel')) return '🐟';
+    if (lowerName.includes('salmon')) return '🐟';
+    if (lowerName.includes('squid') || lowerName.includes('pusit')) return '🦑';
+    if (lowerName.includes('tuna') || lowerName.includes('tambakol')) return '🐟';
+    if (lowerName.includes('bonito')) return '🐟';
+    if (lowerName.includes('pampano')) return '🐟';
+    if (lowerName.includes('scad') || lowerName.includes('tamban')) return '🐟';
+    
+    // Rice products
+    if (lowerName.includes('rice')) {
+      if (lowerName.includes('premium')) return '🍚';
+      if (lowerName.includes('well milled')) return '🍚';
+      if (lowerName.includes('regular')) return '🍚';
+      if (lowerName.includes('special')) return '🍚';
+      return '🌾';
+    }
+    
+    // Corn products
+    if (lowerName.includes('corn')) {
+      if (lowerName.includes('white')) return '🌽';
+      if (lowerName.includes('yellow')) return '🌽';
+      if (lowerName.includes('grits')) return '🌽';
+      if (lowerName.includes('cracked')) return '🌽';
+      return '🌽';
+    }
+    
+    // Vegetables
+    if (lowerName.includes('cabbage')) return '🥬';
+    if (lowerName.includes('carrot')) return '🥕';
+    if (lowerName.includes('tomato')) return '🍅';
+    if (lowerName.includes('onion')) return '🧅';
+    if (lowerName.includes('garlic')) return '🧄';
+    if (lowerName.includes('ginger')) return '🫚';
+    if (lowerName.includes('bell pepper')) return '🫑';
+    if (lowerName.includes('broccoli')) return '🥦';
+    if (lowerName.includes('cauliflower')) return '🥦';
+    if (lowerName.includes('lettuce')) return '🥬';
+    if (lowerName.includes('celery')) return '🥬';
+    if (lowerName.includes('chayote')) return '🥒';
+    if (lowerName.includes('potato')) return '🥔';
+    if (lowerName.includes('ampalaya')) return '🥒';
+    if (lowerName.includes('eggplant')) return '🍆';
+    if (lowerName.includes('squash')) return '🎃';
+    if (lowerName.includes('pechay')) return '🥬';
+    if (lowerName.includes('sitao')) return '🫛';
+    
+    // Fruits
+    if (lowerName.includes('banana')) return '🍌';
+    if (lowerName.includes('mango')) return '🥭';
+    if (lowerName.includes('papaya')) return '🥭';
+    if (lowerName.includes('watermelon')) return '🍉';
+    if (lowerName.includes('melon')) return '🍈';
+    if (lowerName.includes('pomelo')) return '🍊';
+    if (lowerName.includes('avocado')) return '🥑';
+    if (lowerName.includes('calamansi')) return '🍋';
+    
+    // Spices
+    if (lowerName.includes('chili') || lowerName.includes('chilli')) return '🌶️';
+    if (lowerName.includes('siling')) return '🌶️';
+    
+    // Basic commodities
+    if (lowerName.includes('sugar')) return '🍯';
+    if (lowerName.includes('salt')) return '🧂';
+    if (lowerName.includes('cooking oil')) return '🫒';
+    
+    // Carabeef/Livestock
+    if (lowerName.includes('carabeef')) return '🐄';
+    if (lowerName.includes('lamb')) return '🐑';
+    
+    // Fallback to category emoji
+    return getCategoryEmoji(category);
   };
 
   // Price monitoring functions
-  const fetchPriceData = async () => {
-    setPriceLoading(true);
-    setPriceError(null);
-
-    try {
-      console.log('🌾 Fetching price data from stored data...');
-      
-      // First try to get prices from stored data
-      const storedPriceData = await priceMonitoringService.getCurrentPrices();
-      
-      if (storedPriceData.length > 0) {
-        console.log('📊 Using stored price data:', storedPriceData.length, 'items');
-        
-        // Update commodities with stored price data
-        const updatedCommodities = COMMODITY_DATA.map(commodity => {
-          const price = storedPriceData.find(p => p.commodityId === commodity.id);
-          
-          if (price) {
-            return priceMonitoringService.updateCommodityWithPrices(commodity, price);
-          }
-          return commodity;
-        });
-
-        console.log('📊 Updated commodities with stored data:', {
-          count: updatedCommodities.length,
-          withPrices: updatedCommodities.filter(c => c.currentPrice).length,
-          firstCommodity: updatedCommodities[0] ? {
-            name: updatedCommodities[0].name,
-            category: updatedCommodities[0].category,
-            currentPrice: updatedCommodities[0].currentPrice,
-            hasPrice: !!updatedCommodities[0].currentPrice
-          } : null
-        });
-        
-        setCommodities(updatedCommodities);
-        setLastUpdated(new Date().toLocaleTimeString());
-        console.log('✅ Successfully updated', updatedCommodities.length, 'commodities with stored data');
-        return;
-      }
-      
-      // Fallback to DA service if no stored data
-      console.log('📊 No stored data found, falling back to DA service...');
-      
-      // Fetch current prices from DA service
-      const priceData = await daPriceService.getCurrentPrices(COMMODITY_DATA);
-      
-      // Fetch forecasts from DA service
-      const forecastData = await daPriceService.getPriceForecasts(COMMODITY_DATA);
-      
-      console.log('📊 DA price data received:', priceData.length, 'items');
-      console.log('🔮 DA forecast data received:', forecastData.length, 'items');
-      
-      // Update commodities with DA price data
-      const updatedCommodities = commodities.map(commodity => {
-        const price = priceData.find(p => p.commodityId === commodity.id);
-        const forecast = forecastData.find(f => f.commodityId === commodity.id);
-        
-        if (price) {
-          return updateCommodityWithDAPrices(commodity, price, forecast);
-        }
-        return commodity;
-      });
-
-      console.log('📊 Updated commodities sample:', {
-        count: updatedCommodities.length,
-        withPrices: updatedCommodities.filter(c => c.currentPrice).length,
-        firstCommodity: updatedCommodities[0] ? {
-          name: updatedCommodities[0].name,
-          category: updatedCommodities[0].category,
-          currentPrice: updatedCommodities[0].currentPrice,
-          hasPrice: !!updatedCommodities[0].currentPrice
-        } : null
-      });
-      
-      setCommodities(updatedCommodities);
-      setLastUpdated(new Date().toLocaleTimeString());
-      console.log('✅ Successfully updated', updatedCommodities.length, 'commodities with DA data');
-    } catch (error: any) {
-      setPriceError(error.message || 'Failed to fetch DA price data');
-      console.error('Error fetching DA price data:', error);
-    } finally {
-      setPriceLoading(false);
-    }
-  };
-
   const onPriceRefresh = async () => {
-    setPriceRefreshing(true);
-    await fetchPriceData();
-    setPriceRefreshing(false);
+    await refreshLatestPrices();
+    Alert.alert('Success', '✅ Latest prices reloaded from cache!');
   };
 
 
 
 
   const filteredCommodities = React.useMemo(() => {
-    let filtered = commodities;
+    let filtered = latestPrices;
     
-    // Filter by category first
+    // Filter out products with "No Data" status (no price or price is 0)
+    filtered = filtered.filter(price => 
+      price.price && 
+      price.price > 0 && 
+      !isNaN(price.price)
+    );
+    
+    // Filter by category
     if (selectedCategory) {
-      filtered = filtered.filter(commodity => commodity.category === selectedCategory);
+      filtered = filtered.filter(price => price.category === selectedCategory);
     }
     
     // Filter by search query
     if (priceSearchQuery.trim()) {
-      filtered = filtered.filter(commodity => 
-        commodity.name.toLowerCase().includes(priceSearchQuery.toLowerCase().trim())
+      filtered = filtered.filter(price => 
+        price.commodityName.toLowerCase().includes(priceSearchQuery.toLowerCase().trim())
       );
     }
     
     return filtered;
-  }, [selectedCategory, priceSearchQuery, commodities]);
+  }, [selectedCategory, priceSearchQuery, latestPrices]);
 
   // Price monitoring render functions
-  const renderCommodityItem = ({ item }: { item: Commodity }) => (
+  const renderCommodityItem = ({ item }: { item: LatestPrice }) => (
     <TouchableOpacity 
       style={styles.adminPriceCommodityCard}
       onPress={async () => {
-        console.log('🎯 Admin commodity card pressed:', item.name);
-        console.log('📊 Commodity details:', { id: item.id, name: item.name, category: item.category });
+        console.log('🎯 Admin commodity card pressed:', item.commodityName);
+        console.log('📊 Commodity details:', { id: item.recordId, name: item.commodityName, category: item.category });
         try {
           // Save commodity parameters to AsyncStorage
-          await AsyncStorage.setItem('selected_commodity_id', item.id);
-          await AsyncStorage.setItem('selected_commodity_name', item.name);
+          await AsyncStorage.setItem('selected_commodity_id', item.recordId);
+          await AsyncStorage.setItem('selected_commodity_name', item.commodityName);
           await AsyncStorage.setItem('selected_commodity_category', item.category);
           
           console.log('💾 Saved commodity params to storage');
@@ -784,93 +542,35 @@ export default function AdminPage() {
     >
       <View style={styles.adminPriceCommodityHeader}>
         <View style={styles.adminPriceCommodityInfo}>
-          <Text style={styles.adminPriceCommodityName}>{item.name}</Text>
+          <Text style={styles.adminPriceCommodityName}>{getProductEmoji(item.commodityName, item.category)} {item.commodityName}</Text>
           <Text style={styles.adminPriceCommodityCategory}>{item.category}</Text>
-          {item.priceDate && (
-            <Text style={styles.adminPriceDate}>📅 {new Date(item.priceDate).toLocaleDateString()}</Text>
+          {item.type && (
+            <Text style={styles.adminPriceDate}>🏷️ {item.type}</Text>
           )}
-          {item.priceSpecification && (
-            <Text style={styles.adminPriceSpecification}>📋 {item.priceSpecification}</Text>
+          {item.specification && (
+            <Text style={styles.adminPriceSpecification}>📝 {item.specification}</Text>
           )}
-          {item.priceSource && (
-            <Text style={styles.adminPriceSource}>📊 {item.priceSource === 'stored_data' ? 'Stored Data' : item.priceSource}</Text>
-          )}
+          <Text style={styles.adminPriceDate}>📅 {new Date(item.date).toLocaleDateString()}</Text>
         </View>
         <View style={styles.adminPriceContainer}>
-          {item.currentPrice ? (
+          {item.price > 0 ? (
             <>
-              <Text style={styles.adminPriceCurrentPrice}>₱{item.currentPrice.toFixed(2)}</Text>
+              <Text style={styles.adminPriceCurrentPrice}>💰 ₱{item.price.toFixed(2)}</Text>
               <Text style={styles.adminPriceUnit}>/{item.unit}</Text>
             </>
           ) : (
-            <Text style={styles.adminPriceNoPriceText}>No data</Text>
+            <>
+              <View style={[styles.adminPriceStatusBadge, styles.adminPriceStatusBadgeUnavailable]}>
+                <Text style={[styles.adminPriceStatusText, styles.adminPriceStatusTextUnavailable]}>❌ No Data</Text>
+              </View>
+            </>
           )}
         </View>
       </View>
       
-      {item.priceChange !== undefined && (
-        <View style={styles.adminPriceChangeContainer}>
-          <View style={[
-            styles.adminPriceChangeBadge,
-            item.priceChange >= 0 ? styles.adminPriceIncrease : styles.adminPriceDecrease
-          ]}>
-            <Ionicons 
-              name={item.priceChange >= 0 ? "trending-up" : "trending-down"} 
-              size={16} 
-              color="#fff" 
-            />
-            <Text style={styles.adminPriceChangeText}>
-              {item.priceChange >= 0 ? '+' : ''}₱{Math.abs(item.priceChange).toFixed(2)} 
-              ({item.priceChangePercent !== undefined && item.priceChangePercent >= 0 ? '+' : ''}{item.priceChangePercent?.toFixed(1) || '0.0'}%)
-            </Text>
-          </View>
-        </View>
-      )}
 
-      {item.forecast && (
-        <View style={styles.adminPriceForecastContainer}>
-          <Text style={styles.adminPriceForecastTitle}>📈 Forecast</Text>
-          <View style={styles.adminPriceForecastGrid}>
-            <View style={styles.adminPriceForecastItem}>
-              <Text style={styles.adminPriceForecastLabel}>Next Week</Text>
-              <Text style={styles.adminPriceForecastPrice}>₱{item.forecast?.nextWeek?.toFixed(2) || '0.00'}</Text>
-            </View>
-            <View style={styles.adminPriceForecastItem}>
-              <Text style={styles.adminPriceForecastLabel}>Next Month</Text>
-              <Text style={styles.adminPriceForecastPrice}>₱{item.forecast?.nextMonth?.toFixed(2) || '0.00'}</Text>
-            </View>
-          </View>
-          <View style={[
-            styles.adminPriceTrendBadge,
-            item.forecast.trend === 'up' ? styles.adminPriceTrendUp : 
-            item.forecast.trend === 'down' ? styles.adminPriceTrendDown : styles.adminPriceTrendStable
-          ]}>
-            <Ionicons 
-              name={
-                item.forecast.trend === 'up' ? 'arrow-up' :
-                item.forecast.trend === 'down' ? 'arrow-down' : 'remove'
-              } 
-              size={12} 
-              color="#fff" 
-            />
-            <Text style={styles.adminPriceTrendText}>
-              {item.forecast.trend.toUpperCase()} TREND ({item.forecast.confidence}%)
-            </Text>
-          </View>
-          
-          {item.forecast.factors && item.forecast.factors.length > 0 && (
-            <View style={styles.adminPriceFactorsContainer}>
-              <Text style={styles.adminPriceFactorsTitle}>Key Factors:</Text>
-              {item.forecast.factors.slice(0, 3).map((factor, index) => (
-                <Text key={index} style={styles.adminPriceFactorText}>• {factor}</Text>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-
-      {item.lastUpdated && (
-        <Text style={styles.adminPriceLastUpdated}>Updated: {item.lastUpdated}</Text>
+      {item.price > 0 && (
+        <Text style={styles.adminPriceLastUpdated}>🕒 Updated: {new Date(item.lastUpdated).toLocaleString()}</Text>
       )}
     </TouchableOpacity>
   );
@@ -885,7 +585,7 @@ export default function AdminPage() {
       <View style={styles.adminPriceModalOverlay}>
         <View style={styles.adminPriceModalContent}>
           <View style={styles.adminPriceModalHeader}>
-            <Text style={styles.adminPriceModalTitle}>Select Commodity</Text>
+            <Text style={styles.adminPriceModalTitle}>🛒 Select Commodity</Text>
             <TouchableOpacity
               style={styles.adminPriceModalCloseButton}
               onPress={() => setShowCommodityModal(false)}
@@ -895,39 +595,47 @@ export default function AdminPage() {
           </View>
           
           <ScrollView style={styles.adminPriceModalScrollView}>
-            {Object.values(COMMODITY_CATEGORIES).map(category => (
               <TouchableOpacity
-                key={category}
                 style={[
                   styles.adminPriceModalItem,
-                  selectedCategory === category && styles.adminPriceModalItemActive
+                selectedCategory === null && styles.adminPriceModalItemActive
                 ]}
                 onPress={() => {
-                  setSelectedCategory(category);
+                setSelectedCategory(null);
                   setShowCommodityModal(false);
                 }}
               >
-                <Ionicons 
-                  name={
-                    category === 'KADIWA RICE-FOR-ALL' ? 'leaf' :
-                    category === 'IMPORTED COMMERCIAL RICE' ? 'leaf' :
-                    category === 'LOCAL COMMERCIAL RICE' ? 'leaf' :
-                    category === 'CORN' ? 'flower' :
-                    category === 'FISH' ? 'fish' :
-                    category === 'LIVESTOCK & POULTRY PRODUCTS' ? 'restaurant' :
-                    category === 'LOWLAND VEGETABLES' ? 'nutrition' :
-                    category === 'HIGHLAND VEGETABLES' ? 'nutrition' :
-                    category === 'SPICES' ? 'flame' :
-                    category === 'FRUITS' ? 'happy' : 'basket'
-                  }
-                  size={20} 
-                  color={selectedCategory === category ? "#fff" : GREEN} 
-                />
+              <Text style={styles.adminPriceModalCategoryEmoji}>
+                {getCategoryEmoji('ALL')}
+              </Text>
                 <Text style={[
                   styles.adminPriceModalItemText,
-                  selectedCategory === category && styles.adminPriceModalItemTextActive
+                selectedCategory === null && styles.adminPriceModalItemTextActive
+              ]}>
+                All Categories
+              </Text>
+            </TouchableOpacity>
+            
+            {categories.map(category => (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.adminPriceModalItem,
+                  selectedCategory === category.name && styles.adminPriceModalItemActive
+                ]}
+                onPress={() => {
+                  setSelectedCategory(category.name);
+                  setShowCommodityModal(false);
+                }}
+              >
+                <Text style={styles.adminPriceModalCategoryEmoji}>
+                  {category.emoji}
+                </Text>
+                <Text style={[
+                  styles.adminPriceModalItemText,
+                  selectedCategory === category.name && styles.adminPriceModalItemTextActive
                 ]}>
-                  {category}
+                  {category.name}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -953,12 +661,27 @@ export default function AdminPage() {
   };
 
   const renderProductPickerModal = () => {
-    // Filter products based on search text
-    const filteredProducts = OFFICIAL_PRODUCTS.filter(product => 
-      product.name.toLowerCase().includes(productSearchText.toLowerCase()) ||
-      product.category.toLowerCase().includes(productSearchText.toLowerCase()) ||
-      (product.specification && product.specification.toLowerCase().includes(productSearchText.toLowerCase()))
-    );
+    // Get all unique categories from COMMODITY_DATA
+    const allCategories = [...new Set(COMMODITY_DATA.map(product => product.category))];
+    
+    // Filter products based on selected category and search text
+    let filteredProducts = COMMODITY_DATA;
+    
+    // Filter by category first
+    if (productPickerSelectedCategory) {
+      filteredProducts = filteredProducts.filter(product => 
+        product.category === productPickerSelectedCategory
+      );
+    }
+    
+    // Then filter by search text
+    if (productSearchText.trim()) {
+      filteredProducts = filteredProducts.filter(product => 
+        product.name.toLowerCase().includes(productSearchText.toLowerCase()) ||
+        product.category.toLowerCase().includes(productSearchText.toLowerCase()) ||
+        (product.specification && product.specification.toLowerCase().includes(productSearchText.toLowerCase()))
+      );
+    }
 
     return (
     <Modal
@@ -968,6 +691,7 @@ export default function AdminPage() {
         onRequestClose={() => {
           setShowProductPicker(false);
           setProductSearchText(''); // Clear search when closing
+          setProductPickerSelectedCategory(null); // Clear category filter when closing
         }}
     >
       <View style={styles.adminPriceModalOverlay}>
@@ -977,6 +701,7 @@ export default function AdminPage() {
               <TouchableOpacity style={styles.adminPriceModalCloseButton} onPress={() => {
                 setShowProductPicker(false);
                 setProductSearchText(''); // Clear search when closing
+                setProductPickerSelectedCategory(null); // Clear category filter when closing
               }}>
               <Ionicons name="close" size={24} color={GREEN} />
             </TouchableOpacity>
@@ -1005,10 +730,53 @@ export default function AdminPage() {
               </View>
             </View>
 
+            {/* Commodity Filter Buttons */}
+            <View style={styles.productPickerFilterContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.productPickerFilterButton,
+                  productPickerSelectedCategory === null && styles.productPickerFilterButtonActive
+                ]}
+                onPress={() => setProductPickerSelectedCategory(null)}
+              >
+                <Ionicons 
+                  name="apps" 
+                  size={16} 
+                  color={productPickerSelectedCategory === null ? "#fff" : GREEN} 
+                />
+                <Text style={[
+                  styles.productPickerFilterButtonText,
+                  productPickerSelectedCategory === null && styles.productPickerFilterButtonTextActive
+                ]}>
+                  All
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.productPickerFilterButton,
+                  productPickerSelectedCategory !== null && styles.productPickerFilterButtonActive
+                ]}
+                onPress={() => setShowProductCommodityModal(true)}
+              >
+                <Ionicons 
+                  name="basket" 
+                  size={16} 
+                  color={productPickerSelectedCategory !== null ? "#fff" : GREEN} 
+                />
+                <Text style={[
+                  styles.productPickerFilterButtonText,
+                  productPickerSelectedCategory !== null && styles.productPickerFilterButtonTextActive
+                ]}>
+                  {productPickerSelectedCategory || 'Commodities'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {filteredProducts.length > 0 ? (
           <FlatList
                 data={filteredProducts}
-            keyExtractor={(item) => item.id.toString()}
+            keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[
@@ -1021,11 +789,8 @@ export default function AdminPage() {
                       setProductSearchText(''); // Clear search when selecting
                 }}
               >
-                <View style={styles.productPickerIconContainer}>
-                  <Ionicons name={getProductIcon(item.category)} size={24} color={GREEN} />
-                </View>
                 <View style={styles.productPickerTextContainer}>
-                  <Text style={styles.productPickerItemName}>{item.name}</Text>
+                  <Text style={styles.productPickerItemName}>{getProductEmoji(item.name, item.category)} {item.name}</Text>
                   <Text style={styles.productPickerItemCategory}>{item.category}</Text>
                   {item.specification && <Text style={styles.productPickerItemSpec}>{item.specification}</Text>}
                 </View>
@@ -1049,6 +814,77 @@ export default function AdminPage() {
       </View>
     </Modal>
   );
+  };
+
+  const renderProductCommodityModal = () => {
+    // Get all unique categories from COMMODITY_DATA
+    const allCategories = [...new Set(COMMODITY_DATA.map(product => product.category))];
+
+    return (
+      <Modal
+        visible={showProductCommodityModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowProductCommodityModal(false)}
+      >
+        <View style={styles.adminPriceModalOverlay}>
+          <View style={[styles.adminPriceModalContent, { maxHeight: '70%', marginHorizontal: 20 }]}>
+            <View style={styles.adminPriceModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="basket" size={24} color={GREEN} style={{ marginRight: 10 }} />
+                <Text style={styles.adminPriceModalTitle}>Select Commodity</Text>
+              </View>
+              <TouchableOpacity style={styles.adminPriceModalCloseButton} onPress={() => setShowProductCommodityModal(false)}>
+                <Ionicons name="close" size={24} color={GREEN} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.adminPriceModalScrollView}>
+              <TouchableOpacity
+                style={[
+                  styles.adminPriceModalItem,
+                  productPickerSelectedCategory === null && styles.adminPriceModalItemActive
+                ]}
+                onPress={() => {
+                  setProductPickerSelectedCategory(null);
+                  setShowProductCommodityModal(false);
+                }}
+              >
+                <Text style={styles.adminPriceModalCategoryEmoji}>📋</Text>
+                <Text style={[
+                  styles.adminPriceModalItemText,
+                  productPickerSelectedCategory === null && styles.adminPriceModalItemTextActive
+                ]}>
+                  All Categories
+                </Text>
+              </TouchableOpacity>
+              
+              {allCategories.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.adminPriceModalItem,
+                    productPickerSelectedCategory === category && styles.adminPriceModalItemActive
+                  ]}
+                  onPress={() => {
+                    setProductPickerSelectedCategory(category);
+                    setShowProductCommodityModal(false);
+                  }}
+                >
+                  <Text style={styles.adminPriceModalCategoryEmoji}>{getCategoryEmoji(category)}</Text>
+                  <Text style={[
+                    styles.adminPriceModalItemText,
+                    productPickerSelectedCategory === category && styles.adminPriceModalItemTextActive
+                  ]}>
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
   };
 
   const renderManualEntryModal = () => (
@@ -1081,10 +917,12 @@ export default function AdminPage() {
               >
                 {manualSelectedProduct ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <Ionicons name={getProductIcon(manualSelectedProduct.category)} size={20} color={GREEN} style={{ marginRight: 10 }} />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.manualProductName}>{manualSelectedProduct.name}</Text>
+                      <Text style={styles.manualProductName}>{getProductEmoji(manualSelectedProduct.name, manualSelectedProduct.category)} {manualSelectedProduct.name}</Text>
                       <Text style={styles.manualProductCategory}>{manualSelectedProduct.category}</Text>
+                      {manualSelectedProduct.specification && (
+                        <Text style={styles.manualProductSpec}>{manualSelectedProduct.specification}</Text>
+                      )}
                     </View>
                   </View>
                 ) : (
@@ -1149,30 +987,41 @@ export default function AdminPage() {
                     return;
                   }
                   
-                  // Create price record in the format expected by AsyncStorage
+                  // Create price record for Firebase
                   const priceRecord = {
-                    Commodity: manualSelectedProduct.name,
-                    Type: manualSelectedProduct.specification || manualSelectedProduct.category,
-                    Specification: manualSelectedProduct.specification || null,
-                    Amount: amt,
-                    Date: manualDate.toISOString()
+                    commodityName: manualSelectedProduct.name,
+                    price: amt,
+                    date: manualDate.toISOString().split('T')[0], // YYYY-MM-DD format
+                    category: manualSelectedProduct.category,
+                    unit: manualSelectedProduct.unit || 'kg',
+                    type: manualSelectedProduct.type || '',
+                    specification: manualSelectedProduct.specification || ''
                   };
                   
-                  // Save to AsyncStorage using the new function
-                  await addOrUpdatePriceRecord(priceRecord);
+                  // Save to Firebase using the new offline service
+                  const result = await addOrUpdatePrice(priceRecord);
+                  
+           if (result.success) {
+             const isDisplayed = result.message.includes('displayed in price monitoring');
+             const statusIcon = isDisplayed ? '✅' : '💾';
+             const statusText = isDisplayed ? 'Now displayed in price monitoring' : 'Saved to database (older than current latest)';
                   
                   Alert.alert(
                     'Success', 
-                    `Price saved to AsyncStorage!\n\n💰 ${priceRecord.Commodity} - ${priceRecord.Type}\n📅 ${new Date(priceRecord.Date).toLocaleDateString()}\n💵 ₱${priceRecord.Amount}\n\nThis will be reflected in price monitoring.`
+               `${result.message}\n\n${statusIcon} ${priceRecord.commodityName}\n📅 ${manualDate.toLocaleDateString()}\n💵 ₱${priceRecord.price}\n\n${statusText}`
                   );
+           } else {
+             Alert.alert('Error', result.message);
+             return;
+           }
                   
                   setShowManualModal(false);
                   setManualSelectedProduct(null);
                   setManualAmount('');
                   setManualDate(new Date());
                   
-                  // Refresh the page to show updated data
-                  onRefresh();
+                  // Refresh the latest prices to show updated data
+                  await refreshLatestPrices();
                   
                 } catch (e: any) {
                   console.error('Error saving manual price:', e);
@@ -2006,10 +1855,10 @@ export default function AdminPage() {
   };
 
   const onRefresh = async () => {
-    setRefreshing(true);
+    setAdminRefreshing(true);
     try {
       // Reset admin data
-      setProducts([...OFFICIAL_PRODUCTS]);
+      setProducts([...COMMODITY_DATA]);
       setDailyPriceData(null);
       setHasUploadedPDF(false);
       setSearchQuery('');
@@ -2020,7 +1869,7 @@ export default function AdminPage() {
       console.error('Error refreshing data:', error);
       Alert.alert('Error', 'Failed to refresh data. Please try again.');
     } finally {
-      setRefreshing(false);
+      setAdminRefreshing(false);
     }
   };
 
@@ -2182,7 +2031,7 @@ export default function AdminPage() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={adminRefreshing}
               onRefresh={onRefresh}
               colors={[GREEN]}
               tintColor={GREEN}
@@ -2287,7 +2136,6 @@ export default function AdminPage() {
                 </View>
                 </TouchableOpacity>
 
-              {/* Storage & Debug tools removed per request */}
 
             </View>
 
@@ -2300,21 +2148,49 @@ export default function AdminPage() {
         <View style={styles.adminPriceMonitoringContainer}>
           {/* Header */}
           <View style={styles.adminPriceHeader}>
-            <TouchableOpacity 
-              style={styles.adminPriceBackButton}
-              onPress={() => setActiveNav('home')}
-            >
-              <Ionicons name="arrow-back" size={24} color={GREEN} />
-            </TouchableOpacity>
             <Text style={styles.adminPriceHeaderTitle}>Price Monitoring</Text>
-            <View style={{ width: 24 }} />
+          </View>
+
+          {/* ML Forecasts Refresh Button */}
+          <View style={styles.adminMLRefreshContainer}>
+            <TouchableOpacity 
+              style={[styles.adminMLRefreshButton, mlRefreshing && styles.adminMLRefreshButtonDisabled]}
+              onPress={async () => {
+                try {
+                  const result = await refreshFirebaseMLForecasts();
+                  if (result.success) {
+                    Alert.alert('Success', result.message);
+                  } else {
+                    Alert.alert('Error', result.message);
+                  }
+                } catch (error) {
+                  Alert.alert('Error', 'Failed to refresh Firebase ML forecasts');
+                }
+              }}
+              disabled={mlRefreshing}
+            >
+              <Ionicons 
+                name="analytics" 
+                size={20} 
+                color={mlRefreshing ? '#999' : '#fff'} 
+                style={mlRefreshing && styles.adminMLRefreshIconSpinning}
+              />
+              <Text style={[styles.adminMLRefreshButtonText, mlRefreshing && styles.adminMLRefreshButtonTextDisabled]}>
+                {mlRefreshing ? 'Loading from Firebase...' : 'Load from Firebase'}
+              </Text>
+            </TouchableOpacity>
+            {mlForecasts.length > 0 && (
+              <Text style={styles.adminMLForecastsCount}>
+                {mlForecasts.length} ML forecasts cached
+              </Text>
+            )}
           </View>
 
           {/* Error Display */}
           {priceError && (
             <View style={styles.adminPriceErrorContainer}>
               <Ionicons name="warning" size={20} color="#ff6b6b" />
-              <Text style={styles.adminPriceErrorText}>{priceError}</Text>
+              <Text style={styles.adminPriceErrorText}>⚠️ {priceError}</Text>
             </View>
           )}
 
@@ -2324,7 +2200,7 @@ export default function AdminPage() {
               <Ionicons name="search" size={20} color="#666" style={styles.adminPriceSearchIcon} />
               <TextInput
                 style={styles.adminPriceSearchInput}
-                placeholder="Search for a product..."
+                placeholder="🔍 Search for a product..."
                 placeholderTextColor="#999"
                 value={priceSearchQuery}
                 onChangeText={setPriceSearchQuery}
@@ -2408,13 +2284,13 @@ export default function AdminPage() {
           {priceLoading ? (
             <View style={styles.adminPriceLoadingContainer}>
               <ActivityIndicator size="large" color={GREEN} />
-              <Text style={styles.adminPriceLoadingText}>Fetching latest prices...</Text>
+              <Text style={styles.adminPriceLoadingText}>🔄 Fetching latest prices...</Text>
             </View>
           ) : (
             <FlatList
               data={filteredCommodities}
               renderItem={renderCommodityItem}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.recordId || item.commodityName}
               contentContainerStyle={[styles.adminPriceCommodityList, { paddingBottom: 100 }]}
               showsVerticalScrollIndicator={false}
               refreshControl={
@@ -2427,7 +2303,7 @@ export default function AdminPage() {
               }
               ListEmptyComponent={
                 <View style={styles.adminPriceEmptyState}>
-                  <Ionicons name="search" size={60} color="#74bfa3" />
+                  <Text style={styles.adminPriceEmptyEmoji}>🔍</Text>
                   <Text style={styles.adminPriceEmptyTitle}>No commodities found</Text>
                   <Text style={styles.adminPriceEmptySubtitle}>
                     {priceSearchQuery.trim() 
@@ -2452,6 +2328,9 @@ export default function AdminPage() {
 
           {/* Product Picker Modal */}
           {renderProductPickerModal()}
+
+          {/* Product Commodity Modal */}
+          {renderProductCommodityModal()}
 
           {/* Date Picker */}
           {showDatePicker && (
@@ -2488,60 +2367,7 @@ export default function AdminPage() {
               <View style={{ width: 24 }} />
             </View>
             
-            <Text style={styles.sectionSubtitle}>Upload Excel files and manage agricultural price data</Text>
-            
-            {/* Excel Upload Section */}
-            <View style={styles.pdfUploadContainer}>
-              <Text style={styles.pdfUploadTitle}>Upload Price Data Excel</Text>
-              <Text style={styles.pdfUploadDescription}>
-                Upload your agricultural price monitoring Excel file with commodity, specification, average price, and date columns
-              </Text>
-              
-              <View style={styles.pdfFormatInfo}>
-                <Text style={styles.pdfFormatTitle}>📊 Excel Requirements:</Text>
-                <Text style={styles.pdfFormatText}>• Excel file (.xlsx or .xls format)</Text>
-                <Text style={styles.pdfFormatText}>• Must have columns: Commodity, Specification, Average, Date</Text>
-                <Text style={styles.pdfFormatText}>• System will automatically parse and display the data</Text>
-                <Text style={styles.pdfFormatText}>• Data will be organized in a searchable list format</Text>
-              </View>
-              
-              <View style={styles.buttonContainer}>
-                <TouchableOpacity 
-                  style={[styles.pdfUploadButton, isProcessing && styles.pdfUploadButtonDisabled]} 
-                  onPress={handleExcelUpload}
-                  disabled={isProcessing}
-                >
-                  <Ionicons name="cloud-upload" size={24} color="#fff" />
-                  <Text style={styles.pdfUploadButtonText}>
-                    {isProcessing ? 'Processing Excel...' : 'Upload Excel File'}
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.sampleButton} onPress={loadSampleData}>
-                  <Ionicons name="document-text" size={24} color={GREEN} />
-                  <Text style={styles.sampleButtonText}>Load Sample Data</Text>
-                </TouchableOpacity>
-              </View>
-              
-              {/* Processing Progress */}
-              {isProcessing && (
-                <View style={styles.processingContainer}>
-                  <Text style={styles.processingText}>Processing Excel file...</Text>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${processingProgress}%` }]} />
-                  </View>
-                  <Text style={styles.progressText}>{processingProgress}%</Text>
-                </View>
-              )}
-              
-              {dailyPriceData && (
-                <View style={styles.dataInfo}>
-                  <Text style={styles.dataInfoTitle}>📊 Excel Processed Successfully!</Text>
-                  <Text style={styles.dataInfoText}>Total Records: {dailyPriceData.items.length}</Text>
-                  <Text style={styles.dataInfoText}>Source: Excel file processed and imported</Text>
-                </View>
-              )}
-            </View>
+            <Text style={styles.sectionSubtitle}>Manage agricultural price data</Text>
 
             {/* Search Bar */}
             <View style={styles.searchContainer}>
@@ -2569,7 +2395,7 @@ export default function AdminPage() {
                     Agricultural Price Data ({filteredDailyPriceItems.length} records)
                   </Text>
                   <Text style={styles.priceListSubtitle}>
-                    Data from uploaded Excel file • Use search to filter
+                    Use search to filter data
                   </Text>
                 </View>
                 
@@ -2722,7 +2548,7 @@ export default function AdminPage() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={adminRefreshing}
               onRefresh={onRefresh}
               colors={[GREEN]}
               tintColor={GREEN}
@@ -2829,7 +2655,7 @@ export default function AdminPage() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={adminRefreshing}
               onRefresh={onRefresh}
               colors={[GREEN]}
               tintColor={GREEN}
@@ -2931,7 +2757,7 @@ export default function AdminPage() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={adminRefreshing}
               onRefresh={onRefresh}
               colors={[GREEN]}
               tintColor={GREEN}
@@ -3047,7 +2873,7 @@ export default function AdminPage() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={adminRefreshing}
               onRefresh={onRefresh}
               colors={[GREEN]}
               tintColor={GREEN}
@@ -3566,7 +3392,7 @@ export default function AdminPage() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
+              refreshing={adminRefreshing}
               onRefresh={onRefresh}
               colors={[GREEN]}
               tintColor={GREEN}
@@ -7637,16 +7463,55 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e0e0e0',
     backgroundColor: '#fff',
   },
-  adminPriceBackButton: {
-    padding: 8,
-    marginRight: 12,
-  },
   adminPriceHeaderTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: GREEN,
     flex: 1,
     textAlign: 'center',
+  },
+  adminMLRefreshContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  adminMLRefreshButton: {
+    backgroundColor: GREEN,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  adminMLRefreshButtonDisabled: {
+    backgroundColor: '#ccc',
+    opacity: 0.7,
+  },
+  adminMLRefreshButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  adminMLRefreshButtonTextDisabled: {
+    color: '#999',
+  },
+  adminMLRefreshIconSpinning: {
+    transform: [{ rotate: '180deg' }],
+  },
+  adminMLForecastsCount: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  excelUploadButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   adminPriceErrorContainer: {
     flexDirection: 'row',
@@ -7930,6 +7795,42 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
+  // Product Picker Filter Styles
+  productPickerFilterContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    justifyContent: 'space-between',
+  },
+  productPickerFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#74bfa3',
+    flex: 0.48,
+    justifyContent: 'center',
+  },
+  productPickerFilterButtonActive: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  productPickerFilterButtonText: {
+    fontSize: 12,
+    color: GREEN,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  productPickerFilterButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
   manualInputGroup: {
     marginBottom: 24,
   },
@@ -7963,6 +7864,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     marginTop: 2,
+  },
+  manualProductSpec: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 1,
   },
   manualProductPlaceholder: {
     fontSize: 15,
@@ -8121,6 +8027,24 @@ const styles = StyleSheet.create({
   adminPriceContainer: {
     alignItems: 'flex-end',
   },
+  adminPriceStatusBadge: {
+    backgroundColor: '#e8f5e8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  adminPriceStatusBadgeUnavailable: {
+    backgroundColor: '#ffeaea',
+  },
+  adminPriceStatusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  adminPriceStatusTextUnavailable: {
+    color: '#d63031',
+  },
   adminPriceCurrentPrice: {
     fontSize: 24,
     fontWeight: '800',
@@ -8146,6 +8070,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     alignSelf: 'flex-start',
+  },
+  adminPriceChangeEmoji: {
+    fontSize: 16,
+    marginRight: 4,
   },
   adminPriceIncrease: {
     backgroundColor: '#e8f5e8',
@@ -8245,6 +8173,10 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     paddingHorizontal: 40,
   },
+  adminPriceEmptyEmoji: {
+    fontSize: 80,
+    marginBottom: 16,
+  },
   adminPriceEmptyTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -8297,6 +8229,10 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  adminPriceModalCategoryEmoji: {
+    fontSize: 24,
+    marginRight: 12,
   },
   adminPriceModalItemActive: {
     backgroundColor: '#f0f8f0',

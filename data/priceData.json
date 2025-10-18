@@ -1,1 +1,1388 @@
-[]
+[
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Brisket, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Brisket, Local",
+    "Specification": "Meat with Bones",
+    "Amount": 415.11,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Chuck, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Chuck, Local",
+    "Specification": null,
+    "Amount": 399.73,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Flank, Imported",
+    "Specification": null,
+    "Amount": 376.67,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Flank, Local",
+    "Specification": null,
+    "Amount": 427.78,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Fore Limb, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Fore Limb, Local",
+    "Specification": null,
+    "Amount": 457.86,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Forequarter, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Forequarter, Local",
+    "Specification": null,
+    "Amount": 480.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Loin, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Loin, Local",
+    "Specification": null,
+    "Amount": 473.33,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Plate, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Plate, Local",
+    "Specification": null,
+    "Amount": 398.46,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rib Eye, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rib Eye, Local",
+    "Specification": null,
+    "Amount": 433.85,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rib Set, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rib Set, Local",
+    "Specification": null,
+    "Amount": 420.32,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rump, Imported",
+    "Specification": null,
+    "Amount": 360.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rump, Local",
+    "Specification": "Lean Meat/ Tapadera",
+    "Amount": 473.11,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Short Ribs, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Short Ribs, Local",
+    "Specification": null,
+    "Amount": 429.57,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Sirloin, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Sirloin, Local",
+    "Specification": null,
+    "Amount": 470.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Striploin, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Striploin, Local",
+    "Specification": null,
+    "Amount": 472.4,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Tenderloin, Imported",
+    "Specification": null,
+    "Amount": 676.67,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Tenderloin, Local",
+    "Specification": null,
+    "Amount": 656.3,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Tongue, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Tongue, Local",
+    "Specification": null,
+    "Amount": 532.5,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "CORN PRODUCTS",
+    "Type": "Corn (White)",
+    "Specification": "Cob, Glutinous",
+    "Amount": 92.78,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "CORN PRODUCTS",
+    "Type": "Corn (Yellow)",
+    "Specification": "Cob, Sweet Corn",
+    "Amount": 79.95,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "CORN PRODUCTS",
+    "Type": "Corn Cracked (Yellow, Feed Grade)",
+    "Specification": null,
+    "Amount": 50.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "CORN PRODUCTS",
+    "Type": "Corn Grits (Feed Grade)",
+    "Specification": null,
+    "Amount": 47.5,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "CORN PRODUCTS",
+    "Type": "Corn Grits (White, Food Grade)",
+    "Specification": null,
+    "Amount": 120.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "CORN PRODUCTS",
+    "Type": "Corn Grits (Yellow, Food Grade)",
+    "Specification": null,
+    "Amount": 95.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Alumahan (Indian Mackerel)",
+    "Specification": "Medium (4-6 pcs/kg)",
+    "Amount": 354.17,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Bangus, Large",
+    "Specification": "Large (1-2 pcs)",
+    "Amount": 281.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Bangus, Medium",
+    "Specification": "Medium (3-4 pcs/kg)",
+    "Amount": 245.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Bonito (Frigate Tuna)",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Galunggong, Imported",
+    "Specification": "Male, Medium (12-14 pcs/kg)",
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Galunggong, Local",
+    "Specification": "Male, Medium (12-14 pcs/kg)",
+    "Amount": 336.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Mackerel, Imported",
+    "Specification": "Frozen, Whole Round",
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Mackerel, Local",
+    "Specification": "Fresh, Whole Round",
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Pampano, Imported",
+    "Specification": null,
+    "Amount": 405.26,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Pampano, Local",
+    "Specification": null,
+    "Amount": 451.54,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Salmon Belly, Imported",
+    "Specification": null,
+    "Amount": 417.41,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Salmon Belly, Local",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Salmon Head, Imported",
+    "Specification": null,
+    "Amount": 222.21,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Salmon Head, Local",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Sardines (Tamban)",
+    "Specification": null,
+    "Amount": 117.14,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Squid (Pusit Bisaya), Local",
+    "Specification": "Medium",
+    "Amount": 446.03,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Squid, Imported",
+    "Specification": null,
+    "Amount": 208.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Tambakol (Yellow-Fin Tuna), Imported",
+    "Specification": "Medium, Frozen",
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Tambakol (Yellow-Fin Tuna), Local",
+    "Specification": "Medium, Fresh or Chilled",
+    "Amount": 261.81,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FISH PRODUCTS",
+    "Type": "Tilapia",
+    "Specification": "Medium (5-6 pcs/kg)",
+    "Amount": 152.57,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Avocado",
+    "Specification": null,
+    "Amount": 442.5,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Banana (Lakatan)",
+    "Specification": "8-10 pcs/kg",
+    "Amount": 97.47,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Banana (Latundan)",
+    "Specification": "10-12 pcs/kg",
+    "Amount": 74.82,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Banana (Saba)",
+    "Specification": null,
+    "Amount": 52.24,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Calamansi",
+    "Specification": null,
+    "Amount": 83.12,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Mango (Carabao)",
+    "Specification": "Ripe, 3-4 pcs/kg",
+    "Amount": 200.23,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Melon",
+    "Specification": null,
+    "Amount": 105.74,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Papaya",
+    "Specification": "Solo, Ripe, 2-3 pcs/kg",
+    "Amount": 69.08,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Pomelo",
+    "Specification": null,
+    "Amount": 186.48,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Watermelon",
+    "Specification": null,
+    "Amount": 76.98,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Bell Pepper (Green), Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Bell Pepper (Green), Local",
+    "Specification": "Medium (151-250gm/pc)",
+    "Amount": 288.31,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Bell Pepper (Red), Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Bell Pepper (Red), Local",
+    "Specification": "Medium (151-250gm/pc)",
+    "Amount": 261.27,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Broccoli, Imported",
+    "Specification": null,
+    "Amount": 271.65,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Broccoli, Local",
+    "Specification": "Medium (8-10 cm diameter/bunch hd)",
+    "Amount": 251.43,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Cabbage (Rare Ball)",
+    "Specification": "510 gm - 1 kg/head",
+    "Amount": 104.59,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Cabbage (Scorpio)",
+    "Specification": "750 gm - 1 kg/head",
+    "Amount": 107.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Cabbage (Wonder Ball)",
+    "Specification": "510 gm - 1 kg/head",
+    "Amount": 98.8,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Cabbage, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Carrots, Imported",
+    "Specification": null,
+    "Amount": 168.67,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Carrots, Local",
+    "Specification": "8-10 pcs/kg",
+    "Amount": 186.38,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Cauliflower, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Cauliflower, Local",
+    "Specification": "Medium (8-10 cm diameter/bunch hd)",
+    "Amount": 259.58,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Celery",
+    "Specification": "Medium (501-800 g)",
+    "Amount": 186.81,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Chayote",
+    "Specification": "Medium (301-400 g)",
+    "Amount": 76.69,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Habichuelas/Baguio Beans, Local",
+    "Specification": null,
+    "Amount": 135.9,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Lettuce (Green Ice)",
+    "Specification": null,
+    "Amount": 195.78,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Lettuce (Iceberg)",
+    "Specification": "Medium (301-450 cm diameter/bunch hd)",
+    "Amount": 217.56,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Lettuce (Romaine)",
+    "Specification": null,
+    "Amount": 192.68,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Lettuce, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Pechay Baguio",
+    "Specification": null,
+    "Amount": 77.36,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "White Potato, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "White Potato, Local",
+    "Specification": "10-12 pcs/kg",
+    "Amount": 135.87,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Premium",
+    "Specification": "5% broken",
+    "Amount": 47.08,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Regular Milled",
+    "Specification": "20-40% bran streak",
+    "Amount": 39.32,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Special Rice",
+    "Specification": "White Rice",
+    "Amount": 57.45,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Well Milled",
+    "Specification": "1-19% bran streak",
+    "Amount": 42.6,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Premium",
+    "Specification": "5% broken",
+    "Amount": 49.07,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Regular Milled",
+    "Specification": "20-40% bran streak",
+    "Amount": 37.18,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Special Rice",
+    "Specification": "White Rice",
+    "Amount": 56.96,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Well Milled",
+    "Specification": "1-19% bran streak",
+    "Amount": 42.96,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Ampalaya",
+    "Specification": "4-5 pcs/kg",
+    "Amount": 138.26,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Chilli (Green), Local",
+    "Specification": "Haba/Panigang",
+    "Amount": 164.83,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Eggplant",
+    "Specification": "3-4 Small Bundles",
+    "Amount": 136.71,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Native Pechay",
+    "Specification": "3-4 Small Bundles",
+    "Amount": 122.31,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Pole Sitao",
+    "Specification": "3-4 Small Bundles",
+    "Amount": 111.99,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Squash",
+    "Specification": "Suprema Variety",
+    "Amount": 75.71,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Tomato",
+    "Specification": "15-18 pcs/kg",
+    "Amount": 132.45,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Coconut)",
+    "Specification": "350 ml/bottle",
+    "Amount": 58.84,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Coconut)",
+    "Specification": "1 Liter/bottle",
+    "Amount": 161.84,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Minola)",
+    "Specification": "500 ml/bottle",
+    "Amount": 90.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Minola)",
+    "Specification": "1,000 ml/bottle",
+    "Amount": 140.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Palm Olein, Jolly Brand)",
+    "Specification": "1,000 ml/bottle",
+    "Amount": 145.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Palm)",
+    "Specification": "350 ml/bottle",
+    "Amount": 36.27,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Palm)",
+    "Specification": "1 Liter/bottle",
+    "Amount": 92.04,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Spring)",
+    "Specification": "500 ml/bottle",
+    "Amount": 75.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Spring)",
+    "Specification": "1,000 ml/bottle",
+    "Amount": 152.14,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Salt (Iodized)",
+    "Specification": null,
+    "Amount": 39.81,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Salt (Rock)",
+    "Specification": null,
+    "Amount": 21.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Sugar (Brown)",
+    "Specification": null,
+    "Amount": 73.82,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Sugar (Refined)",
+    "Specification": null,
+    "Amount": 82.45,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Sugar (Washed)",
+    "Specification": null,
+    "Amount": 76.26,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Forequarter, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Forequarter, Local",
+    "Specification": null,
+    "Amount": 330.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Meat, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Meat, Local",
+    "Specification": null,
+    "Amount": 344.29,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Rump Steak, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Rump Steak, Local",
+    "Specification": null,
+    "Amount": 380.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Trimmings, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Carabeef Trimmings, Local",
+    "Specification": null,
+    "Amount": 340.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "OTHER LIVESTOCK MEAT PRODUCTS",
+    "Type": "Lamb Meat",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Belly (Liempo), Imported",
+    "Specification": null,
+    "Amount": 314.66,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Belly (Liempo), Local",
+    "Specification": null,
+    "Amount": 402.78,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Boston Shoulder, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Boston Shoulder, Local",
+    "Specification": null,
+    "Amount": 358.75,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Chop, Imported",
+    "Specification": null,
+    "Amount": 254.48,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Chop, Local",
+    "Specification": null,
+    "Amount": 353.83,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Fore Shank, Imported",
+    "Specification": null,
+    "Amount": 202.5,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Fore Shank, Local",
+    "Specification": null,
+    "Amount": 328.88,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Head, Imported",
+    "Specification": null,
+    "Amount": 200.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Head, Local",
+    "Specification": null,
+    "Amount": 260.81,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Hind Leg (Pigue), Imported",
+    "Specification": null,
+    "Amount": 255.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Hind Leg (Pigue), Local",
+    "Specification": null,
+    "Amount": 352.74,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Hind Shank, Imported",
+    "Specification": null,
+    "Amount": 210.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Hind Shank, Local",
+    "Specification": null,
+    "Amount": 329.26,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Loin, Imported",
+    "Specification": null,
+    "Amount": 262.14,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Loin, Local",
+    "Specification": null,
+    "Amount": 393.61,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Offals, Imported",
+    "Specification": null,
+    "Amount": 136.67,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Offals, Local",
+    "Specification": null,
+    "Amount": 255.97,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Picnic Shoulder (Kasim), Imported",
+    "Specification": null,
+    "Amount": 257.45,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Picnic Shoulder (Kasim), Local",
+    "Specification": null,
+    "Amount": 353.83,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Rind/Skin, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Rind/Skin, Local",
+    "Specification": null,
+    "Amount": 107.27,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Spare Ribs, Imported",
+    "Specification": null,
+    "Amount": 242.5,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Spare Ribs, Local",
+    "Specification": null,
+    "Amount": 341.58,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Breast, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Breast, Local",
+    "Specification": "Magnolia",
+    "Amount": 218.44,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Breast, Local",
+    "Specification": "Bounty Fresh",
+    "Amount": 220.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Breast, Local",
+    "Specification": "Unbranded, Fresh",
+    "Amount": 208.15,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Drumstick, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Drumstick, Local",
+    "Specification": "Magnolia",
+    "Amount": 225.1,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Drumstick, Local",
+    "Specification": "Bounty Fresh",
+    "Amount": 230.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Drumstick, Local",
+    "Specification": "Unbranded, Fresh",
+    "Amount": 215.97,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Egg (White, Medium)",
+    "Specification": "56-60 grams/pc",
+    "Amount": 8.35,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Feet, Imported",
+    "Specification": null,
+    "Amount": 200.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Feet, Local",
+    "Specification": null,
+    "Amount": 146.52,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Leg Quarter",
+    "Specification": "Magnolia",
+    "Amount": 220.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Leg Quarter",
+    "Specification": "Bounty Fresh",
+    "Amount": 220.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Leg Quarter",
+    "Specification": "Unbranded, Fresh",
+    "Amount": 208.16,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Leg Quarter, Imported",
+    "Specification": null,
+    "Amount": 166.82,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Liver, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Liver, Local",
+    "Specification": null,
+    "Amount": 231.67,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Neck, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Neck, Local",
+    "Specification": null,
+    "Amount": 146.61,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Rind/Skin, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Rind/Skin, Local",
+    "Specification": null,
+    "Amount": 150.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Thigh, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Thigh, Local",
+    "Specification": null,
+    "Amount": 213.82,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Wing, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Wing, Local",
+    "Specification": "Magnolia",
+    "Amount": 222.98,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Wing, Local",
+    "Specification": "Bounty Fresh",
+    "Amount": 230.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Wing, Local",
+    "Specification": "Unbranded, Fresh",
+    "Amount": 215.56,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Duck Meat, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Duck Meat, Local",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Peckin Duck, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Peckin Duck, Local",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Whole Chicken, Imported",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Whole Chicken, Local",
+    "Specification": "Magnolia",
+    "Amount": 208.15,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Whole Chicken, Local",
+    "Specification": "Bounty Fresh",
+    "Amount": 200.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Whole Chicken, Local",
+    "Specification": "Fully Dressed",
+    "Amount": 194.58,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Chilli (Red), Local",
+    "Specification": "Tingala",
+    "Amount": 282.99,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Garlic, Imported",
+    "Specification": null,
+    "Amount": 151.51,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Garlic, Native/Local",
+    "Specification": null,
+    "Amount": 393.75,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Ginger, Imported",
+    "Specification": "Fairly well-matured, Medium (150-300 gm)",
+    "Amount": 148.13,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Ginger, Local",
+    "Specification": "Fairly well-matured, Medium (150-300 gm)",
+    "Amount": 196.59,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Red Onion, Imported",
+    "Specification": null,
+    "Amount": 120.0,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Red Onion, Local",
+    "Specification": "13-15 pcs/kg",
+    "Amount": 155.24,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Tiger Chillies, Imported",
+    "Specification": "Tiger Chillies, Imported",
+    "Amount": null,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "White Onion, Imported",
+    "Specification": "Medium",
+    "Amount": 126.55,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "White Onion, Imported",
+    "Specification": "Large",
+    "Amount": 108.94,
+    "Date": "2025-10-17"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "White Onion, Local",
+    "Specification": null,
+    "Amount": null,
+    "Date": "2025-10-17"
+  }
+]
