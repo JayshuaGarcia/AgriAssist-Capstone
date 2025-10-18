@@ -258,7 +258,7 @@ export default function PriceMonitoringScreen() {
               color="#fff" 
             />
             <Text style={styles.trendText}>
-              {item.forecast.trend.toUpperCase()} TREND ({item.forecast.confidence}%)
+              {item.forecast.trend?.toUpperCase() || 'UNKNOWN'} TREND ({item.forecast.confidence}%)
             </Text>
           </View>
           
@@ -385,9 +385,9 @@ export default function PriceMonitoringScreen() {
                     category === 'KADIWA RICE-FOR-ALL' ? 'leaf' :
                     category === 'IMPORTED COMMERCIAL RICE' ? 'leaf' :
                     category === 'LOCAL COMMERCIAL RICE' ? 'leaf' :
-                    category === 'CORN' ? 'flower' :
-                    category === 'FISH' ? 'fish' :
-                    category === 'LIVESTOCK & POULTRY PRODUCTS' ? 'restaurant' :
+                    category === 'CORN PRODUCTS' ? 'flower' :
+                    category === 'FISH PRODUCTS' ? 'fish' :
+                    category === 'LIVESTOCK AND POULTRY PRODUCTS' ? 'restaurant' :
                     category === 'LOWLAND VEGETABLES' ? 'nutrition' :
                     category === 'HIGHLAND VEGETABLES' ? 'nutrition' :
                     category === 'SPICES' ? 'flame' :
@@ -427,7 +427,7 @@ export default function PriceMonitoringScreen() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>PRICE MONITORING - TEST</Text>
           <TouchableOpacity 
-            style={styles.refreshButton}
+            style={styles.headerRefreshButton}
             onPress={fetchPriceData}
             disabled={loading}
           >
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     padding: 8,
     marginRight: 12,
   },
-  refreshButton: {
+  headerRefreshButton: {
     padding: 8,
     marginLeft: 12,
   },

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, ScrollView, TextInput } from 'react-native';
-import { useRouter, usePathname } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
 
 const GREEN = '#16543a';
@@ -12,7 +12,6 @@ const WHITE = '#ffffff';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const pathname = usePathname();
   const [activeTab, setActiveTab] = useState('home');
   const { profile, logout } = useAuth();
 
@@ -75,11 +74,6 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-notifications')}>
-          <MaterialCommunityIcons name="bell-outline" size={24} color={GREEN} />
-          <Text style={styles.menuText}>Notifications</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-privacy')}>
           <MaterialCommunityIcons name="shield-check-outline" size={24} color={GREEN} />

@@ -70,16 +70,6 @@ export const searchableItems: SearchableItem[] = [
 
   // Settings & Preferences
   {
-    id: 'notifications',
-    title: 'Notifications',
-    description: 'Manage alert preferences',
-    category: 'Settings & Preferences',
-    icon: 'notifications',
-    screen: 'notifications',
-    keywords: ['notifications', 'alerts', 'reminders', 'settings', 'preferences'],
-    action: () => {}
-  },
-  {
     id: 'privacy-security',
     title: 'Privacy & Security',
     description: 'Account security settings',

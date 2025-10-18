@@ -51,7 +51,6 @@ export default function RootLayout() {
                 <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
                 <Stack.Screen name="signup" options={{ headerShown: false }} />
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="notifications" options={{ headerShown: false }} />
                 <Stack.Screen name="help" options={{ headerShown: false }} />
                 <Stack.Screen name="privacy" options={{ headerShown: false }} />
                 <Stack.Screen name="about" options={{ headerShown: false }} />

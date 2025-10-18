@@ -114,14 +114,6 @@ export default function AdminPage() {
       action: () => setActiveNav('settings')
     },
     {
-      id: 'notifications',
-      title: 'Notifications',
-      description: 'Manage notification settings',
-      category: 'Configuration',
-      icon: 'notifications',
-      action: () => router.push('/notifications')
-    },
-    {
       id: 'privacy',
       title: 'Privacy & Security',
       description: 'Account security and privacy settings',
@@ -1111,6 +1103,14 @@ export default function AdminPage() {
             userCropEmoji: data?.selectedCropEmoji
           };
         });
+        
+        // Add admin profile data with 'admin' key for messages
+        const adminUserId = 'UIcMju8YbdX3VfYAjEbCem39bNe2';
+        const adminData = newUsersDirectory[adminUserId];
+        if (adminData) {
+          newUsersDirectory['admin'] = adminData;
+        }
+        
         setUsersDirectory(newUsersDirectory);
       } catch (e) {
         console.warn('⚠️ Could not load users directory for messages; using fallback names');
@@ -2796,16 +2796,6 @@ export default function AdminPage() {
               <View style={styles.settingsSection}>
                 <Text style={styles.settingsTitle}>Settings & Preferences</Text>
                 
-                <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/notifications')}>
-                  <View style={styles.settingIconContainer}>
-                    <Ionicons name="notifications" size={24} color={GREEN} />
-                  </View>
-                  <View style={styles.settingContent}>
-                    <Text style={styles.settingLabel}>Notifications</Text>
-                    <Text style={styles.settingDescription}>Manage alert preferences</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
-                </TouchableOpacity>
 
                 <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/privacy')}>
                   <View style={styles.settingIconContainer}>

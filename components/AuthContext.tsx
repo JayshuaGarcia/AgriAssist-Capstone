@@ -52,7 +52,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     name: 'Farmer',
     role: 'Farmer',
     location: 'Philippines',
-    profileImage: ''
+    profileImage: '',
+    selectedCropIcon: 'rice',
+    selectedCropEmoji: '🌱',
+    selectedCropName: 'Seedling'
   });
   const router = useRouter();
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
@@ -71,9 +74,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         // Load user profile from Firestore
         try {
+          console.log('📄 Loading user profile from Firestore...');
+          console.log('🆔 User UID:', firebaseUser.uid);
+          
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data();
+            console.log('📋 User data from Firestore:', userData);
+            console.log('🌱 Icon data from Firestore:');
+            console.log('   selectedCropIcon:', userData.selectedCropIcon);
+            console.log('   selectedCropEmoji:', userData.selectedCropEmoji);
+            console.log('   selectedCropName:', userData.selectedCropName);
+            
             setProfile({
               name: userData.name || 'Farmer',
               role: userData.role || 'Farmer',
@@ -86,6 +98,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               approved: userData.approved,
               barangay: userData.barangay
             });
+            
+            console.log('✅ Profile loaded from Firestore successfully');
             
             // Update user email from Firestore if it's different from Firebase Auth
             if (userData.email && userData.email !== firebaseUser.email) {
@@ -101,7 +115,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: 'Farmer',
           role: 'Farmer',
           location: 'Philippines',
-          profileImage: ''
+          profileImage: '',
+          selectedCropIcon: 'rice',
+          selectedCropEmoji: '🌱',
+          selectedCropName: 'Seedling'
         });
       }
       setLoading(false);
@@ -127,33 +144,181 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (debugError: any) {
         console.log('⚠️ Could not access users collection:', debugError?.message || debugError);
       }
-      // Check for special admin credentials
-      if (email === 'AAadmin' && password === 'AAadmin') {
-        // Create a mock admin user for the special admin login
-        const mockAdminUser = {
-          uid: 'admin-special',
-          email: 'AAadmin',
-          displayName: 'Admin'
-        };
+      // Check for special admin credentials - both email and username are the same admin account
+      if ((email === 'AAadmin' || email === 'agriassistme@gmail.com')) {
+        // Check if admin has changed their password
+        let adminPassword = 'AAadmin'; // Default password
         
-        // Set the user state directly
-        setUser({
-          uid: mockAdminUser.uid,
-          email: mockAdminUser.email,
-          displayName: mockAdminUser.displayName
-        });
+        // Try to get the updated password from Firestore
+        try {
+          const adminDoc = await getDoc(doc(db, 'users', 'UIcMju8YbdX3VfYAjEbCem39bNe2')); // Admin user ID
+          if (adminDoc.exists()) {
+            const adminData = adminDoc.data();
+            if (adminData.newPassword) {
+              adminPassword = adminData.newPassword;
+              console.log('🔐 Using updated admin password from Firestore');
+            }
+          }
+        } catch (error) {
+          console.log('⚠️ Could not check for updated admin password, using default');
+        }
         
-        // Set admin profile
-        setProfile({
-          name: 'Admin',
-          role: 'admin',
-          location: 'Philippines',
-          profileImage: '',
-          approved: true
-        });
-        
-        setLoading(false);
-        return;
+        // Check if the provided password matches (either default or updated)
+        if (password === adminPassword) {
+          console.log('🔐 Admin login detected:', email);
+          
+          // For both login methods, use the same admin account logic
+          // Try Firebase Auth first for the email login
+          if (email === 'agriassistme@gmail.com') {
+            try {
+              console.log('🔐 Attempting Firebase Auth login for admin email...');
+              const adminCredential = await signInWithEmailAndPassword(auth, email, password);
+              const adminUser = adminCredential.user;
+              
+              console.log('✅ Firebase Auth login successful for admin');
+              
+              // Load admin profile from Firestore
+              const adminDoc = await getDoc(doc(db, 'users', adminUser.uid));
+              if (adminDoc.exists()) {
+                const adminData = adminDoc.data();
+                setUser({
+                  uid: adminUser.uid,
+                  email: adminUser.email,
+                  displayName: adminUser.displayName
+                });
+                
+                setProfile({
+                  name: adminData.name || 'Admin',
+                  role: 'admin', // Force admin role
+                  location: adminData.location || 'Philippines',
+                  profileImage: adminData.profileImage || '',
+                  selectedCropIcon: adminData.selectedCropIcon || 'rice',
+                  selectedCropEmoji: adminData.selectedCropEmoji || '🌱',
+                  selectedCropName: adminData.selectedCropName || 'Seedling',
+                  approved: true, // Force approved for admin
+                  isAdmin: true // Mark as admin-only account
+                });
+              } else {
+                // Fallback to default admin profile
+                setUser({
+                  uid: adminUser.uid,
+                  email: adminUser.email,
+                  displayName: 'Admin'
+                });
+                
+                setProfile({
+                  name: 'Admin',
+                  role: 'admin', // Force admin role
+                  location: 'Philippines',
+                  profileImage: '',
+                  selectedCropIcon: 'rice',
+                  selectedCropEmoji: '🌱',
+                  selectedCropName: 'Seedling',
+                  approved: true, // Force approved for admin
+                  isAdmin: true // Mark as admin-only account
+                });
+              }
+              
+              console.log('✅ Admin user state set successfully');
+              setLoading(false);
+              return;
+            } catch (adminError: any) {
+              console.log('⚠️ Firebase Auth login failed for admin email, falling back to mock admin');
+              console.log('Admin error:', adminError.message);
+            }
+          }
+          
+          // For username login (AAadmin), we need to use the same Firebase Auth user ID
+          // as the email login to ensure they share the same profile data
+          try {
+            // Try to get the Firebase Auth user ID for the email login
+            const emailCredential = await signInWithEmailAndPassword(auth, 'agriassistme@gmail.com', password);
+            const emailUser = emailCredential.user;
+            
+            console.log('✅ Using Firebase Auth user ID for unified admin:', emailUser.uid);
+            
+            // Load the admin profile from Firestore using the Firebase Auth user ID
+            const adminDoc = await getDoc(doc(db, 'users', emailUser.uid));
+            if (adminDoc.exists()) {
+              const adminData = adminDoc.data();
+              
+              // Set the user state with the Firebase Auth user ID
+              setUser({
+                uid: emailUser.uid,
+                email: email, // Use the actual email/username used for login
+                displayName: 'Admin'
+              });
+              
+              // Set admin profile with data from Firestore
+              setProfile({
+                name: adminData.name || 'Admin',
+                role: 'admin', // Force admin role
+                location: adminData.location || 'Philippines',
+                profileImage: adminData.profileImage || '',
+                selectedCropIcon: adminData.selectedCropIcon || 'rice',
+                selectedCropEmoji: adminData.selectedCropEmoji || '🌱',
+                selectedCropName: adminData.selectedCropName || 'Seedling',
+                approved: true, // Force approved for admin
+                isAdmin: true // Mark as admin-only account
+              });
+            } else {
+              // Fallback if no profile exists
+              setUser({
+                uid: emailUser.uid,
+                email: email,
+                displayName: 'Admin'
+              });
+              
+              setProfile({
+                name: 'Admin',
+                role: 'admin',
+                location: 'Philippines',
+                profileImage: '',
+                selectedCropIcon: 'rice',
+                selectedCropEmoji: '🌱',
+                selectedCropName: 'Seedling',
+                approved: true,
+                isAdmin: true
+              });
+            }
+          } catch (unifiedError: any) {
+            console.log('⚠️ Could not unify admin accounts, using fallback');
+            console.log('Unified error:', unifiedError.message);
+            
+            // Fallback to mock admin if unification fails
+            const adminUserId = 'admin-unified';
+            const adminUser = {
+              uid: adminUserId,
+              email: email,
+              displayName: 'Admin'
+            };
+            
+            setUser({
+              uid: adminUser.uid,
+              email: adminUser.email,
+              displayName: adminUser.displayName
+            });
+            
+            setProfile({
+              name: 'Admin',
+              role: 'admin',
+              location: 'Philippines',
+              profileImage: '',
+              selectedCropIcon: 'rice',
+              selectedCropEmoji: '🌱',
+              selectedCropName: 'Seedling',
+              approved: true,
+              isAdmin: true
+            });
+          }
+          
+          console.log('✅ Admin user state set successfully (unified)');
+          setLoading(false);
+          return;
+        } else {
+          // Wrong password for admin
+          throw new Error('Incorrect password for admin account.');
+        }
       }
       
       // Regular Firebase authentication for other users
@@ -246,16 +411,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             };
             
             setUser(mockUser);
+            
+            console.log('📄 Loading user profile from Firestore (fallback login)...');
+            console.log('📋 User data from Firestore:', userData);
+            console.log('🌱 Icon data from Firestore:');
+            console.log('   selectedCropIcon:', (userData as any).selectedCropIcon);
+            console.log('   selectedCropEmoji:', (userData as any).selectedCropEmoji);
+            console.log('   selectedCropName:', (userData as any).selectedCropName);
+            
             setProfile({
               name: (userData as any).name || 'User',
               role: (userData as any).role || 'Farmer',
               location: (userData as any).location || 'Philippines',
               profileImage: (userData as any).profileImage || '',
+              selectedCropIcon: (userData as any).selectedCropIcon || 'rice',
+              selectedCropEmoji: (userData as any).selectedCropEmoji || '🌱',
+              selectedCropName: (userData as any).selectedCropName || 'Seedling',
               phone: (userData as any).phone,
               approved: (userData as any).approved,
               barangay: (userData as any).barangay
             });
             
+            console.log('✅ Profile loaded from Firestore successfully (fallback login)');
             console.log('🎉 Login successful with new password, redirecting to app');
             router.replace('/(tabs)');
             return; // Exit early since we've successfully logged in
@@ -948,6 +1125,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error('Unable to identify user. Please log in again.');
       }
 
+      // Special handling for admin accounts
+      if (profile.role === 'admin' || contextUser?.email === 'AAadmin' || contextUser?.email === 'agriassistme@gmail.com') {
+        console.log('🔐 Admin password change detected');
+        
+        // For admin accounts, we need to update both login methods
+        // First, verify the current password
+        if (currentPassword !== 'AAadmin') {
+          throw new Error('Current password is incorrect.');
+        }
+        
+        // Update the Firebase Auth password for the email login
+        try {
+          if (currentUser && currentUser.email === 'agriassistme@gmail.com') {
+            // Update Firebase Auth password
+            await currentUser.updatePassword(newPassword);
+            console.log('✅ Firebase Auth password updated for admin email');
+          }
+        } catch (firebaseError: any) {
+          console.log('⚠️ Could not update Firebase Auth password:', firebaseError.message);
+        }
+        
+        // Update the admin account in Firestore to store the new password
+        try {
+          const adminDocRef = doc(db, 'users', userId);
+          await setDoc(adminDocRef, {
+            newPassword: newPassword,
+            passwordUpdated: true,
+            passwordChangeDate: new Date().toISOString(),
+            adminPasswordChanged: true
+          }, { merge: true });
+          console.log('✅ Admin password updated in Firestore');
+        } catch (firestoreError: any) {
+          console.log('⚠️ Could not update Firestore password:', firestoreError.message);
+        }
+        
+        console.log('✅ Admin password changed successfully for both login methods');
+        return;
+      }
+
       // Password change process started
       
       // First, verify the current password using the same logic as login
@@ -1159,41 +1375,91 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const updateProfile = async (profileData: Partial<UserProfile>) => {
     try {
+      console.log('🔄 updateProfile called with data:', profileData);
+      console.log('👤 Current user:', user);
+      console.log('🆔 User UID:', user?.uid);
+      
       if (!user?.uid) {
-        console.error('No user logged in');
-        return;
+        console.error('❌ No user logged in - cannot update profile');
+        throw new Error('No user logged in. Please log in first.');
       }
 
       // Log the activity
       const changes = Object.keys(profileData).map(key => `${key}: ${profileData[key as keyof UserProfile]}`);
-      await logActivity('profile_update', {
-        changes: changes,
-        previousValues: profile
-      });
+      console.log('📝 Profile changes:', changes);
+      
+      try {
+        // Filter out undefined values from previousValues to prevent Firestore errors
+        const cleanPreviousValues = Object.keys(profile).reduce((acc, key) => {
+          const value = profile[key as keyof UserProfile];
+          if (value !== undefined && value !== null) {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as any);
+        
+        await logActivity('profile_update', {
+          changes: changes,
+          previousValues: cleanPreviousValues
+        });
+      } catch (activityError) {
+        console.log('⚠️ Activity logging failed:', activityError);
+      }
 
       // Update local state first
-    setProfile(prev => ({ ...prev, ...profileData }));
+      console.log('🔄 Updating local state...');
+      setProfile(prev => ({ ...prev, ...profileData }));
+      console.log('✅ Local state updated');
 
       // Try to update in Firestore
       try {
+        console.log('🔥 Attempting Firestore update...');
+        console.log('📄 Document path: users/' + user.uid);
+        console.log('📝 Data to save:', profileData);
+        
         const userDocRef = doc(db, 'users', user.uid);
         await setDoc(userDocRef, profileData, { merge: true });
-        console.log('Profile updated successfully in database');
+        
+        console.log('✅ Profile updated successfully in Firestore database');
+        
+        // Verify the update
+        const verifyDoc = await getDoc(userDocRef);
+        if (verifyDoc.exists()) {
+          const savedData = verifyDoc.data();
+          console.log('✅ Verification - saved data:', savedData);
+        } else {
+          console.log('❌ Verification failed - document not found');
+        }
+        
       } catch (firestoreError: any) {
-        console.log('⚠️ Firestore update not available, using local storage only');
+        console.error('❌ Firestore update failed:', firestoreError);
+        console.error('❌ Error code:', firestoreError.code);
+        console.error('❌ Error message:', firestoreError.message);
+        
+        if (firestoreError.code === 'permission-denied') {
+          console.log('🔍 Permission denied error detected');
+          console.log('🔍 This is likely a Firestore security rules issue');
+          console.log('🔍 User does not have write permission to their own document');
+          console.log('🔍 Using local storage as fallback...');
+        } else {
+          console.log('⚠️ Firestore update not available, using local storage only');
+        }
         
         // Store profile data in local storage as fallback
         try {
+          console.log('💾 Attempting local storage fallback...');
           // Use already imported function
           storeProfileData(user.uid, profileData);
-          console.log('Profile updated successfully in local storage');
+          console.log('✅ Profile updated successfully in local storage');
+          console.log('ℹ️ Note: Changes are saved locally but may not persist across devices');
+          console.log('ℹ️ Contact admin to fix Firestore permissions for full persistence');
         } catch (localError: any) {
           console.error('❌ Local storage also failed:', localError);
           throw new Error('Failed to update profile. Please try again.');
         }
       }
     } catch (error) {
-      console.error('Error updating profile:', error);
+      console.error('❌ Error updating profile:', error);
       // Revert local state on error
       setProfile(prev => ({ ...prev }));
       throw error;

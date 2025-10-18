@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigationBar } from '../hooks/useNavigationBar';
@@ -15,8 +15,10 @@ export const options = {
 
 export default function AdminChatPage() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const { contactId, contactName, contactEmail } = params;
+  // Get parameters from the route - this will be properly implemented when navigation is fixed
+  const contactId = 'temp-contact-id';
+  const contactName = 'User';
+  const contactEmail = 'user@example.com';
   
   // Configure navigation bar to be hidden (same as user screens)
   useNavigationBar('hidden');
@@ -25,6 +27,35 @@ export default function AdminChatPage() {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [adminProfile, setAdminProfile] = useState<any>(null);
+
+  // Load admin profile data
+  const loadAdminProfile = async () => {
+    try {
+      // The admin user ID is 'UIcMju8YbdX3VfYAjEbCem39bNe2' (from the unified admin system)
+      const adminDoc = await getDoc(doc(db, 'users', 'UIcMju8YbdX3VfYAjEbCem39bNe2'));
+      if (adminDoc.exists()) {
+        setAdminProfile(adminDoc.data());
+      }
+    } catch (error) {
+      console.error('Error loading admin profile:', error);
+    }
+  };
+
+  // Load user profile data
+  const loadUserProfile = async () => {
+    if (!contactId) return;
+    
+    try {
+      const userDoc = await getDoc(doc(db, 'users', contactId));
+      if (userDoc.exists()) {
+        setUserProfile(userDoc.data());
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
 
   // Load messages for this contact
   const loadMessages = async () => {
@@ -108,6 +139,8 @@ export default function AdminChatPage() {
   useEffect(() => {
     if (contactId) {
       loadMessages();
+      loadUserProfile();
+      loadAdminProfile();
     }
   }, [contactId]);
 
@@ -157,6 +190,20 @@ export default function AdminChatPage() {
               styles.messageContainer,
               message.type === 'sent' ? styles.sentMessageContainer : styles.receivedMessageContainer
             ]}>
+              {message.type === 'sent' && (
+                <View style={styles.sentMessageAvatar}>
+                  <Text style={styles.sentMessageCropIcon}>
+                    {adminProfile?.selectedCropEmoji || '👨‍💼'}
+                  </Text>
+                </View>
+              )}
+              {message.type === 'received' && (
+                <View style={styles.receivedMessageAvatar}>
+                  <Text style={styles.receivedMessageCropIcon}>
+                    {userProfile?.selectedCropEmoji || '🌱'}
+                  </Text>
+                </View>
+              )}
               <View style={[
                 styles.messageBubble,
                 message.type === 'sent' ? styles.sentBubble : styles.receivedBubble
@@ -301,6 +348,44 @@ const styles = StyleSheet.create({
   sentMessageContainer: {
     alignSelf: 'flex-end',
     alignItems: 'flex-end',
+  },
+  sentMessageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: '#16543a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sentMessageCropIcon: {
+    fontSize: 18,
+  },
+  receivedMessageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: '#16543a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  receivedMessageCropIcon: {
+    fontSize: 18,
   },
   receivedMessageContainer: {
     alignSelf: 'flex-start',

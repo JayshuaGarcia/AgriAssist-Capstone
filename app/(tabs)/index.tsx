@@ -19,6 +19,162 @@ const LIGHT_GREEN = '#74bfa3';
 const OPENWEATHER_API_KEY = 'e05cb613185ce07bcb47465572f69f56';
 const { width: screenWidth } = Dimensions.get('window');
 
+// Emoji functions for product and category display
+const getCategoryEmoji = (category: string) => {
+  switch (category) {
+    case 'KADIWA RICE-FOR-ALL':
+    case 'IMPORTED COMMERCIAL RICE':
+    case 'LOCAL COMMERCIAL RICE':
+      return '🌾';
+    case 'CORN PRODUCTS':
+      return '🌽';
+    case 'FISH PRODUCTS':
+      return '🐟';
+    case 'BEEF MEAT PRODUCTS':
+      return '🥩';
+    case 'PORK MEAT PRODUCTS':
+      return '🥓';
+    case 'POULTRY PRODUCTS':
+      return '🐔';
+    case 'LIVESTOCK AND POULTRY PRODUCTS':
+      return '🐄';
+    case 'OTHER LIVESTOCK MEAT PRODUCTS':
+      return '🐄';
+    case 'LOWLAND VEGETABLES':
+    case 'HIGHLAND VEGETABLES':
+      return '🥬';
+    case 'SPICES':
+      return '🌶️';
+    case 'FRUITS':
+      return '🍎';
+    case 'OTHER BASIC COMMODITIES':
+      return '📦';
+    default:
+      return '📦';
+  }
+};
+
+const getProductEmoji = (name: string, category: string) => {
+  const lowerName = name.toLowerCase();
+  
+  // Specific product emojis
+  // Beef products
+  if (lowerName.includes('beef')) {
+    if (lowerName.includes('brisket')) return '🥩';
+    if (lowerName.includes('chuck')) return '🥩';
+    if (lowerName.includes('flank')) return '🥩';
+    if (lowerName.includes('loin')) return '🥩';
+    if (lowerName.includes('rib')) return '🥩';
+    if (lowerName.includes('rump')) return '🥩';
+    if (lowerName.includes('sirloin')) return '🥩';
+    if (lowerName.includes('tenderloin')) return '🥩';
+    if (lowerName.includes('tongue')) return '👅';
+    return '🥩';
+  }
+  
+  // Pork products
+  if (lowerName.includes('pork')) {
+    if (lowerName.includes('belly') || lowerName.includes('liempo')) return '🥓';
+    if (lowerName.includes('chop')) return '🥓';
+    if (lowerName.includes('loin')) return '🥓';
+    if (lowerName.includes('head')) return '🐷';
+    if (lowerName.includes('offal')) return '🐷';
+    return '🥓';
+  }
+  
+  // Poultry products
+  if (lowerName.includes('chicken')) {
+    if (lowerName.includes('breast')) return '🍗';
+    if (lowerName.includes('thigh')) return '🍗';
+    if (lowerName.includes('wing')) return '🍗';
+    if (lowerName.includes('leg')) return '🍗';
+    if (lowerName.includes('egg')) return '🥚';
+    if (lowerName.includes('liver')) return '🍗';
+    if (lowerName.includes('neck')) return '🍗';
+    if (lowerName.includes('feet')) return '🍗';
+    return '🐔';
+  }
+  
+  if (lowerName.includes('duck')) return '🦆';
+  
+  // Fish products
+  if (lowerName.includes('bangus')) return '🐟';
+  if (lowerName.includes('tilapia')) return '🐟';
+  if (lowerName.includes('galunggong')) return '🐟';
+  if (lowerName.includes('alumahan')) return '🐟';
+  if (lowerName.includes('mackerel')) return '🐟';
+  if (lowerName.includes('salmon')) return '🐟';
+  if (lowerName.includes('squid') || lowerName.includes('pusit')) return '🦑';
+  if (lowerName.includes('tuna') || lowerName.includes('tambakol')) return '🐟';
+  if (lowerName.includes('bonito')) return '🐟';
+  if (lowerName.includes('pampano')) return '🐟';
+  if (lowerName.includes('scad') || lowerName.includes('tamban')) return '🐟';
+  
+  // Rice products
+  if (lowerName.includes('rice')) {
+    if (lowerName.includes('premium')) return '🍚';
+    if (lowerName.includes('well milled')) return '🍚';
+    if (lowerName.includes('regular')) return '🍚';
+    if (lowerName.includes('special')) return '🍚';
+    return '🌾';
+  }
+  
+  // Corn products
+  if (lowerName.includes('corn')) {
+    if (lowerName.includes('white')) return '🌽';
+    if (lowerName.includes('yellow')) return '🌽';
+    if (lowerName.includes('grits')) return '🌽';
+    if (lowerName.includes('cracked')) return '🌽';
+    return '🌽';
+  }
+  
+  // Vegetables
+  if (lowerName.includes('cabbage')) return '🥬';
+  if (lowerName.includes('carrot')) return '🥕';
+  if (lowerName.includes('tomato')) return '🍅';
+  if (lowerName.includes('onion')) return '🧅';
+  if (lowerName.includes('garlic')) return '🧄';
+  if (lowerName.includes('ginger')) return '🫚';
+  if (lowerName.includes('bell pepper')) return '🫑';
+  if (lowerName.includes('broccoli')) return '🥦';
+  if (lowerName.includes('cauliflower')) return '🥦';
+  if (lowerName.includes('lettuce')) return '🥬';
+  if (lowerName.includes('celery')) return '🥬';
+  if (lowerName.includes('chayote')) return '🥒';
+  if (lowerName.includes('potato')) return '🥔';
+  if (lowerName.includes('ampalaya')) return '🥒';
+  if (lowerName.includes('eggplant')) return '🍆';
+  if (lowerName.includes('squash')) return '🎃';
+  if (lowerName.includes('pechay')) return '🥬';
+  if (lowerName.includes('sitao')) return '🫛';
+  
+  // Fruits
+  if (lowerName.includes('banana')) return '🍌';
+  if (lowerName.includes('mango')) return '🥭';
+  if (lowerName.includes('papaya')) return '🥭';
+  if (lowerName.includes('watermelon')) return '🍉';
+  if (lowerName.includes('melon')) return '🍈';
+  if (lowerName.includes('pomelo')) return '🍊';
+  if (lowerName.includes('avocado')) return '🥑';
+  if (lowerName.includes('calamansi')) return '🍋';
+  
+  // Spices
+  if (lowerName.includes('chili') || lowerName.includes('chilli')) return '🌶️';
+  if (lowerName.includes('siling')) return '🌶️';
+  
+  // Basic commodities
+  if (lowerName.includes('sugar')) return '🍯';
+  if (lowerName.includes('salt')) return '🧂';
+  if (lowerName.includes('cooking oil')) return '🫒';
+  
+  // Carabeef/Livestock
+  if (lowerName.includes('carabeef')) return '🐄';
+  if (lowerName.includes('lamb')) return '🐑';
+  
+  // Fallback to category emoji
+  return getCategoryEmoji(category);
+};
+
 interface WeatherData {
   weather: Array<{
     id: number;
@@ -68,6 +224,14 @@ export default function HomeScreen() {
   // Configure navigation bar to be hidden (same as admin)
   useNavigationBar('hidden');
   const [activeNav, setActiveNav] = useState('home');
+  
+  // Redirect admin users to admin page
+  useEffect(() => {
+    if (profile.role === 'admin') {
+      console.log('🔄 Admin user detected, redirecting to admin page...');
+      router.replace('/admin');
+    }
+  }, [profile.role, router]);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
   const [forecastDays, setForecastDays] = useState<ForecastDay[]>([]);
@@ -242,14 +406,6 @@ export default function HomeScreen() {
       icon: 'person',
       hasPage: true,
       action: () => setActiveNav('profile')
-    },
-    {
-      id: 'notifications',
-      title: 'Notifications',
-      description: 'Manage alert preferences',
-      icon: 'notifications',
-      hasPage: true,
-      action: () => router.push('/notifications')
     },
     {
       id: 'announcements',
@@ -973,6 +1129,13 @@ export default function HomeScreen() {
   const filteredCommodities = React.useMemo(() => {
     let filtered = commodities;
     
+    // Filter out products with no data
+    filtered = filtered.filter(commodity =>
+      commodity.currentPrice &&
+      commodity.currentPrice > 0 &&
+      !isNaN(commodity.currentPrice)
+    );
+    
     // Filter by category first
     if (selectedCategory) {
       filtered = filtered.filter(commodity => commodity.category === selectedCategory);
@@ -1022,22 +1185,22 @@ export default function HomeScreen() {
     >
       <View style={styles.priceCommodityHeader}>
         <View style={styles.priceCommodityInfo}>
-          <Text style={styles.priceCommodityName}>{item.name}</Text>
+          <Text style={styles.priceCommodityName}>{getProductEmoji(item.name, item.category)} {item.type || item.name}{item.specification ? `, ${item.specification}` : ''}</Text>
           <Text style={styles.priceCommodityCategory}>{item.category}</Text>
+          {item.type && (
+            <Text style={styles.priceDate}>🏷️ {item.type}</Text>
+          )}
+          {item.specification && (
+            <Text style={styles.priceSpecification}>📝 {item.specification}</Text>
+          )}
           {item.priceDate && (
             <Text style={styles.priceDate}>📅 {new Date(item.priceDate).toLocaleDateString()}</Text>
-          )}
-          {item.priceSpecification && (
-            <Text style={styles.priceSpecification}>📋 {item.priceSpecification}</Text>
-          )}
-          {item.priceSource && (
-            <Text style={styles.priceSource}>📊 {item.priceSource === 'stored_data' ? 'Stored Data' : item.priceSource}</Text>
           )}
         </View>
         <View style={styles.priceContainer}>
           {item.currentPrice ? (
             <>
-              <Text style={styles.priceCurrentPrice}>₱{item.currentPrice.toFixed(2)}</Text>
+              <Text style={styles.priceCurrentPrice}>💰 ₱{item.currentPrice.toFixed(2)}</Text>
               <Text style={styles.priceUnit}>/{item.unit}</Text>
             </>
           ) : (
@@ -1092,7 +1255,7 @@ export default function HomeScreen() {
               color="#fff" 
             />
             <Text style={styles.priceTrendText}>
-              {item.forecast.trend.toUpperCase()} TREND ({item.forecast.confidence}%)
+              {item.forecast.trend?.toUpperCase() || 'UNKNOWN'} TREND ({item.forecast.confidence}%)
             </Text>
           </View>
           
@@ -1107,8 +1270,8 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {item.lastUpdated && (
-        <Text style={styles.priceLastUpdated}>Updated: {item.lastUpdated}</Text>
+      {item.currentPrice && item.currentPrice > 0 && item.lastUpdated && (
+        <Text style={styles.priceLastUpdated}>🕒 Updated: {new Date(item.lastUpdated).toLocaleString()}</Text>
       )}
     </TouchableOpacity>
   );
@@ -1145,22 +1308,9 @@ export default function HomeScreen() {
                   setShowCommodityModal(false);
                 }}
               >
-                <Ionicons 
-                  name={
-                    category === 'KADIWA RICE-FOR-ALL' ? 'leaf' :
-                    category === 'IMPORTED COMMERCIAL RICE' ? 'leaf' :
-                    category === 'LOCAL COMMERCIAL RICE' ? 'leaf' :
-                    category === 'CORN' ? 'flower' :
-                    category === 'FISH' ? 'fish' :
-                    category === 'LIVESTOCK & POULTRY PRODUCTS' ? 'restaurant' :
-                    category === 'LOWLAND VEGETABLES' ? 'nutrition' :
-                    category === 'HIGHLAND VEGETABLES' ? 'nutrition' :
-                    category === 'SPICES' ? 'flame' :
-                    category === 'FRUITS' ? 'happy' : 'basket'
-                  }
-                  size={20} 
-                  color={selectedCategory === category ? "#fff" : GREEN} 
-                />
+                <Text style={styles.priceModalItemEmoji}>
+                  {getCategoryEmoji(category)}
+                </Text>
                 <Text style={[
                   styles.priceModalItemText,
                   selectedCategory === category && styles.priceModalItemTextActive
@@ -1418,18 +1568,20 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Requirements Section */}
-            <View style={styles.quickAccessSection}>
-              <Text style={styles.quickAccessTitle}>Requirements</Text>
-                    <TouchableOpacity
-                style={styles.quickAccessButton}
-                onPress={() => router.push('/farmers')}
-              >
-                <Ionicons name="document-text" size={24} color={GREEN} />
-                <Text style={styles.quickAccessText}>Complete Farmers Form</Text>
-                <Ionicons name="chevron-forward" size={20} color={GREEN} />
-              </TouchableOpacity>
-            </View>
+            {/* Requirements Section - Only show for non-admin users */}
+            {profile.role !== 'admin' && (
+              <View style={styles.quickAccessSection}>
+                <Text style={styles.quickAccessTitle}>Requirements</Text>
+                      <TouchableOpacity
+                  style={styles.quickAccessButton}
+                  onPress={() => router.push('/farmers')}
+                >
+                  <Ionicons name="document-text" size={24} color={GREEN} />
+                  <Text style={styles.quickAccessText}>Complete Farmers Form</Text>
+                  <Ionicons name="chevron-forward" size={20} color={GREEN} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
           </>
         )}
@@ -1804,7 +1956,7 @@ export default function HomeScreen() {
                     <Ionicons name="search" size={48} color="#ccc" />
                     <Text style={styles.noResultsTitle}>No results found</Text>
                     <Text style={styles.noResultsText}>
-                      Try searching for "forecast", "profile", "notifications", or other features
+                      Try searching for "forecast", "profile", or other features
                     </Text>
                   </View>
                 )}
@@ -1996,16 +2148,6 @@ export default function HomeScreen() {
             <View style={styles.settingsSection}>
               <Text style={styles.settingsTitle}>Settings & Preferences</Text>
               
-              <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/notifications')}>
-                <View style={styles.settingIconContainer}>
-                  <Ionicons name="notifications" size={24} color={GREEN} />
-                </View>
-                <View style={styles.settingContent}>
-                  <Text style={styles.settingLabel}>Notifications</Text>
-                  <Text style={styles.settingDescription}>Manage alert preferences</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </TouchableOpacity>
 
 
               <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/privacy')}>
@@ -3711,6 +3853,10 @@ const styles = StyleSheet.create({
   priceModalItemTextActive: {
     color: GREEN,
     fontWeight: '600',
+  },
+  priceModalItemEmoji: {
+    fontSize: 20,
+    marginRight: 8,
   },
 
 });

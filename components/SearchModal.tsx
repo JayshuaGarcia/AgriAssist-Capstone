@@ -2,14 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    FlatList,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import { useAuth } from './AuthContext';
 import { SearchableItem, useSearch } from './SearchContext';
 
 const GREEN = '#16543a';
@@ -25,7 +26,8 @@ interface SearchModalProps {
 export default function SearchModal({ visible, onClose, onItemPress }: SearchModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchableItem[]>([]);
-  const { searchItems, searchableItems, getPopularItems, getAllCategories } = useSearch();
+  const { searchItems, searchableItems } = useSearch();
+  const { profile } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -51,15 +53,18 @@ export default function SearchModal({ visible, onClose, onItemPress }: SearchMod
     if (item.screen) {
       switch (item.screen) {
         case 'farmers':
-          router.push('/(tabs)/farmers');
+          // Only allow non-admin users to access farmers form
+          if (profile.role !== 'admin') {
+            router.push('/(tabs)/farmers');
+          } else {
+            // Redirect admin users to admin page
+            router.push('/admin');
+          }
           break;
         case 'forecast':
           // Navigate to home and set forecast as active
           router.push('/(tabs)');
           // The home screen will handle setting activeNav to 'forecast'
-          break;
-        case 'notifications':
-          router.push('/notifications');
           break;
         case 'help':
           router.push('/help');
@@ -85,14 +90,7 @@ export default function SearchModal({ visible, onClose, onItemPress }: SearchMod
         case 'planting-report':
         case 'harvest-report':
           // Navigate to placeholder screen for features not yet implemented
-          router.push({
-            pathname: '/feature-placeholder',
-            params: {
-              title: item.title,
-              description: item.description,
-              icon: item.icon
-            }
-          });
+          router.push(`/feature-placeholder?title=${encodeURIComponent(item.title)}&description=${encodeURIComponent(item.description)}&icon=${encodeURIComponent(item.icon)}`);
           break;
         default:
           console.log(`Navigate to ${item.screen}`);
@@ -146,8 +144,8 @@ export default function SearchModal({ visible, onClose, onItemPress }: SearchMod
   );
 
   const renderRecentSearches = () => {
-    const popularItems = getPopularItems();
-    const categories = getAllCategories();
+    const popularItems = searchableItems.slice(0, 5);
+    const categories = [...new Set(searchableItems.map(item => item.category))];
     
     return (
       <View style={styles.recentSearches}>

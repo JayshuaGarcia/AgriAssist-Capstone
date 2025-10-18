@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
@@ -28,6 +28,7 @@ export default function UserChatPage() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userDocId, setUserDocId] = useState<string>('');
+  const [adminProfile, setAdminProfile] = useState<any>(null);
 
   // Get user's document ID
   const getUserDocId = async () => {
@@ -49,6 +50,19 @@ export default function UserChatPage() {
     } catch (error) {
       console.error('Error getting user document ID:', error);
       return '';
+    }
+  };
+
+  // Load admin profile data
+  const loadAdminProfile = async () => {
+    try {
+      // The admin user ID is 'UIcMju8YbdX3VfYAjEbCem39bNe2' (from the unified admin system)
+      const adminDoc = await getDoc(doc(db, 'users', 'UIcMju8YbdX3VfYAjEbCem39bNe2'));
+      if (adminDoc.exists()) {
+        setAdminProfile(adminDoc.data());
+      }
+    } catch (error) {
+      console.error('Error loading admin profile:', error);
     }
   };
 
@@ -137,6 +151,7 @@ export default function UserChatPage() {
     const initializeUser = async () => {
       const docId = await getUserDocId();
       setUserDocId(docId);
+      await loadAdminProfile();
     };
     
     initializeUser();
@@ -198,6 +213,13 @@ export default function UserChatPage() {
                 <View style={styles.sentMessageAvatar}>
                   <Text style={styles.sentMessageCropIcon}>
                     {profile.selectedCropEmoji || '🌱'}
+                  </Text>
+                </View>
+              )}
+              {message.type === 'received' && (
+                <View style={styles.receivedMessageAvatar}>
+                  <Text style={styles.receivedMessageCropIcon}>
+                    {adminProfile?.selectedCropEmoji || '👨‍💼'}
                   </Text>
                 </View>
               )}
@@ -365,6 +387,25 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   sentMessageCropIcon: {
+    fontSize: 18,
+  },
+  receivedMessageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: '#16543a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  receivedMessageCropIcon: {
     fontSize: 18,
   },
   receivedMessageContainer: {
