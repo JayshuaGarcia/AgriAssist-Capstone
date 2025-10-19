@@ -4637,30 +4637,6 @@ export default function AdminPage() {
                   
                   <View style={styles.announcementDetailFooter}>
                     <Text style={styles.announcementDetailId}>ID: {selectedAnnouncement.id}</Text>
-                    
-                    <TouchableOpacity 
-                      style={styles.deleteButton}
-                      onPress={() => {
-                        Alert.alert(
-                          'Delete Announcement',
-                          'Are you sure you want to delete this announcement? This action cannot be undone.',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { 
-                              text: 'Delete', 
-                              style: 'destructive',
-                              onPress: () => {
-                                deleteAnnouncement(selectedAnnouncement.id);
-                                setSelectedAnnouncement(null);
-                              }
-                            }
-                          ]
-                        );
-                      }}
-                    >
-                      <Ionicons name="trash" size={16} color="#fff" />
-                      <Text style={styles.deleteButtonText}>Delete</Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
               ) : announcementLoading ? (
@@ -4725,15 +4701,41 @@ export default function AdminPage() {
             </ScrollView>
 
             <View style={styles.viewModalFooter}>
-              <TouchableOpacity 
-                style={styles.refreshButton}
-                onPress={() => {
-                  loadAnnouncements();
-                }}
-              >
-                <Ionicons name="refresh" size={20} color={GREEN} />
-                <Text style={styles.refreshButtonText}>Refresh</Text>
-              </TouchableOpacity>
+              {selectedAnnouncement ? (
+                <TouchableOpacity 
+                  style={styles.deleteButton}
+                  onPress={() => {
+                    Alert.alert(
+                      'Delete Announcement',
+                      'Are you sure you want to delete this announcement? This action cannot be undone.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Delete', 
+                          style: 'destructive',
+                          onPress: () => {
+                            deleteAnnouncement(selectedAnnouncement.id);
+                            setSelectedAnnouncement(null);
+                          }
+                        }
+                      ]
+                    );
+                  }}
+                >
+                  <Ionicons name="trash" size={20} color="#fff" />
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.refreshButton}
+                  onPress={() => {
+                    loadAnnouncements();
+                  }}
+                >
+                  <Ionicons name="refresh" size={20} color={GREEN} />
+                  <Text style={styles.refreshButtonText}>Refresh</Text>
+                </TouchableOpacity>
+              )}
               
               <TouchableOpacity 
                 style={styles.closeButton}
