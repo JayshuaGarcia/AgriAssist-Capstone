@@ -115,27 +115,19 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
       
-      // Generate forecasts for each day in the week
-      const weekForecasts = [];
-      for (let day = 0; day < 7; day++) {
-        const currentDate = new Date(weekStart);
-        currentDate.setDate(weekStart.getDate() + day);
-        const forecast = generateForecast(currentDate.toISOString().split('T')[0]);
-        weekForecasts.push(forecast);
-      }
-      
-      // Calculate min and max prices for the week
-      const prices = weekForecasts.map(f => f.predictedPrice);
-      const minPrice = Math.min(...prices);
-      const maxPrice = Math.max(...prices);
+      // Generate forecasts for start and end dates only
+      const startForecast = generateForecast(weekStart.toISOString().split('T')[0]);
+      const endForecast = generateForecast(weekEnd.toISOString().split('T')[0]);
       
       weeklyForecasts.push({
         weekStart: weekStart.toISOString().split('T')[0],
         weekEnd: weekEnd.toISOString().split('T')[0],
-        minPrice: Math.round(minPrice * 100) / 100,
-        maxPrice: Math.round(maxPrice * 100) / 100,
-        avgPrice: Math.round((minPrice + maxPrice) / 2 * 100) / 100,
-        confidence: Math.round(weekForecasts.reduce((sum, f) => sum + f.confidence, 0) / 7)
+        startPrice: startForecast.predictedPrice,
+        endPrice: endForecast.predictedPrice,
+        startTrend: startForecast.trend,
+        endTrend: endForecast.trend,
+        startConfidence: startForecast.confidence,
+        endConfidence: endForecast.confidence
       });
     }
     
@@ -223,32 +215,6 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
           <ScrollView style={styles.calendarContainer}>
             <Text style={styles.calendarTitle}>Select Date for Forecast</Text>
             
-            {/* Weekly Forecast Summary */}
-            <View style={styles.weeklyForecastContainer}>
-              <Text style={styles.weeklyForecastTitle}>📊 Next 3 Weeks Forecast</Text>
-              {generateWeeklyForecasts().map((week, index) => (
-                <View key={index} style={styles.weeklyForecastCard}>
-                  <View style={styles.weeklyForecastHeader}>
-                    <Text style={styles.weeklyForecastWeek}>
-                      Week {index + 1}: {formatDate(week.weekStart)} - {formatDate(week.weekEnd)}
-                    </Text>
-                    <Text style={styles.weeklyForecastConfidence}>
-                      {week.confidence}% confidence
-                    </Text>
-                  </View>
-                  <View style={styles.weeklyForecastPrice}>
-                    <Text style={styles.weeklyForecastPriceText}>
-                      ₱{week.minPrice} - ₱{week.maxPrice}
-                    </Text>
-                    <Text style={styles.weeklyForecastUnit}>/{unit}</Text>
-                  </View>
-                  <Text style={styles.weeklyForecastAvg}>
-                    Average: ₱{week.avgPrice}/{unit}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            
             <View style={styles.calendarWrapper}>
             {/* Calendar Header */}
             <View style={styles.calendarHeader}>
@@ -312,6 +278,45 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                 </View>
               ))}
             </View>
+          </View>
+
+          {/* Weekly Forecast Summary */}
+          <View style={styles.weeklyForecastContainer}>
+            <Text style={styles.weeklyForecastTitle}>📊 Next 3 Weeks Forecast</Text>
+            {generateWeeklyForecasts().map((week, index) => (
+              <View key={index} style={styles.weeklyForecastCard}>
+                <View style={styles.weeklyForecastHeader}>
+                  <Text style={styles.weeklyForecastWeek}>
+                    Week {index + 1}: {formatDate(week.weekStart)} - {formatDate(week.weekEnd)}
+                  </Text>
+                </View>
+                <View style={styles.weeklyForecastPrices}>
+                  <View style={styles.weeklyForecastPriceItem}>
+                    <Text style={styles.weeklyForecastDate}>{formatDate(week.weekStart)}</Text>
+                    <View style={styles.weeklyForecastPriceRow}>
+                      <Text style={styles.weeklyForecastPriceText}>₱{week.startPrice.toFixed(2)}</Text>
+                      <Ionicons 
+                        name={week.startTrend === 'up' ? 'arrow-up' : week.startTrend === 'down' ? 'arrow-down' : 'remove'} 
+                        size={16} 
+                        color={week.startTrend === 'up' ? '#28a745' : week.startTrend === 'down' ? '#dc3545' : '#6c757d'} 
+                      />
+                    </View>
+                  </View>
+                  <Text style={styles.weeklyForecastSeparator}>-</Text>
+                  <View style={styles.weeklyForecastPriceItem}>
+                    <Text style={styles.weeklyForecastDate}>{formatDate(week.weekEnd)}</Text>
+                    <View style={styles.weeklyForecastPriceRow}>
+                      <Text style={styles.weeklyForecastPriceText}>₱{week.endPrice.toFixed(2)}</Text>
+                      <Ionicons 
+                        name={week.endTrend === 'up' ? 'arrow-up' : week.endTrend === 'down' ? 'arrow-down' : 'remove'} 
+                        size={16} 
+                        color={week.endTrend === 'up' ? '#28a745' : week.endTrend === 'down' ? '#dc3545' : '#6c757d'} 
+                      />
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ))}
           </View>
 
           {forecastData && (
@@ -557,6 +562,31 @@ const styles = StyleSheet.create({
   weeklyForecastAvg: {
     fontSize: 12,
     color: '#666',
+  },
+  weeklyForecastPrices: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  weeklyForecastPriceItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  weeklyForecastDate: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  weeklyForecastPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  weeklyForecastSeparator: {
+    fontSize: 16,
+    color: '#666',
+    marginHorizontal: 8,
   },
   forecastCard: {
     backgroundColor: '#fff',
