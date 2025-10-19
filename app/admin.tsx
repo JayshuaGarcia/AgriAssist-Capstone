@@ -5876,11 +5876,21 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   deleteButton: {
-    padding: 8,
+    backgroundColor: '#dc3545',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 6,
-    backgroundColor: '#ffeaea',
+    flex: 1,
+    marginRight: 8,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  deleteButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: '600',
+    marginLeft: 4,
   },
   // Announcement Detail Styles
   announcementDetailContainer: {
