@@ -338,34 +338,6 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                 <Text style={styles.confidenceLabel}>Confidence:</Text>
                 <Text style={styles.confidenceValue}>{forecastData.confidence}%</Text>
               </View>
-
-              <View style={styles.factorsContainer}>
-                <Text style={styles.factorsTitle}>Key Factors:</Text>
-                {forecastData.factors.map((factor, index) => (
-                  <Text key={index} style={styles.factorItem}>
-                    • {factor}
-                  </Text>
-                ))}
-              </View>
-
-              <View style={styles.adjustmentContainer}>
-                <Text style={styles.adjustmentLabel}>Seasonal Adjustment:</Text>
-                <Text style={[
-                  styles.adjustmentValue,
-                  { color: forecastData.seasonalAdjustment >= 0 ? '#e74c3c' : '#27ae60' }
-                ]}>
-                  {forecastData.seasonalAdjustment >= 0 ? '+' : ''}{forecastData.seasonalAdjustment}%
-                </Text>
-              </View>
-
-              {forecastData.historicalDataPoints > 0 && (
-                <View style={styles.dataPointsContainer}>
-                  <Text style={styles.dataPointsLabel}>Data Quality:</Text>
-                  <Text style={styles.dataPointsValue}>
-                    {forecastData.historicalDataPoints} historical data points
-                  </Text>
-                </View>
-              )}
             </View>
           )}
         </ScrollView>
