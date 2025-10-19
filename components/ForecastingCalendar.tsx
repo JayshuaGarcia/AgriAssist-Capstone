@@ -47,6 +47,7 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [forecastData, setForecastData] = useState<ForecastResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Load historical data for analysis
   useEffect(() => {
@@ -83,28 +84,53 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
     setForecastData(forecast);
   };
 
+  const goToPreviousMonth = () => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(newMonth.getMonth() - 1);
+    setCurrentMonth(newMonth);
+  };
+
+  const goToNextMonth = () => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(newMonth.getMonth() + 1);
+    setCurrentMonth(newMonth);
+  };
+
+  const getMonthYearString = () => {
+    return currentMonth.toLocaleDateString('en-US', { 
+      month: 'long', 
+      year: 'numeric' 
+    });
+  };
+
   const generateCalendarWeeks = () => {
     const weeks = [];
     const today = new Date();
-    const startDate = new Date(today);
     
-    // Start from the beginning of the current week
+    // Get the first day of the current month
+    const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+    
+    // Start from the beginning of the week containing the first day
+    const startDate = new Date(firstDay);
     const dayOfWeek = startDate.getDay();
     startDate.setDate(startDate.getDate() - dayOfWeek);
     
-    // Generate 12 weeks (84 days)
-    for (let week = 0; week < 12; week++) {
+    // Generate 6 weeks to cover the entire month
+    for (let week = 0; week < 6; week++) {
       const weekDates = [];
       
       for (let day = 0; day < 7; day++) {
         const currentDate = new Date(startDate);
         currentDate.setDate(startDate.getDate() + (week * 7) + day);
         
-        // Only show dates that are today or in the future
-        if (currentDate >= today) {
+        // Only show dates that are in the current month and today or in the future
+        if (currentDate.getMonth() === currentMonth.getMonth() && 
+            currentDate.getFullYear() === currentMonth.getFullYear() &&
+            currentDate >= today) {
           weekDates.push(currentDate.toISOString().split('T')[0]);
         } else {
-          weekDates.push(null); // Empty cell for past dates
+          weekDates.push(null); // Empty cell for other months or past dates
         }
       }
       
@@ -165,6 +191,25 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
               <Text style={styles.calendarHeaderText}>📅 Price Forecast Calendar</Text>
             </View>
             
+            {/* Month Navigation */}
+            <View style={styles.monthNavigation}>
+              <TouchableOpacity 
+                style={styles.monthNavButton}
+                onPress={goToPreviousMonth}
+              >
+                <Ionicons name="chevron-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              
+              <Text style={styles.monthYearText}>{getMonthYearString()}</Text>
+              
+              <TouchableOpacity 
+                style={styles.monthNavButton}
+                onPress={goToNextMonth}
+              >
+                <Ionicons name="chevron-forward" size={24} color={GREEN} />
+              </TouchableOpacity>
+            </View>
+            
             {/* Calendar Grid */}
             <View style={styles.calendarGrid}>
               {/* Day Headers */}
@@ -189,20 +234,12 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                       disabled={!date}
                     >
                       {date && (
-                        <>
-                          <Text style={[
-                            styles.calendarDayNumber,
-                            selectedDate === date && styles.selectedDayNumber
-                          ]}>
-                            {new Date(date).getDate()}
-                          </Text>
-                          <Text style={[
-                            styles.calendarDayMonth,
-                            selectedDate === date && styles.selectedDayMonth
-                          ]}>
-                            {new Date(date).toLocaleDateString('en-US', { month: 'short' })}
-                          </Text>
-                        </>
+                        <Text style={[
+                          styles.calendarDayNumber,
+                          selectedDate === date && styles.selectedDayNumber
+                        ]}>
+                          {new Date(date).getDate()}
+                        </Text>
                       )}
                     </TouchableOpacity>
                   ))}
@@ -351,6 +388,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: GREEN,
   },
+  monthNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+  },
+  monthNavButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+  },
+  monthYearText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: GREEN,
+  },
   calendarGrid: {
     backgroundColor: '#fff',
   },
@@ -395,14 +449,6 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   selectedDayNumber: {
-    color: '#fff',
-  },
-  calendarDayMonth: {
-    fontSize: 10,
-    color: '#666',
-    marginTop: 2,
-  },
-  selectedDayMonth: {
     color: '#fff',
   },
   forecastCard: {
