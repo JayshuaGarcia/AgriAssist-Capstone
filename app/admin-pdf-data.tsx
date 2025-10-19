@@ -355,9 +355,9 @@ export default function AdminPDFDataScreen() {
       // Try multiple connection methods for the automatic PDF service
       let serviceConnected = false;
       const serviceUrls = [
-        'https://your-app.vercel.app/api/check-pdfs',  // Vercel deployment
-        'https://your-app.railway.app/check-pdfs',     // Railway deployment
-        'https://your-app.onrender.com/check-pdfs',    // Render deployment
+        'https://agriassist-pdf-api.onrender.com/check-pdfs',  // Render deployment (LIVE!)
+        'https://your-app.vercel.app/api/check-pdfs',          // Vercel deployment
+        'https://your-app.railway.app/check-pdfs',             // Railway deployment
         'http://10.0.2.2:3001/check-pdfs',            // Android emulator (fallback)
         'http://localhost:3001/check-pdfs',            // Local development (fallback)
         'http://127.0.0.1:3001/check-pdfs'            // Alternative local (fallback)

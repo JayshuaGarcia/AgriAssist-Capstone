@@ -4,7 +4,8 @@
   "description": "PDF fetching API for AgriAssist app",
   "main": "index.js",
   "scripts": {
-    "dev": "vercel dev",
+    "start": "node scripts/renderPDFService.js",
+    "dev": "node scripts/renderPDFService.js",
     "build": "echo 'No build step required'",
     "deploy": "vercel --prod"
   },
