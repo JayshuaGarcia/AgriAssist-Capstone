@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../components/AuthContext';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
+import { ForecastingCalendar } from '../components/ForecastingCalendar';
 import { useNavigationBar } from '../hooks/useNavigationBar';
 
 const { width } = Dimensions.get('window');
@@ -39,6 +40,15 @@ export default function AdminPDFDataScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState<PDFDataItem | null>(null);
+  
+  // Forecasting calendar states
+  const [forecastModalVisible, setForecastModalVisible] = useState(false);
+  const [selectedCommodity, setSelectedCommodity] = useState<{
+    name: string;
+    specification: string;
+    price: number;
+    unit: string;
+  } | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -462,19 +472,43 @@ export default function AdminPDFDataScreen() {
   };
 
   const renderPDFDataItem = ({ item }: { item: PDFDataItem }) => (
-    <View style={styles.pdfDataCard}>
+    <TouchableOpacity 
+      style={styles.pdfDataCard}
+      onPress={() => {
+        // Set selected commodity for forecasting
+        setSelectedCommodity({
+          name: item.commodity,
+          specification: item.specification,
+          price: item.price,
+          unit: item.unit
+        });
+        
+        // Show forecasting calendar
+        setForecastModalVisible(true);
+      }}
+      activeOpacity={0.7}
+    >
       <View style={styles.pdfDataHeader}>
-        <Text style={styles.pdfDataCommodity}>{item.commodity}</Text>
+        <View style={styles.pdfDataTitleContainer}>
+          <Text style={styles.pdfDataCommodity}>{item.commodity}</Text>
+          <Ionicons name="calendar" size={16} color="#2E7D32" style={styles.forecastIcon} />
+        </View>
         <View style={styles.pdfDataActions}>
           <TouchableOpacity 
             style={styles.editButton}
-            onPress={() => handleEdit(item)}
+            onPress={(e) => {
+              e.stopPropagation(); // Prevent triggering the card press
+              handleEdit(item);
+            }}
           >
             <Ionicons name="pencil" size={16} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.deleteButton}
-            onPress={() => handleDelete(item)}
+            onPress={(e) => {
+              e.stopPropagation(); // Prevent triggering the card press
+              handleDelete(item);
+            }}
           >
             <Ionicons name="trash" size={16} color="#fff" />
           </TouchableOpacity>
@@ -507,7 +541,7 @@ export default function AdminPDFDataScreen() {
           <Text style={styles.pdfDataValue}>{item.date}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   if (loading) {
@@ -697,6 +731,21 @@ export default function AdminPDFDataScreen() {
           </View>
         </View>
       </Modal>
+      
+      {/* Forecasting Calendar Modal */}
+      {selectedCommodity && (
+        <ForecastingCalendar
+          visible={forecastModalVisible}
+          onClose={() => {
+            setForecastModalVisible(false);
+            setSelectedCommodity(null);
+          }}
+          commodity={selectedCommodity.name}
+          specification={selectedCommodity.specification}
+          currentPrice={selectedCommodity.price}
+          unit={selectedCommodity.unit}
+        />
+      )}
     </View>
   );
 }
@@ -904,5 +953,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  pdfDataTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  forecastIcon: {
+    marginLeft: 8,
   },
 });

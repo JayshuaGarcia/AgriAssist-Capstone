@@ -1,14 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../../components/AnnouncementContext';
 import { useAuth } from '../../components/AuthContext';
+import { ForecastingCalendar } from '../../components/ForecastingCalendar';
 import { useNotification } from '../../components/NotificationContext';
 import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
-import { ForecastingCalendar } from '../../components/ForecastingCalendar';
 import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../../constants/CommodityData';
 import { useNavigationBar } from '../../hooks/useNavigationBar';
 import { db } from '../../lib/firebase';
