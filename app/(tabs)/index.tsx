@@ -383,8 +383,8 @@ export default function HomeScreen() {
       title: 'Price Monitoring',
       description: 'Track agricultural commodity prices',
       icon: 'trending-up',
-      hasPage: true,
-      action: () => router.push('/price-monitoring')
+      hasPage: false,
+      action: () => setActiveNav('tutorial')
     },
     {
       id: 'planting-report',

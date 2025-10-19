@@ -59,7 +59,6 @@ export default function RootLayout() {
                 <Stack.Screen name="admin-chat" options={{ headerShown: false }} />
                 <Stack.Screen name="user-chat" options={{ headerShown: false }} />
                 <Stack.Screen name="feature-placeholder" options={{ headerShown: false }} />
-                <Stack.Screen name="price-monitoring" options={{ headerShown: false }} />
                 <Stack.Screen name="planting-report" options={{ headerShown: false }} />
                 <Stack.Screen name="harvest-report" options={{ headerShown: false }} />
                 <Stack.Screen name="commodity-analytics" options={{ headerShown: false }} />
