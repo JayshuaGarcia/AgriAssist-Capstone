@@ -170,12 +170,11 @@ class ForecastingService {
     
     // Calculate trend by comparing predicted price with current price
     const priceDifference = predictedPrice - basePrice;
-    const priceChangePercent = (priceDifference / basePrice) * 100;
     
     let trend: 'up' | 'down' | 'stable' = 'stable';
-    if (priceChangePercent > 1) { // More than 1% increase
+    if (priceDifference > 0) { // Any increase, even 0.01
       trend = 'up';
-    } else if (priceChangePercent < -1) { // More than 1% decrease
+    } else if (priceDifference < 0) { // Any decrease, even 0.01
       trend = 'down';
     }
     
@@ -215,12 +214,11 @@ class ForecastingService {
     
     // Calculate trend by comparing predicted price with current price
     const priceDifference = predictedPrice - currentPrice;
-    const priceChangePercent = (priceDifference / currentPrice) * 100;
     
     let trend: 'up' | 'down' | 'stable' = 'stable';
-    if (priceChangePercent > 1) { // More than 1% increase
+    if (priceDifference > 0) { // Any increase, even 0.01
       trend = 'up';
-    } else if (priceChangePercent < -1) { // More than 1% decrease
+    } else if (priceDifference < 0) { // Any decrease, even 0.01
       trend = 'down';
     }
     
