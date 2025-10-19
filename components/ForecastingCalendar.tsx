@@ -44,6 +44,14 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
   currentPrice,
   unit,
 }) => {
+  console.log('📅 ForecastingCalendar Props:', {
+    visible,
+    commodity,
+    specification,
+    currentPrice,
+    unit
+  });
+  
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [forecastData, setForecastData] = useState<ForecastResult | null>(null);
   const [loading, setLoading] = useState(false);

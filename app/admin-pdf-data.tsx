@@ -490,6 +490,8 @@ export default function AdminPDFDataScreen() {
     <TouchableOpacity 
       style={styles.pdfDataCard}
       onPress={() => {
+        console.log('🎯 PDF Data Item Pressed:', item.commodity);
+        
         // Set selected commodity for forecasting
         setSelectedCommodity({
           name: item.commodity,
@@ -498,8 +500,16 @@ export default function AdminPDFDataScreen() {
           unit: item.unit
         });
         
+        console.log('📊 Selected Commodity Set:', {
+          name: item.commodity,
+          specification: item.specification,
+          price: item.price,
+          unit: item.unit
+        });
+        
         // Show forecasting calendar
         setForecastModalVisible(true);
+        console.log('📅 Forecasting Modal Set to Visible: true');
       }}
       activeOpacity={0.7}
     >
