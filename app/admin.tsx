@@ -4637,6 +4637,30 @@ export default function AdminPage() {
                   
                   <View style={styles.announcementDetailFooter}>
                     <Text style={styles.announcementDetailId}>ID: {selectedAnnouncement.id}</Text>
+                    
+                    <TouchableOpacity 
+                      style={styles.deleteButton}
+                      onPress={() => {
+                        Alert.alert(
+                          'Delete Announcement',
+                          'Are you sure you want to delete this announcement? This action cannot be undone.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { 
+                              text: 'Delete', 
+                              style: 'destructive',
+                              onPress: () => {
+                                deleteAnnouncement(selectedAnnouncement.id);
+                                setSelectedAnnouncement(null);
+                              }
+                            }
+                          ]
+                        );
+                      }}
+                    >
+                      <Ionicons name="trash" size={16} color="#fff" />
+                      <Text style={styles.deleteButtonText}>Delete</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               ) : announcementLoading ? (
