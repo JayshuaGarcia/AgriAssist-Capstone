@@ -8,6 +8,7 @@ import { useAnnouncements } from '../../components/AnnouncementContext';
 import { useAuth } from '../../components/AuthContext';
 import { useNotification } from '../../components/NotificationContext';
 import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
+import { ForecastingCalendar } from '../../components/ForecastingCalendar';
 import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../../constants/CommodityData';
 import { useNavigationBar } from '../../hooks/useNavigationBar';
 import { db } from '../../lib/firebase';
@@ -254,6 +255,15 @@ export default function HomeScreen() {
   // Admin-style price monitoring states
   const [pdfData, setPdfData] = useState<any[]>([]);
   const [categorizedData, setCategorizedData] = useState<any[]>([]);
+  
+  // Forecasting calendar states
+  const [forecastModalVisible, setForecastModalVisible] = useState(false);
+  const [selectedCommodity, setSelectedCommodity] = useState<{
+    name: string;
+    specification: string;
+    price: number;
+    unit: string;
+  } | null>(null);
 
  
 
@@ -1330,23 +1340,20 @@ export default function HomeScreen() {
   const renderCommodityItem = ({ item }: { item: Commodity }) => (
     <TouchableOpacity 
       style={styles.priceCommodityCard}
-      onPress={async () => {
+      onPress={() => {
         console.log('🎯 Home screen commodity card pressed:', item.name);
         console.log('📊 Commodity details:', { id: item.id, name: item.name, category: item.category });
-        try {
-          // Save commodity parameters to AsyncStorage
-          await AsyncStorage.setItem('selected_commodity_id', item.id);
-          await AsyncStorage.setItem('selected_commodity_name', item.name);
-          await AsyncStorage.setItem('selected_commodity_category', item.category);
-          
-          console.log('💾 Saved commodity params to storage');
-          
-          // Navigate to analytics
-          router.push('/commodity-analytics');
-          console.log('✅ Navigation triggered successfully');
-        } catch (error) {
-          console.error('❌ Navigation error:', error);
-        }
+        
+        // Set selected commodity for forecasting
+        setSelectedCommodity({
+          name: item.name,
+          specification: item.specification || '',
+          price: item.currentPrice || 0,
+          unit: item.unit || 'kg'
+        });
+        
+        // Show forecasting calendar
+        setForecastModalVisible(true);
       }}
       activeOpacity={0.7}
     >
@@ -2446,6 +2453,21 @@ export default function HomeScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+      
+      {/* Forecasting Calendar Modal */}
+      {selectedCommodity && (
+        <ForecastingCalendar
+          visible={forecastModalVisible}
+          onClose={() => {
+            setForecastModalVisible(false);
+            setSelectedCommodity(null);
+          }}
+          commodity={selectedCommodity.name}
+          specification={selectedCommodity.specification}
+          currentPrice={selectedCommodity.price}
+          unit={selectedCommodity.unit}
+        />
+      )}
     </View>
   );
 }
