@@ -1,5 +1,11 @@
 import { PriceData } from '../types/PriceData';
 
+// Import all historical data files directly
+import historicalData_oct19 from '../data/extracted_pdf_data.json';
+import historicalData_sept30 from '../data/sept_30_extracted_data.json';
+import historicalData_april30 from '../data/april_30_extracted_data.json';
+import historicalData_oct16 from '../data/oct_16_extracted_data.json';
+
 export interface HistoricalPriceData {
   commodity: string;
   specification: string;
@@ -26,39 +32,38 @@ export interface ForecastResult {
 
 class ForecastingService {
   private historicalData: Map<string, HistoricalPriceData> = new Map();
-  private dataFiles = [
-    'extracted_pdf_data.json',
-    'sept_30_extracted_data.json',
-    'april_30_extracted_data.json',
-    'oct_16_extracted_data.json',
-    'oct_19_extracted_data.json'
-  ];
+  private isDataLoaded = false;
 
   async loadHistoricalData(): Promise<void> {
+    if (this.isDataLoaded) {
+      return;
+    }
+    
     try {
       console.log('🔄 Loading historical data for forecasting...');
       
-      let allData: PriceData[] = [];
+      // Combine all historical data
+      const combinedData: PriceData[] = [
+        ...(historicalData_oct19 as PriceData[]),
+        ...(historicalData_sept30 as PriceData[]),
+        ...(historicalData_april30 as PriceData[]),
+        ...(historicalData_oct16 as PriceData[]),
+      ];
 
-      // Load all available data files
-      for (const file of this.dataFiles) {
-        try {
-          const response = await fetch(`/data/${file}`);
-          if (response.ok) {
-            const data = await response.json();
-            allData = [...allData, ...data];
-            console.log(`✅ Loaded ${data.length} records from ${file}`);
-          }
-        } catch (error) {
-          console.log(`⚠️ Could not load ${file}:`, error);
-        }
-      }
+      // Filter out any invalid entries and sort by date
+      const validData = combinedData
+        .filter(item => item.commodity && item.price && item.date)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      console.log(`✅ Loaded ${validData.length} historical data points.`);
 
       // Process and aggregate data by commodity
-      this.processHistoricalData(allData);
+      this.processHistoricalData(validData);
+      this.isDataLoaded = true;
       console.log(`📊 Processed ${this.historicalData.size} unique commodities for forecasting`);
     } catch (error) {
       console.error('❌ Error loading historical data:', error);
+      this.isDataLoaded = false;
     }
   }
 
