@@ -596,6 +596,23 @@ export default function AdminPDFDataScreen() {
         >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
+        
+        {/* Test Forecasting Calendar Button */}
+        <TouchableOpacity 
+          style={[styles.addButton, { marginLeft: 8 }]}
+          onPress={() => {
+            console.log('🧪 Test button pressed - opening forecasting calendar');
+            setSelectedCommodity({
+              name: 'Test Commodity',
+              specification: 'Test Spec',
+              price: 100,
+              unit: 'kg'
+            });
+            setForecastModalVisible(true);
+          }}
+        >
+          <Ionicons name="calendar" size={24} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
@@ -758,19 +775,17 @@ export default function AdminPDFDataScreen() {
       </Modal>
       
       {/* Forecasting Calendar Modal */}
-      {selectedCommodity && (
-        <ForecastingCalendar
-          visible={forecastModalVisible}
-          onClose={() => {
-            setForecastModalVisible(false);
-            setSelectedCommodity(null);
-          }}
-          commodity={selectedCommodity.name}
-          specification={selectedCommodity.specification}
-          currentPrice={selectedCommodity.price}
-          unit={selectedCommodity.unit}
-        />
-      )}
+      <ForecastingCalendar
+        visible={forecastModalVisible && selectedCommodity !== null}
+        onClose={() => {
+          setForecastModalVisible(false);
+          setSelectedCommodity(null);
+        }}
+        commodity={selectedCommodity?.name || ''}
+        specification={selectedCommodity?.specification || ''}
+        currentPrice={selectedCommodity?.price || 0}
+        unit={selectedCommodity?.unit || ''}
+      />
     </View>
   );
 }
