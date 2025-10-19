@@ -196,3 +196,7 @@ You'll know it's working when:
 The "No data" issue is likely caused by data matching problems. Use the debug tools in the admin panel to identify the specific issue, then follow the appropriate fix steps. The enhanced matching logic should resolve most common matching problems.
 
 The key is to ensure your JSON data structure matches the expected format and that the commodity names in your data align with the commodity definitions in the system.
+
+
+
+

@@ -5,7 +5,7 @@ import {
     ActivityIndicator,
     Dimensions,
     FlatList,
-  RefreshControl,
+    RefreshControl,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -576,17 +576,17 @@ export default function CommodityAnalytics() {
           <Text style={styles.priceLabel}>Current Price</Text>
           {(() => {
             console.log('🔍 Looking for price for commodity:', commodityName);
-            console.log('📊 Available prices:', latestPrices.map(p => ({ name: p.commodityName, price: p.price })));
+            console.log('📊 Available prices:', latestPrices.map((p: any) => ({ name: p.commodityName, price: p.currentPrice })));
             
             // Try exact match first
-            let latestPrice = latestPrices.find(price => 
+            let latestPrice = latestPrices.find((price: any) => 
               price.commodityName === commodityName
             );
             
             // If no exact match, try partial matching
             if (!latestPrice) {
               console.log('🔍 No exact match, trying partial matching...');
-              latestPrice = latestPrices.find(price => {
+              latestPrice = latestPrices.find((price: any) => {
                 const priceName = price.commodityName.toLowerCase();
                 const searchName = commodityName.toLowerCase();
                 
@@ -603,7 +603,7 @@ export default function CommodityAnalytics() {
                 .replace(/\s+/g, ' ')
                 .trim();
                 
-              latestPrice = latestPrices.find(price => {
+              latestPrice = latestPrices.find((price: any) => {
                 const cleanPriceName = price.commodityName.toLowerCase()
                   .replace(/\s*,\s*/g, ' ')
                   .replace(/\s+/g, ' ')
@@ -616,7 +616,7 @@ export default function CommodityAnalytics() {
             console.log('✅ Found price:', latestPrice);
             
             return latestPrice ? (
-              <Text style={styles.priceDisplayText}>₱{latestPrice.price}</Text>
+              <Text style={styles.priceDisplayText}>₱{latestPrice.currentPrice}</Text>
             ) : (
               <Text style={styles.priceDisplayText}>--</Text>
             );

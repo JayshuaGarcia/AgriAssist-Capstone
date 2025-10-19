@@ -10,9 +10,8 @@ import { useNotification } from '../../components/NotificationContext';
 import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
 import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../../constants/CommodityData';
 import { useNavigationBar } from '../../hooks/useNavigationBar';
-import { daPriceService, updateCommodityWithDAPrices } from '../../lib/daPriceService';
 import { db } from '../../lib/firebase';
-import { priceMonitoringService } from '../../lib/priceMonitoringService';
+import { realDAPriceService } from '../../lib/realDAPriceService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -251,6 +250,10 @@ export default function HomeScreen() {
   const [priceError, setPriceError] = useState<string | null>(null);
   const [showCommodityModal, setShowCommodityModal] = useState(false);
   const [priceSearchQuery, setPriceSearchQuery] = useState('');
+  
+  // Admin-style price monitoring states
+  const [pdfData, setPdfData] = useState<any[]>([]);
+  const [categorizedData, setCategorizedData] = useState<any[]>([]);
 
  
 
@@ -920,12 +923,127 @@ export default function HomeScreen() {
     }
   }, [activeNav, user?.uid]);
 
-  // Load price data when price monitoring tab is active
+  // Categorize data (same logic as admin)
+  const categorizeData = (data: any[]): any[] => {
+    const categories: { [key: string]: any[] } = {
+      'Imported Rice': [],
+      'Local Rice': [],
+      'Fish & Seafood': [],
+      'Meat Products': [],
+      'Poultry & Eggs': [],
+      'Vegetables': [],
+      'Fruits': [],
+      'Spices & Seasonings': [],
+      'Cooking Essentials': [],
+      'Corn': []
+    };
+
+    data.forEach((item, index) => {
+      const commodityName = item.commodity.toLowerCase();
+      
+      // Special handling for rice - first 4 are imported, next 4 are local
+      if (commodityName.includes('rice') || commodityName.includes('milled') || commodityName.includes('premium') || commodityName.includes('special')) {
+        if (index < 4) {
+          categories['Imported Rice'].push(item);
+        } else if (index < 8) {
+          categories['Local Rice'].push(item);
+        } else {
+          categories['Corn'].push(item);
+        }
+      } else if (commodityName.includes('corn')) {
+        categories['Corn'].push(item);
+      } else if (commodityName.includes('salmon') || commodityName.includes('sardines') || commodityName.includes('squid') || commodityName.includes('tambakol') || commodityName.includes('tilapia') || commodityName.includes('fish') || commodityName.includes('bangus') || commodityName.includes('galunggong') || commodityName.includes('pampano') || commodityName.includes('alumahan')) {
+        categories['Fish & Seafood'].push(item);
+      } else if (commodityName.includes('beef') || commodityName.includes('pork') || commodityName.includes('carabeef')) {
+        categories['Meat Products'].push(item);
+      } else if (commodityName.includes('chicken') || commodityName.includes('egg')) {
+        categories['Poultry & Eggs'].push(item);
+      } else if (commodityName.includes('ampalaya') || commodityName.includes('eggplant') || commodityName.includes('tomato') || commodityName.includes('cabbage') || commodityName.includes('carrot') || commodityName.includes('lettuce') || commodityName.includes('pechay') || commodityName.includes('squash') || commodityName.includes('sitao') || commodityName.includes('chayote') || commodityName.includes('potato') || commodityName.includes('broccoli') || commodityName.includes('cauliflower') || commodityName.includes('celery') || commodityName.includes('bell pepper') || commodityName.includes('habichuelas') || commodityName.includes('baguio beans')) {
+        categories['Vegetables'].push(item);
+      } else if (commodityName.includes('banana') || commodityName.includes('mango') || commodityName.includes('papaya') || commodityName.includes('watermelon') || commodityName.includes('avocado') || commodityName.includes('calamansi') || commodityName.includes('melon') || commodityName.includes('pomelo')) {
+        categories['Fruits'].push(item);
+      } else if (commodityName.includes('garlic') || commodityName.includes('onion') || commodityName.includes('ginger') || commodityName.includes('chilli') || commodityName.includes('chili')) {
+        categories['Spices & Seasonings'].push(item);
+      } else if (commodityName.includes('salt') || commodityName.includes('sugar') || commodityName.includes('cooking oil')) {
+        categories['Cooking Essentials'].push(item);
+      } else {
+        categories['Corn'].push(item);
+      }
+    });
+
+    // Convert to CategoryData array with colors and icons
+    const categoryConfigs = {
+      'Imported Rice': { icon: '🌾', color: GREEN },
+      'Local Rice': { icon: '🌾', color: GREEN },
+      'Fish & Seafood': { icon: '🐟', color: GREEN },
+      'Meat Products': { icon: '🥩', color: GREEN },
+      'Poultry & Eggs': { icon: '🐔', color: GREEN },
+      'Vegetables': { icon: '🥬', color: GREEN },
+      'Fruits': { icon: '🍎', color: GREEN },
+      'Spices & Seasonings': { icon: '🌶️', color: GREEN },
+      'Cooking Essentials': { icon: '🛒', color: GREEN },
+      'Corn': { icon: '🌽', color: GREEN }
+    };
+
+    return Object.entries(categories)
+      .filter(([_, items]) => items.length > 0)
+      .map(([name, items]) => ({
+        name,
+        icon: categoryConfigs[name as keyof typeof categoryConfigs]?.icon || '🌽',
+        color: categoryConfigs[name as keyof typeof categoryConfigs]?.color || '#696969',
+        items: items.sort((a, b) => a.commodity.localeCompare(b.commodity))
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  // Admin-style price monitoring functions
+  const loadPDFData = React.useCallback(async () => {
+    try {
+      console.log('🚀 USER PRICE MONITORING: Loading PDF data...');
+      setPriceLoading(true);
+      
+      // Load data from extracted PDF data
+      let allPDFData: any[] = [];
+      
+      try {
+        // Try to load from automated extracted data
+        const extractedData = require('../../data/extracted_pdf_data.json');
+        allPDFData = extractedData.map((item: any, index: number) => ({
+          id: (index + 1).toString(),
+          commodity: item.commodity || 'Unknown',
+          specification: item.specification || 'Not specified',
+          price: item.price || 0,
+          unit: item.unit || 'kg',
+          region: item.region || 'NCR',
+          date: item.date || '2025-10-18'
+        }));
+        console.log(`✅ USER PRICE MONITORING: Loaded ${allPDFData.length} commodities from automated PDF extraction`);
+      } catch (error) {
+        console.error('❌ USER PRICE MONITORING: Could not load extracted PDF data:', error);
+        Alert.alert('Error', 'Could not load PDF data. Please check your connection and try again.');
+        allPDFData = [];
+      }
+      
+      // Categorize the data
+      const categorized = categorizeData(allPDFData);
+      
+      setPdfData(allPDFData);
+      setCategorizedData(categorized);
+      console.log(`✅ USER PRICE MONITORING: Successfully loaded and categorized ${allPDFData.length} commodities`);
+      console.log(`📊 USER PRICE MONITORING: Categories: ${categorized.length} types`);
+    } catch (error) {
+      console.error('❌ USER PRICE MONITORING: Error loading PDF data:', error);
+    } finally {
+      setPriceLoading(false);
+    }
+  }, []);
+
+  // Load PDF data when price monitoring tab is active
   useEffect(() => {
     if (activeNav === 'tutorial') {
-      fetchPriceData();
+      loadPDFData();
     }
-  }, [activeNav]);
+  }, [activeNav, loadPDFData]);
 
   useEffect(() => {
     if (forecastDays.length > 0 && selectedDateIndex < forecastDays.length) {
@@ -1042,76 +1160,57 @@ export default function HomeScreen() {
     setPriceError(null);
 
     try {
-      console.log('🌾 Fetching price data from stored data...');
+      console.log('🌐 REAL DA DATA: Fetching FRESH data from DA Philippines...');
+      console.log('🚫 NO OFFLINE DATA - ALWAYS FRESH FROM DA WEBSITE');
       
-      // First try to get prices from stored data
-      const storedPriceData = await priceMonitoringService.getCurrentPrices();
+      // Get current prices from real DA service
+      const currentPrices = await realDAPriceService.getCurrentPrices(COMMODITY_DATA);
+      console.log(`✅ Fetched ${currentPrices.length} real prices from DA website`);
       
-      if (storedPriceData.length > 0) {
-        console.log('📊 Using stored price data:', storedPriceData.length, 'items');
-        
-        // Update commodities with stored price data
-        const updatedCommodities = COMMODITY_DATA.map(commodity => {
-          const price = storedPriceData.find(p => p.commodityId === commodity.id);
-          
-          if (price) {
-            return priceMonitoringService.updateCommodityWithPrices(commodity, price);
-          }
-          return commodity;
-        });
-
-        console.log('📊 Updated commodities with stored data:', {
-          count: updatedCommodities.length,
-          withPrices: updatedCommodities.filter(c => c.currentPrice).length,
-          firstCommodity: updatedCommodities[0] ? {
-            name: updatedCommodities[0].name,
-            category: updatedCommodities[0].category,
-            currentPrice: updatedCommodities[0].currentPrice,
-            hasPrice: !!updatedCommodities[0].currentPrice
-          } : null
-        });
-        
-        setCommodities(updatedCommodities);
-        console.log('✅ Successfully updated', updatedCommodities.length, 'commodities with stored data');
-        return;
-      }
+      // Get forecasts
+      const forecasts = await realDAPriceService.getPriceForecasts(COMMODITY_DATA);
+      console.log(`✅ Fetched ${forecasts.length} forecasts`);
       
-      // Fallback to DA service if no stored data
-      console.log('📊 No stored data found, falling back to DA service...');
-      
-      // Fetch current prices from DA service
-      const priceData = await daPriceService.getCurrentPrices(COMMODITY_DATA);
-      
-      // Fetch forecasts from DA service
-      const forecastData = await daPriceService.getPriceForecasts(COMMODITY_DATA);
-      
-      console.log('📊 DA price data received:', priceData.length, 'items');
-      console.log('🔮 DA forecast data received:', forecastData.length, 'items');
-      
-      // Update commodities with DA price data
-      const updatedCommodities = commodities.map(commodity => {
-        const price = priceData.find(p => p.commodityId === commodity.id);
-        const forecast = forecastData.find(f => f.commodityId === commodity.id);
+      // Update commodities with real DA data
+      const updatedCommodities = COMMODITY_DATA.map(commodity => {
+        const price = currentPrices.find(p => p.commodityId === commodity.id);
+        const forecast = forecasts.find(f => f.commodityId === commodity.id);
         
         if (price) {
-          return updateCommodityWithDAPrices(commodity, price, forecast);
+          return {
+            ...commodity,
+            currentPrice: price.currentPrice,
+            priceDate: price.priceDate,
+            priceSource: price.source,
+            priceSpecification: price.specification,
+            isRealData: price.isRealData,
+            forecast: forecast ? {
+              nextWeek: forecast.forecasts.week1,
+              nextMonth: forecast.forecasts.week4,
+              confidence: forecast.confidence,
+              factors: ['Real DA data analysis', 'Historical price trends', 'Market conditions'],
+              trend: (forecast.forecasts.week4 > price.currentPrice ? 'up' : 
+                     forecast.forecasts.week4 < price.currentPrice ? 'down' : 'stable') as 'up' | 'down' | 'stable'
+            } : undefined
+          };
         }
         return commodity;
       });
 
-      console.log('📊 Updated commodities sample:', {
+      console.log('📊 Updated commodities with REAL DA data:', {
         count: updatedCommodities.length,
         withPrices: updatedCommodities.filter(c => c.currentPrice).length,
         firstCommodity: updatedCommodities[0] ? {
           name: updatedCommodities[0].name,
           category: updatedCommodities[0].category,
           currentPrice: updatedCommodities[0].currentPrice,
-          hasPrice: !!updatedCommodities[0].currentPrice
+          hasPrice: !!updatedCommodities[0].currentPrice,
+          isRealData: updatedCommodities[0].isRealData
         } : null
       });
       
       setCommodities(updatedCommodities);
-      console.log('✅ Successfully updated', updatedCommodities.length, 'commodities with DA data');
+      console.log('✅ Successfully updated', updatedCommodities.length, 'commodities with REAL DA data');
     } catch (error: any) {
       setPriceError(error.message || 'Failed to fetch DA price data');
       console.error('Error fetching DA price data:', error);
@@ -1158,6 +1257,74 @@ export default function HomeScreen() {
       router.replace('/login');
     }
   };
+
+  // Filter categories based on search query and selected category
+  const filteredCategories = React.useMemo(() => {
+    console.log('🔍 USER FILTERING: Starting with', categorizedData.length, 'categories');
+    let filtered = categorizedData;
+    
+    // Filter by selected category
+    if (selectedCategory) {
+      filtered = filtered.filter(category => category.name === selectedCategory);
+      console.log('🔍 USER FILTERING: After category filter:', filtered.length, 'categories');
+    }
+    
+    // Filter by search query
+    if (priceSearchQuery.trim()) {
+      filtered = filtered.map(category => ({
+        ...category,
+        items: category.items.filter(item =>
+          item.commodity.toLowerCase().includes(priceSearchQuery.toLowerCase()) ||
+          item.specification.toLowerCase().includes(priceSearchQuery.toLowerCase())
+        )
+      })).filter(category => category.items.length > 0);
+      console.log('🔍 USER FILTERING: After search filter:', filtered.length, 'categories');
+    }
+    
+    console.log('🔍 USER FILTERING: Final filtered categories:', filtered.map(c => `${c.name} (${c.items.length})`));
+    return filtered;
+  }, [selectedCategory, priceSearchQuery, categorizedData]);
+
+  // Admin-style render functions
+  const renderAdminCommodityItem = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.adminCommodityItem}
+      onPress={() => {
+        console.log('🎯 User PDF Data item pressed:', item.commodity);
+        Alert.alert('PDF Data', `Commodity: ${item.commodity}\nPrice: ₱${item.price}\nSpecification: ${item.specification}`);
+      }}
+      activeOpacity={0.7}
+    >
+      <View style={styles.adminCommodityItemContent}>
+        <View style={styles.adminCommodityItemInfo}>
+          <Text style={styles.adminCommodityItemName}>{item.commodity}</Text>
+          <Text style={styles.adminCommodityItemSpec}>{item.specification}</Text>
+          <Text style={styles.adminCommodityItemDate}>📅 {item.date} | 🌍 {item.region}</Text>
+        </View>
+        <View style={styles.adminCommodityItemPrice}>
+          <Text style={styles.adminCommodityItemPriceText}>₱{item.price.toFixed(2)}</Text>
+          <Text style={styles.adminCommodityItemUnit}>/{item.unit}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderAdminCategorySection = ({ item }: { item: any }) => (
+    <View style={styles.adminCategorySection}>
+      <View style={[styles.adminCategoryHeader, { backgroundColor: item.color }]}>
+        <Text style={styles.adminCategoryEmoji}>{item.icon}</Text>
+        <Text style={styles.adminCategoryTitle}>{item.name}</Text>
+        <Text style={styles.adminCategoryCount}>({item.items.length})</Text>
+      </View>
+      <View style={styles.adminCategoryItems}>
+        {item.items.map((commodity: any) => (
+          <View key={commodity.id}>
+            {renderAdminCommodityItem({ item: commodity })}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 
   // Price monitoring render functions
   const renderCommodityItem = ({ item }: { item: Commodity }) => (
@@ -1339,29 +1506,28 @@ export default function HomeScreen() {
       )}
       
       {activeNav === 'tutorial' ? (
-        // Price Monitoring - Use FlatList directly without ScrollView wrapper
-        <View style={[styles.priceMonitoringContainer, { paddingTop: 10 }]}>
+        // Price Monitoring - Admin-style interface without Manage PDF Data button
+        <View style={styles.adminPriceMonitoringContainer}>
           {/* Header */}
-          <View style={styles.priceHeader}>
-            <Text style={styles.priceHeaderTitle}>Price Monitoring</Text>
+          <View style={styles.adminPriceHeader}>
+            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring - PDF Data</Text>
           </View>
 
-
-          {/* Error Display */}
-          {priceError && (
-            <View style={styles.priceErrorContainer}>
-              <Ionicons name="warning" size={20} color="#ff6b6b" />
-              <Text style={styles.priceErrorText}>{priceError}</Text>
-            </View>
-          )}
+          {/* Data Source Info */}
+          <View style={styles.adminDataSourceInfo}>
+            <Ionicons name="document-text" size={16} color={LIGHT_GREEN} />
+            <Text style={styles.adminDataSourceText}>
+              Data Source: DA Philippines PDF (149 commodities extracted)
+            </Text>
+          </View>
 
           {/* Search Bar */}
-          <View style={styles.priceSearchContainer}>
-            <View style={styles.priceSearchInputContainer}>
-              <Ionicons name="search" size={20} color="#666" style={styles.priceSearchIcon} />
+          <View style={styles.adminPriceSearchContainer}>
+            <View style={styles.adminPriceSearchInputContainer}>
+              <Ionicons name="search" size={20} color="#666" style={styles.adminPriceSearchIcon} />
               <TextInput
-                style={styles.priceSearchInput}
-                placeholder="Search for a product..."
+                style={styles.adminPriceSearchInput}
+                placeholder="🔍 Search for a product..."
                 placeholderTextColor="#999"
                 value={priceSearchQuery}
                 onChangeText={setPriceSearchQuery}
@@ -1370,7 +1536,7 @@ export default function HomeScreen() {
               />
               {priceSearchQuery.length > 0 && (
                 <TouchableOpacity
-                  style={styles.priceClearButton}
+                  style={styles.adminPriceClearButton}
                   onPress={() => setPriceSearchQuery('')}
                 >
                   <Ionicons name="close-circle" size={20} color="#666" />
@@ -1380,60 +1546,60 @@ export default function HomeScreen() {
           </View>
 
           {/* Filter Buttons */}
-          <View style={styles.priceFilterButtonsContainer}>
+          <View style={styles.adminPriceFilterButtonsContainer}>
             <TouchableOpacity
               style={[
-                styles.priceFilterButton,
-                selectedCategory === null && styles.priceFilterButtonActive
+                styles.adminPriceFilterButton,
+                selectedCategory === null && styles.adminPriceFilterButtonActive
               ]}
               onPress={() => setSelectedCategory(null)}
             >
               <Ionicons 
                 name="apps" 
-                size={20} 
+                size={24} 
                 color={selectedCategory === null ? "#fff" : GREEN} 
               />
-              <Text style={[
-                styles.priceFilterButtonText,
-                selectedCategory === null && styles.priceFilterButtonTextActive
-              ]}>
-                All
-              </Text>
             </TouchableOpacity>
             
-            <TouchableOpacity
-              style={[
-                styles.priceFilterButton,
-                selectedCategory !== null && styles.priceFilterButtonActive
-              ]}
-              onPress={() => setShowCommodityModal(true)}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.adminCategoryScrollView}
+              contentContainerStyle={styles.adminCategoryScrollContent}
             >
-              <Ionicons 
-                name="basket" 
-                size={20} 
-                color={selectedCategory !== null ? "#fff" : GREEN} 
-              />
-              <Text style={[
-                styles.priceFilterButtonText,
-                selectedCategory !== null && styles.priceFilterButtonTextActive
-              ]}>
-                {selectedCategory || 'Commodities'}
-              </Text>
-            </TouchableOpacity>
+              {categorizedData.map((category) => (
+                <TouchableOpacity
+                  key={category.name}
+                  style={[
+                    styles.adminCategoryFilterButton,
+                    selectedCategory === category.name && styles.adminCategoryFilterButtonActive
+                  ]}
+                  onPress={() => setSelectedCategory(selectedCategory === category.name ? null : category.name)}
+                >
+                  <Text style={styles.adminCategoryFilterEmoji}>{category.icon}</Text>
+                  <Text style={[
+                    styles.adminCategoryFilterText,
+                    selectedCategory === category.name && styles.adminCategoryFilterTextActive
+                  ]}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
-          {/* Commodity List */}
+          {/* Categorized Data Display */}
           {priceLoading ? (
-            <View style={styles.priceLoadingContainer}>
+            <View style={styles.adminPriceLoadingContainer}>
               <ActivityIndicator size="large" color={GREEN} />
-              <Text style={styles.priceLoadingText}>Fetching latest prices...</Text>
+              <Text style={styles.adminPriceLoadingText}>🔄 Loading PDF data...</Text>
             </View>
           ) : (
             <FlatList
-              data={filteredCommodities}
-              renderItem={renderCommodityItem}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={[styles.priceCommodityList, { paddingBottom: 100 }]}
+              data={filteredCategories}
+              renderItem={renderAdminCategorySection}
+              keyExtractor={(item) => item.name}
+              contentContainerStyle={[styles.adminCategoryList, { paddingBottom: 100 }]}
               showsVerticalScrollIndicator={false}
               refreshControl={
                 <RefreshControl
@@ -1444,24 +1610,21 @@ export default function HomeScreen() {
                 />
               }
               ListEmptyComponent={
-                <View style={styles.priceEmptyState}>
-                  <Ionicons name="search" size={60} color={LIGHT_GREEN} />
-                  <Text style={styles.priceEmptyTitle}>No commodities found</Text>
-                  <Text style={styles.priceEmptySubtitle}>
+                <View style={styles.adminPriceEmptyState}>
+                  <Text style={styles.adminPriceEmptyEmoji}>🔍</Text>
+                  <Text style={styles.adminPriceEmptyTitle}>No data found</Text>
+                  <Text style={styles.adminPriceEmptySubtitle}>
                     {priceSearchQuery.trim() 
                       ? `No products found matching "${priceSearchQuery}"`
                       : selectedCategory 
-                        ? `No commodities found in ${selectedCategory} category`
-                        : 'Try selecting a different category or check your internet connection.'
+                        ? `No data found in ${selectedCategory} category`
+                        : 'No PDF data available. Please check your connection.'
                     }
                   </Text>
                 </View>
               }
             />
           )}
-          
-          {/* Commodity Selection Modal */}
-          {renderCommodityModal()}
         </View>
       ) : (
         // Home content - Use ScrollView
@@ -3857,6 +4020,274 @@ const styles = StyleSheet.create({
   priceModalItemEmoji: {
     fontSize: 20,
     marginRight: 8,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  redirectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: GREEN,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  redirectButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  // Admin-style price monitoring styles
+  adminPriceMonitoringContainer: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  adminPriceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    marginBottom: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  adminPriceHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: GREEN,
+    flex: 1,
+    textAlign: 'center',
+  },
+  adminDataSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: '#e8f5e8',
+    marginBottom: 10,
+  },
+  adminDataSourceText: {
+    fontSize: 12,
+    color: GREEN,
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  adminPriceSearchContainer: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  adminPriceSearchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  adminPriceSearchIcon: {
+    marginRight: 12,
+  },
+  adminPriceSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+  },
+  adminPriceClearButton: {
+    padding: 4,
+  },
+  adminPriceFilterButtonsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'space-between',
+  },
+  adminPriceFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#74bfa3',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    flex: 0.2,
+    justifyContent: 'center',
+    minHeight: 44,
+    maxHeight: 44,
+    minWidth: 50,
+  },
+  adminPriceFilterButtonActive: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  adminCategoryScrollView: {
+    maxHeight: 50,
+  },
+  adminCategoryScrollContent: {
+    paddingHorizontal: 8,
+  },
+  adminCategoryFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#f0f8f0',
+    borderRadius: 20,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: GREEN,
+  },
+  adminCategoryFilterButtonActive: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  adminCategoryFilterEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  adminCategoryFilterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  adminCategoryFilterTextActive: {
+    color: '#fff',
+  },
+  adminPriceLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  adminPriceLoadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  adminCategoryList: {
+    padding: 16,
+  },
+  adminCategorySection: {
+    marginBottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  adminCategoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  adminCategoryEmoji: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  adminCategoryTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  adminCategoryCount: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  adminCategoryItems: {
+    padding: 8,
+  },
+  adminCommodityItem: {
+    backgroundColor: '#f8f9fa',
+    marginVertical: 4,
+    marginHorizontal: 8,
+    borderRadius: 8,
+    padding: 12,
+  },
+  adminCommodityItemContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  adminCommodityItemInfo: {
+    flex: 1,
+  },
+  adminCommodityItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  adminCommodityItemSpec: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  adminCommodityItemDate: {
+    fontSize: 10,
+    color: '#999',
+  },
+  adminCommodityItemPrice: {
+    alignItems: 'flex-end',
+  },
+  adminCommodityItemPriceText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: GREEN,
+  },
+  adminCommodityItemUnit: {
+    fontSize: 12,
+    color: '#666',
+  },
+  adminPriceEmptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  adminPriceEmptyEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  adminPriceEmptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+  },
+  adminPriceEmptySubtitle: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 
 });

@@ -1,0 +1,1122 @@
+[
+  {
+    "commodity": "Special Rice",
+    "specification": "White Rice",
+    "price": 59.2,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Premium",
+    "specification": "5% broken",
+    "price": 45.71,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Well Milled",
+    "specification": "1-19% bran streak",
+    "price": 42.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Regular Milled",
+    "specification": "20-40% bran streak",
+    "price": 38.29,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Special Rice",
+    "specification": "White Rice",
+    "price": 57.76,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Premium",
+    "specification": "5% broken",
+    "price": 49.59,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Well Milled",
+    "specification": "1-19% bran streak",
+    "price": 43.15,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Regular Milled",
+    "specification": "20-40% bran streak",
+    "price": 37.08,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Corn (White)",
+    "specification": "Cob, Glutinous",
+    "price": 93.33,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Corn (Yellow)",
+    "specification": "Cob, Sweet Corn",
+    "price": 79.71,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Corn Cracked (Yellow, Feed Grade)",
+    "specification": "Not specified",
+    "price": 50.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Corn Grits (Feed Grade)",
+    "specification": "Not specified",
+    "price": 45.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Alumahan (Indian Mackerel)",
+    "specification": "Medium (4-6 pcs/kg)",
+    "price": 347.22,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Bangus, Large",
+    "specification": "Large (1-2 pcs)",
+    "price": 293.24,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Bangus, Medium",
+    "specification": "Medium (3-4 pcs/kg)",
+    "price": 255.26,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Galunggong, Local",
+    "specification": "Male, Medium (12-14 pcs/kg)",
+    "price": 336.11,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pampano, Local",
+    "specification": "Not specified",
+    "price": 393.33,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pampano, Imported",
+    "specification": "Not specified",
+    "price": 414.44,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Salmon Belly, Imported",
+    "specification": "Not specified",
+    "price": 433.85,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Salmon Head, Local",
+    "specification": "Not specified",
+    "price": 160.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Salmon Head, Imported",
+    "specification": "Not specified",
+    "price": 230.63,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Sardines (Tamban)",
+    "specification": "Not specified",
+    "price": 112.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Squid (Pusit Bisaya), Local",
+    "specification": "Medium",
+    "price": 432.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Squid, Imported",
+    "specification": "Not specified",
+    "price": 200.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Tambakol (Yellow-Fin Tuna),\nLocal",
+    "specification": "Medium, Fresh or Chilled",
+    "price": 276.15,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Tilapia",
+    "specification": "Medium (5-6 pcs/kg)",
+    "price": 153.68,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Brisket, Local",
+    "specification": "Meat with Bones",
+    "price": 403.24,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Chuck, Local",
+    "specification": "Not specified",
+    "price": 400.83,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Forequarter, Local",
+    "specification": "Not specified",
+    "price": 485.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Fore Limb, Local",
+    "specification": "Not specified",
+    "price": 463.33,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Flank, Local",
+    "specification": "Not specified",
+    "price": 443.75,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Flank, Imported",
+    "specification": "Not specified",
+    "price": 380.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Loin, Local",
+    "specification": "Not specified",
+    "price": 485.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Plate, Local",
+    "specification": "Not specified",
+    "price": 360.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Rib Eye, Local",
+    "specification": "Not specified",
+    "price": 477.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Rib Set, Local",
+    "specification": "Not specified",
+    "price": 405.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Rump, Local",
+    "specification": "Lean Meat/ Tapadera",
+    "price": 468.68,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Short Ribs, Local",
+    "specification": "Not specified",
+    "price": 426.25,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Sirloin, Local",
+    "specification": "Not specified",
+    "price": 469.29,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Striploin, Local",
+    "specification": "Not specified",
+    "price": 548.75,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Beef Tenderloin, Local",
+    "specification": "Not specified",
+    "price": 730.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Belly (Liempo), Local",
+    "specification": "Not specified",
+    "price": 396.84,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Belly (Liempo), Imported",
+    "specification": "Not specified",
+    "price": 331.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Boston Shoulder, Local",
+    "specification": "Not specified",
+    "price": 366.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Chop, Local",
+    "specification": "Not specified",
+    "price": 353.16,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Chop, Imported",
+    "specification": "Not specified",
+    "price": 250.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Fore Shank, Local",
+    "specification": "Not specified",
+    "price": 335.38,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Fore Shank, Imported",
+    "specification": "Not specified",
+    "price": 190.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Head, Local",
+    "specification": "Not specified",
+    "price": 248.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Hind Leg (Pigue), Local",
+    "specification": "Not specified",
+    "price": 350.79,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Hind Leg (Pigue), Imported",
+    "specification": "Not specified",
+    "price": 250.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Hind Shank, Local",
+    "specification": "Not specified",
+    "price": 340.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Hind Shank, Imported",
+    "specification": "Not specified",
+    "price": 210.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Loin, Local",
+    "specification": "Not specified",
+    "price": 397.33,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Loin, Imported",
+    "specification": "Not specified",
+    "price": 250.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Offals, Local",
+    "specification": "Not specified",
+    "price": 249.55,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Offals, Imported",
+    "specification": "Not specified",
+    "price": 126.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Picnic Shoulder (Kasim),\nLocal",
+    "specification": "Not specified",
+    "price": 347.11,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Picnic Shoulder (Kasim),\nImported",
+    "specification": "Not specified",
+    "price": 263.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Rind/Skin, Local",
+    "specification": "Not specified",
+    "price": 100.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Spare Ribs, Local",
+    "specification": "Not specified",
+    "price": 355.83,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pork Spare Ribs, Imported",
+    "specification": "Not specified",
+    "price": 220.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Carabeef Forequarter, Local",
+    "specification": "Not specified",
+    "price": 360.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Carabeef Meat, Local",
+    "specification": "Not specified",
+    "price": 355.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Carabeef Rump Steak, Local",
+    "specification": "Not specified",
+    "price": 360.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Carabeef Trimmings, Local",
+    "specification": "Not specified",
+    "price": 240.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Breast, Local",
+    "specification": "Magnolia",
+    "price": 210.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Breast, Local",
+    "specification": "Bounty Fresh",
+    "price": 220.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Breast, Local",
+    "specification": "Unbranded, Fresh",
+    "price": 209.64,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Drumstick, Local",
+    "specification": "Magnolia",
+    "price": 215.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Drumstick, Local",
+    "specification": "Bounty Fresh",
+    "price": 230.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Drumstick, Local",
+    "specification": "Unbranded, Fresh",
+    "price": 210.83,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Feet, Local",
+    "specification": "Not specified",
+    "price": 139.83,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Leg Quarter",
+    "specification": "Magnolia",
+    "price": 210.77,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Leg Quarter",
+    "specification": "Bounty Fresh",
+    "price": 220.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Leg Quarter",
+    "specification": "Unbranded, Fresh",
+    "price": 205.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Leg Quarter, Imported",
+    "specification": "Not specified",
+    "price": 160.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Liver, Local",
+    "specification": "Not specified",
+    "price": 238.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Neck, Local",
+    "specification": "Not specified",
+    "price": 152.86,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Rind/Skin, Local",
+    "specification": "Not specified",
+    "price": 155.45,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Thigh, Local",
+    "specification": "Not specified",
+    "price": 217.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Wing, Local",
+    "specification": "Magnolia",
+    "price": 214.23,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Wing, Local",
+    "specification": "Bounty Fresh",
+    "price": 230.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Wing, Local",
+    "specification": "Unbranded, Fresh",
+    "price": 211.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Whole Chicken, Local",
+    "specification": "Magnolia",
+    "price": 201.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Whole Chicken, Local",
+    "specification": "Bounty Fresh",
+    "price": 200.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Whole Chicken, Local",
+    "specification": "Fully Dressed",
+    "price": 191.27,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chicken Egg (White, Medium)",
+    "specification": "56-60 grams/pc",
+    "price": 8.42,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Ampalaya",
+    "specification": "4-5 pcs/kg",
+    "price": 148.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chilli (Green), Local",
+    "specification": "Haba/Panigang",
+    "price": 159.47,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Eggplant",
+    "specification": "3-4 Small Bundles",
+    "price": 139.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Native Pechay",
+    "specification": "3-4 Small Bundles",
+    "price": 132.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pole Sitao",
+    "specification": "3-4 Small Bundles",
+    "price": 96.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Squash",
+    "specification": "Suprema Variety",
+    "price": 86.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Tomato",
+    "specification": "15-18 pcs/kg",
+    "price": 146.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Bell Pepper (Green), Local",
+    "specification": "Medium (151-250gm/pc)",
+    "price": 333.13,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Bell Pepper (Red), Local",
+    "specification": "Medium (151-250gm/pc)",
+    "price": 317.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Broccoli, Local",
+    "specification": "Medium (8-10 cm\ndiameter/bunch hd)",
+    "price": 260.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Broccoli, Imported",
+    "specification": "Not specified",
+    "price": 258.46,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cauliflower, Local",
+    "specification": "Medium (8-10 cm\ndiameter/bunch hd)",
+    "price": 258.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cabbage (Rare Ball)",
+    "specification": "510 gm - 1 kg/head",
+    "price": 100.71,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cabbage (Scorpio)",
+    "specification": "750 gm - 1 kg/head",
+    "price": 110.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cabbage (Wonder Ball)",
+    "specification": "510 gm - 1 kg/head",
+    "price": 100.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Carrots, Local",
+    "specification": "8-10 pcs/kg",
+    "price": 195.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Celery",
+    "specification": "Medium (501-800 g)",
+    "price": 192.94,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chayote",
+    "specification": "Medium (301-400 g)",
+    "price": 76.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Habichuelas/Baguio Beans, Local",
+    "specification": "Not specified",
+    "price": 147.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pechay Baguio",
+    "specification": "Not specified",
+    "price": 80.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Lettuce (Green Ice)",
+    "specification": "Not specified",
+    "price": 196.43,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Lettuce (Iceberg)",
+    "specification": "Medium (301-450 cm\ndiameter/bunch hd)",
+    "price": 203.33,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Lettuce (Romaine)",
+    "specification": "Not specified",
+    "price": 202.73,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "White Potato, Local",
+    "specification": "10-12 pcs/kg",
+    "price": 138.75,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Chilli (Red), Local",
+    "specification": "Tingala",
+    "price": 272.11,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Garlic, Native/Local",
+    "specification": "Not specified",
+    "price": 400.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Garlic, Imported",
+    "specification": "Not specified",
+    "price": 158.25,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Ginger, Local",
+    "specification": "Fairly well-matured, Medium\n(150-300 gm)",
+    "price": 206.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Ginger, Imported",
+    "specification": "Fairly well-matured, Medium\n(150-300 gm)",
+    "price": 170.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Red Onion, Local",
+    "specification": "13-15 pcs/kg",
+    "price": 156.4,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "White Onion, Imported",
+    "specification": "Medium",
+    "price": 125.71,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "White Onion, Imported",
+    "specification": "Large",
+    "price": 110.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Avocado",
+    "specification": "Not specified",
+    "price": 500.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Banana (Lakatan)",
+    "specification": "8-10 pcs/kg",
+    "price": 93.93,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Banana (Latundan)",
+    "specification": "10-12 pcs/kg",
+    "price": 71.25,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Banana (Saba)",
+    "specification": "Not specified",
+    "price": 48.57,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Calamansi",
+    "specification": "Not specified",
+    "price": 93.6,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Mango (Carabao)",
+    "specification": "Ripe, 3-4 pcs/kg",
+    "price": 206.43,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Melon",
+    "specification": "Not specified",
+    "price": 99.23,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Papaya",
+    "specification": "Solo, Ripe, 2-3 pcs/kg",
+    "price": 68.57,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Pomelo",
+    "specification": "Not specified",
+    "price": 179.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Watermelon",
+    "specification": "Not specified",
+    "price": 74.5,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Salt (Rock)",
+    "specification": "Not specified",
+    "price": 19.4,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Salt (Iodized)",
+    "specification": "Not specified",
+    "price": 51.25,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Sugar (Refined)",
+    "specification": "Not specified",
+    "price": 81.71,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Sugar (Washed)",
+    "specification": "Not specified",
+    "price": 75.47,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Sugar (Brown)",
+    "specification": "Not specified",
+    "price": 71.41,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cooking Oil (Palm)",
+    "specification": "350 ml/bottle",
+    "price": 36.33,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cooking Oil (Palm)",
+    "specification": "1 Liter/bottle",
+    "price": 90.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cooking Oil (Coconut)",
+    "specification": "350 ml/bottle",
+    "price": 61.67,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cooking Oil (Coconut)",
+    "specification": "1 Liter/bottle",
+    "price": 160.18,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  },
+  {
+    "commodity": "Cooking Oil (Spring)",
+    "specification": "1,000 ml/bottle",
+    "price": 155.0,
+    "unit": "kg",
+    "region": "NCR",
+    "date": "2025-10-19"
+  }
+]

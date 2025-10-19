@@ -1,0 +1,154 @@
+[
+  {
+    "commodityId": "beef-brisket-local",
+    "commodityName": "Beef Brisket, Local",
+    "currentPrice": 414.23,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Meat with Bones",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "beef-brisket-imported",
+    "commodityName": "Beef Brisket, Imported",
+    "currentPrice": 370.00,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Imported",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "beef-chuck-local",
+    "commodityName": "Beef Chuck, Local",
+    "currentPrice": 399.70,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Local",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "beef-forequarter-local",
+    "commodityName": "Beef Forequarter, Local",
+    "currentPrice": 480.00,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Local",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "beef-fore-limb-local",
+    "commodityName": "Beef Fore Limb, Local",
+    "currentPrice": 457.86,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Local",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "beef-flank-local",
+    "commodityName": "Beef Flank, Local",
+    "currentPrice": 425.88,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Local",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "beef-flank-imported",
+    "commodityName": "Beef Flank, Imported",
+    "currentPrice": 376.67,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Imported",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "salmon-belly-imported",
+    "commodityName": "Salmon Belly, Imported",
+    "currentPrice": 418.52,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Imported",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "salmon-head-imported",
+    "commodityName": "Salmon Head, Imported",
+    "currentPrice": 227.27,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Imported",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "sardines-tamban",
+    "commodityName": "Sardines (Tamban)",
+    "currentPrice": 119.47,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Fresh",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "squid-pusit-bisaya-local",
+    "commodityName": "Squid (Pusit Bisaya), Local",
+    "currentPrice": 447.07,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Medium",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "squid-imported",
+    "commodityName": "Squid, Imported",
+    "currentPrice": 210.67,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Imported",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "tambakol-yellowfin-tuna-local",
+    "commodityName": "Tambakol (Yellow-Fin Tuna), Local",
+    "currentPrice": 271.54,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Medium, Fresh or Chilled",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "tambakol-yellowfin-tuna-imported",
+    "commodityName": "Tambakol (Yellow-Fin Tuna), Imported",
+    "currentPrice": 300.00,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Medium, Frozen",
+    "region": "NCR",
+    "isRealData": true
+  },
+  {
+    "commodityId": "tilapia",
+    "commodityName": "Tilapia",
+    "currentPrice": 153.03,
+    "priceDate": "2025-10-18",
+    "source": "DA Philippines Daily Price Index PDF",
+    "specification": "Medium (5-6 pcs/kg)",
+    "region": "NCR",
+    "isRealData": true
+  }
+]
+
+

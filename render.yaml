@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: agriassist-pdf-api
+    env: node
+    buildCommand: npm install
+    startCommand: node scripts/renderPDFService.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+    autoDeploy: true

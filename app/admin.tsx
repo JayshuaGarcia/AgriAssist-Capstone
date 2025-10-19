@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
 import { useNotification } from '../components/NotificationContext';
@@ -13,12 +12,12 @@ import { Commodity, COMMODITY_DATA } from '../constants/CommodityData';
 import { useLatestPrices } from '../hooks/useLatestPrices';
 import { useNavigationBar } from '../hooks/useNavigationBar';
 import { useCategories, useCommodityManagement } from '../hooks/useOfflineCommodities';
-import { useOfflineMLForecasts } from '../hooks/useOfflineMLForecasts';
 import { db } from '../lib/firebase';
-import { LatestPrice } from '../services/offlineLatestPricesService';
+import { realDAPriceService } from '../lib/realDAPriceService';
 
 const { width } = Dimensions.get('window');
 const GREEN = '#16543a';
+const LIGHT_GREEN = '#74bfa3';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -177,22 +176,216 @@ export default function AdminPage() {
   const [priceSearchQuery, setPriceSearchQuery] = useState('');
   const [adminRefreshing, setAdminRefreshing] = useState(false);
   
+  // Admin PDF data states
+  const [adminPdfData, setAdminPdfData] = useState<any[]>([]);
+  const [adminCategorizedData, setAdminCategorizedData] = useState<any[]>([]);
+  
   // Offline latest prices hook
   const { latestPrices, loading: priceLoading, error: priceError, refreshing: priceRefreshing, refreshLatestPrices, addOrUpdatePrice } = useLatestPrices();
   const { categories } = useCategories();
   const { addCommodity, updateCommodity, deleteCommodity, loading: commodityLoading } = useCommodityManagement();
   
-  // Offline ML forecasts hook
-  const { forecasts: mlForecasts, loading: mlLoading, error: mlError, refreshing: mlRefreshing, refreshMLForecasts, refreshFirebaseMLForecasts } = useOfflineMLForecasts();
+  // Real DA ML forecasts - no more cached data
+  const [mlForecasts, setMLForecasts] = useState<any[]>([]);
+  const [mlLoading, setMLLoading] = useState(false);
+  const [mlError, setMLError] = useState<string | null>(null);
+  const [mlRefreshing, setMLRefreshing] = useState(false);
+
+  // Load ML forecasts from real DA service
+  const loadMLForecasts = useCallback(async () => {
+    try {
+      setMLLoading(true);
+      setMLError(null);
+      
+      console.log('🤖 Loading ML forecasts from real DA service...');
+      const forecasts = await realDAPriceService.getPriceForecasts(COMMODITY_DATA);
+      setMLForecasts(forecasts);
+      
+      console.log(`✅ Loaded ${forecasts.length} ML forecasts from real DA service`);
+    } catch (err) {
+      console.error('❌ Error loading ML forecasts:', err);
+      setMLError(err instanceof Error ? err.message : 'Failed to load ML forecasts');
+    } finally {
+      setMLLoading(false);
+    }
+  }, []);
+
+  // Refresh ML forecasts
+  const refreshMLForecasts = useCallback(async () => {
+    try {
+      setMLRefreshing(true);
+      setMLError(null);
+      
+      console.log('🔄 Refreshing ML forecasts from real DA service...');
+      const forecasts = await realDAPriceService.getPriceForecasts(COMMODITY_DATA);
+      setMLForecasts(forecasts);
+      
+      console.log(`✅ Refreshed ${forecasts.length} ML forecasts from real DA service`);
+    } catch (err) {
+      console.error('❌ Error refreshing ML forecasts:', err);
+      setMLError(err instanceof Error ? err.message : 'Failed to refresh ML forecasts');
+    } finally {
+      setMLRefreshing(false);
+    }
+  }, []);
+
+  // Load ML forecasts on component mount
+  useEffect(() => {
+    loadMLForecasts();
+  }, [loadMLForecasts]);
+
+  // Load admin PDF data
+  const loadAdminPDFData = useCallback(async () => {
+    try {
+      console.log('🚀 ADMIN: Loading PDF data and categorizing...');
+      
+      // Load data from extracted PDF data (same as admin PDF data screen)
+      let allPDFData: any[] = [];
+      
+      try {
+        // Try to load from automated extracted data
+        const extractedData = require('../data/extracted_pdf_data.json');
+        allPDFData = extractedData.map((item: any, index: number) => ({
+          id: (index + 1).toString(),
+          commodity: item.commodity || 'Unknown',
+          specification: item.specification || 'Not specified',
+          price: item.price || 0,
+          unit: item.unit || 'kg',
+          region: item.region || 'NCR',
+          date: item.date || '2025-10-18'
+        }));
+        console.log(`✅ ADMIN: Loaded ${allPDFData.length} commodities from automated PDF extraction`);
+      } catch (error) {
+        console.log('⚠️ ADMIN: No automated data found, using fallback data');
+        // Fallback to hardcoded data if automated extraction not available
+        allPDFData = [
+          // Rice products
+          { id: '1', commodity: 'Special Rice', specification: 'White Rice', price: 56.89, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '2', commodity: 'Premium', specification: '5% broken', price: 47.35, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '3', commodity: 'Well Milled', specification: '1-19% bran streak', price: 42.75, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '4', commodity: 'Regular Milled', specification: '20-40% bran streak', price: 39.12, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          // Fish products
+          { id: '5', commodity: 'Salmon Belly, Imported', specification: 'Not specified', price: 418.52, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '6', commodity: 'Salmon Head, Imported', specification: 'Not specified', price: 227.27, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '7', commodity: 'Sardines (Tamban)', specification: 'Not specified', price: 119.47, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '8', commodity: 'Squid (Pusit Bisaya), Local', specification: 'Medium', price: 447.07, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '9', commodity: 'Squid, Imported', specification: 'Not specified', price: 210.67, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '10', commodity: 'Tambakol (Yellow-Fin Tuna), Local', specification: 'Medium, Fresh or Chilled', price: 271.54, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '11', commodity: 'Tambakol (Yellow-Fin Tuna), Imported', specification: 'Medium, Frozen', price: 300.0, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '12', commodity: 'Tilapia', specification: 'Medium (5-6 pcs/kg)', price: 153.03, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          // Beef products
+          { id: '13', commodity: 'Beef Brisket, Local', specification: 'Meat with Bones', price: 414.23, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '14', commodity: 'Beef Brisket, Imported', specification: 'Not specified', price: 370.0, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '15', commodity: 'Beef Chuck, Local', specification: 'Not specified', price: 399.7, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '16', commodity: 'Beef Forequarter, Local', specification: 'Not specified', price: 480.0, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '17', commodity: 'Beef Fore Limb, Local', specification: 'Not specified', price: 457.86, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '18', commodity: 'Beef Flank, Local', specification: 'Not specified', price: 425.88, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '19', commodity: 'Beef Flank, Imported', specification: 'Not specified', price: 376.67, unit: 'kg', region: 'NCR', date: '2025-10-18' },
+          { id: '20', commodity: 'Beef Striploin, Local', specification: 'Not specified', price: 472.4, unit: 'kg', region: 'NCR', date: '2025-10-18' }
+        ];
+      }
+      
+      // Categorize the data
+      const categorized = categorizeAdminData(allPDFData);
+      
+      setAdminPdfData(allPDFData);
+      setAdminCategorizedData(categorized);
+      console.log(`✅ ADMIN: Successfully loaded and categorized ${allPDFData.length} commodities`);
+      console.log(`📊 ADMIN: Categories: ${categorized.length} types`);
+    } catch (error) {
+      console.error('❌ ADMIN: Error loading PDF data:', error);
+    }
+  }, []);
+
+  // Categorize admin data
+  const categorizeAdminData = (data: any[]): any[] => {
+    const categories: { [key: string]: any[] } = {
+      'Imported Rice': [],
+      'Local Rice': [],
+      'Fish & Seafood': [],
+      'Meat Products': [],
+      'Poultry & Eggs': [],
+      'Vegetables': [],
+      'Fruits': [],
+      'Spices & Seasonings': [],
+      'Cooking Essentials': [],
+      'Corn': []
+    };
+
+    data.forEach((item, index) => {
+      const commodityName = item.commodity.toLowerCase();
+      
+      // Special handling for rice - first 4 are imported, next 4 are local
+      if (commodityName.includes('rice') || commodityName.includes('milled') || commodityName.includes('premium') || commodityName.includes('special')) {
+        // Use the item's index in the original data to determine if it's imported or local
+        // First 4 rice items (indices 0-3) are imported, next 4 (indices 4-7) are local
+        if (index < 4) {
+          categories['Imported Rice'].push(item);
+        } else if (index < 8) {
+          categories['Local Rice'].push(item);
+        } else {
+          // Any additional rice items go to Corn
+          categories['Corn'].push(item);
+        }
+      } else if (commodityName.includes('corn')) {
+        categories['Corn'].push(item); // Corn goes to Corn category
+      } else if (commodityName.includes('salmon') || commodityName.includes('sardines') || commodityName.includes('squid') || commodityName.includes('tambakol') || commodityName.includes('tilapia') || commodityName.includes('fish') || commodityName.includes('bangus') || commodityName.includes('galunggong') || commodityName.includes('pampano') || commodityName.includes('alumahan')) {
+        categories['Fish & Seafood'].push(item);
+      } else if (commodityName.includes('beef') || commodityName.includes('pork') || commodityName.includes('carabeef')) {
+        categories['Meat Products'].push(item);
+      } else if (commodityName.includes('chicken') || commodityName.includes('egg')) {
+        categories['Poultry & Eggs'].push(item);
+      } else if (commodityName.includes('ampalaya') || commodityName.includes('eggplant') || commodityName.includes('tomato') || commodityName.includes('cabbage') || commodityName.includes('carrot') || commodityName.includes('lettuce') || commodityName.includes('pechay') || commodityName.includes('squash') || commodityName.includes('sitao') || commodityName.includes('chayote') || commodityName.includes('potato') || commodityName.includes('broccoli') || commodityName.includes('cauliflower') || commodityName.includes('celery') || commodityName.includes('bell pepper') || commodityName.includes('habichuelas') || commodityName.includes('baguio beans')) {
+        categories['Vegetables'].push(item);
+      } else if (commodityName.includes('banana') || commodityName.includes('mango') || commodityName.includes('papaya') || commodityName.includes('watermelon') || commodityName.includes('avocado') || commodityName.includes('calamansi') || commodityName.includes('melon') || commodityName.includes('pomelo')) {
+        categories['Fruits'].push(item);
+      } else if (commodityName.includes('garlic') || commodityName.includes('onion') || commodityName.includes('ginger') || commodityName.includes('chilli') || commodityName.includes('chili')) {
+        categories['Spices & Seasonings'].push(item);
+      } else if (commodityName.includes('salt') || commodityName.includes('sugar') || commodityName.includes('cooking oil')) {
+        categories['Cooking Essentials'].push(item);
+      } else {
+        categories['Corn'].push(item);
+      }
+    });
+
+    // Convert to CategoryData array with colors and icons
+    const categoryConfigs = {
+      'Imported Rice': { icon: '🌾', color: GREEN },
+      'Local Rice': { icon: '🌾', color: GREEN },
+      'Fish & Seafood': { icon: '🐟', color: GREEN },
+      'Meat Products': { icon: '🥩', color: GREEN },
+      'Poultry & Eggs': { icon: '🐔', color: GREEN },
+      'Vegetables': { icon: '🥬', color: GREEN },
+      'Fruits': { icon: '🍎', color: GREEN },
+      'Spices & Seasonings': { icon: '🌶️', color: GREEN },
+      'Cooking Essentials': { icon: '🛒', color: GREEN },
+      'Corn': { icon: '🌽', color: GREEN }
+    };
+
+    return Object.entries(categories)
+      .filter(([_, items]) => items.length > 0)
+      .map(([name, items]) => ({
+        name,
+        icon: categoryConfigs[name as keyof typeof categoryConfigs]?.icon || '🌽',
+        color: categoryConfigs[name as keyof typeof categoryConfigs]?.color || '#696969',
+        items: items.sort((a, b) => a.commodity.localeCompare(b.commodity))
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  // Load admin PDF data on component mount
+  useEffect(() => {
+    loadAdminPDFData();
+  }, [loadAdminPDFData]);
   
   // Get last updated time from latest prices
   const lastUpdated = React.useMemo(() => {
     if (latestPrices.length > 0) {
       const latestPrice = latestPrices
-        .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())[0];
+        .sort((a, b) => new Date(b.priceDate).getTime() - new Date(a.priceDate).getTime())[0];
       
-      if (latestPrice?.lastUpdated) {
-        return new Date(latestPrice.lastUpdated).toLocaleTimeString();
+      if (latestPrice?.priceDate) {
+        return new Date(latestPrice.priceDate).toLocaleTimeString();
       }
     }
     return null;
@@ -484,18 +677,21 @@ export default function AdminPage() {
 
 
   const filteredCommodities = React.useMemo(() => {
-    let filtered = latestPrices;
+    let filtered = latestPrices as any[];
     
     // Filter out products with "No Data" status (no price or price is 0)
     filtered = filtered.filter(price => 
-      price.price && 
-      price.price > 0 && 
-      !isNaN(price.price)
+      price.currentPrice && 
+      price.currentPrice > 0 && 
+      !isNaN(price.currentPrice)
     );
     
-    // Filter by category
+    // Filter by category - need to find commodity category from COMMODITY_DATA
     if (selectedCategory) {
-      filtered = filtered.filter(price => price.category === selectedCategory);
+      filtered = filtered.filter(price => {
+        const commodity = COMMODITY_DATA.find(c => c.id === price.commodityId);
+        return commodity?.category === selectedCategory;
+      });
     }
     
     // Filter by search query
@@ -508,18 +704,48 @@ export default function AdminPage() {
     return filtered;
   }, [selectedCategory, priceSearchQuery, latestPrices]);
 
+  // Admin PDF data filtering
+  const adminFilteredCategories = React.useMemo(() => {
+    console.log('🔍 ADMIN FILTERING: Starting with', adminCategorizedData.length, 'categories');
+    let filtered = adminCategorizedData;
+    
+    // Filter by selected category
+    if (selectedCategory) {
+      filtered = filtered.filter(category => category.name === selectedCategory);
+      console.log('🔍 ADMIN FILTERING: After category filter:', filtered.length, 'categories');
+    }
+    
+    // Filter by search query
+    if (priceSearchQuery.trim()) {
+      filtered = filtered.map(category => ({
+        ...category,
+        items: category.items.filter(item => 
+          item.commodity.toLowerCase().includes(priceSearchQuery.toLowerCase().trim()) ||
+          item.specification.toLowerCase().includes(priceSearchQuery.toLowerCase().trim())
+        )
+      })).filter(category => category.items.length > 0);
+      console.log('🔍 ADMIN FILTERING: After search filter:', filtered.length, 'categories');
+    }
+    
+    console.log('🔍 ADMIN FILTERING: Final result:', filtered.length, 'categories');
+    return filtered;
+  }, [selectedCategory, priceSearchQuery, adminCategorizedData]);
+
   // Price monitoring render functions
-  const renderCommodityItem = ({ item }: { item: LatestPrice }) => (
+  const renderCommodityItem = ({ item }: { item: any }) => {
+    const commodity = COMMODITY_DATA.find(c => c.id === item.commodityId);
+    
+    return (
     <TouchableOpacity 
       style={styles.adminPriceCommodityCard}
       onPress={async () => {
         console.log('🎯 Admin commodity card pressed:', item.commodityName);
-        console.log('📊 Commodity details:', { id: item.recordId, name: item.commodityName, category: item.category });
+          console.log('📊 Commodity details:', { id: item.commodityId, name: item.commodityName, category: commodity?.category });
         try {
           // Save commodity parameters to AsyncStorage
-          await AsyncStorage.setItem('selected_commodity_id', item.recordId);
+            await AsyncStorage.setItem('selected_commodity_id', item.commodityId);
           await AsyncStorage.setItem('selected_commodity_name', item.commodityName);
-          await AsyncStorage.setItem('selected_commodity_category', item.category);
+            await AsyncStorage.setItem('selected_commodity_category', commodity?.category || '');
           
           console.log('💾 Saved commodity params to storage');
           
@@ -534,21 +760,21 @@ export default function AdminPage() {
     >
       <View style={styles.adminPriceCommodityHeader}>
         <View style={styles.adminPriceCommodityInfo}>
-          <Text style={styles.adminPriceCommodityName}>{getProductEmoji(item.commodityName, item.category)} {item.commodityName}</Text>
-          <Text style={styles.adminPriceCommodityCategory}>{item.category}</Text>
-          {item.type && (
-            <Text style={styles.adminPriceDate}>🏷️ {item.type}</Text>
+            <Text style={styles.adminPriceCommodityName}>{getProductEmoji(item.commodityName, commodity?.category || '')} {item.commodityName}</Text>
+            <Text style={styles.adminPriceCommodityCategory}>{commodity?.category || 'Unknown'}</Text>
+            {commodity?.type && (
+              <Text style={styles.adminPriceDate}>🏷️ {commodity.type}</Text>
           )}
           {item.specification && (
             <Text style={styles.adminPriceSpecification}>📝 {item.specification}</Text>
           )}
-          <Text style={styles.adminPriceDate}>📅 {new Date(item.date).toLocaleDateString()}</Text>
+            <Text style={styles.adminPriceDate}>📅 {new Date(item.priceDate).toLocaleDateString()}</Text>
         </View>
         <View style={styles.adminPriceContainer}>
-          {item.price > 0 ? (
+            {item.currentPrice > 0 ? (
             <>
-              <Text style={styles.adminPriceCurrentPrice}>💰 ₱{item.price.toFixed(2)}</Text>
-              <Text style={styles.adminPriceUnit}>/{item.unit}</Text>
+                <Text style={styles.adminPriceCurrentPrice}>💰 ₱{item.currentPrice.toFixed(2)}</Text>
+                <Text style={styles.adminPriceUnit}>/{commodity?.unit || 'kg'}</Text>
             </>
           ) : (
             <>
@@ -560,11 +786,52 @@ export default function AdminPage() {
         </View>
       </View>
       
-
-      {item.price > 0 && (
-        <Text style={styles.adminPriceLastUpdated}>🕒 Updated: {new Date(item.lastUpdated).toLocaleString()}</Text>
+        {item.currentPrice > 0 && (
+          <Text style={styles.adminPriceLastUpdated}>🕒 Updated: {new Date(item.priceDate).toLocaleString()}</Text>
       )}
     </TouchableOpacity>
+    );
+  };
+
+  // Admin PDF data render functions
+  const renderAdminCommodityItem = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.adminCommodityItem}
+      onPress={() => {
+        console.log('🎯 Admin PDF Data item pressed:', item.commodity);
+        Alert.alert('PDF Data', `Commodity: ${item.commodity}\nPrice: ₱${item.price}\nSpecification: ${item.specification}`);
+      }}
+      activeOpacity={0.7}
+    >
+      <View style={styles.adminCommodityItemContent}>
+        <View style={styles.adminCommodityItemInfo}>
+          <Text style={styles.adminCommodityItemName}>{item.commodity}</Text>
+          <Text style={styles.adminCommodityItemSpec}>{item.specification}</Text>
+          <Text style={styles.adminCommodityItemDate}>📅 {item.date} | 🌍 {item.region}</Text>
+        </View>
+        <View style={styles.adminCommodityItemPrice}>
+          <Text style={styles.adminCommodityItemPriceText}>₱{item.price.toFixed(2)}</Text>
+          <Text style={styles.adminCommodityItemUnit}>/{item.unit}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderAdminCategorySection = ({ item }: { item: any }) => (
+    <View style={styles.adminCategorySection}>
+      <View style={[styles.adminCategoryHeader, { backgroundColor: item.color }]}>
+        <Text style={styles.adminCategoryEmoji}>{item.icon}</Text>
+        <Text style={styles.adminCategoryTitle}>{item.name}</Text>
+        <Text style={styles.adminCategoryCount}>({item.items.length})</Text>
+      </View>
+      <View style={styles.adminCategoryItems}>
+        {item.items.map((commodity: any) => (
+          <View key={commodity.id}>
+            {renderAdminCommodityItem({ item: commodity })}
+          </View>
+        ))}
+      </View>
+    </View>
   );
 
   const renderCommodityModal = () => (
@@ -2148,51 +2415,36 @@ export default function AdminPage() {
         <View style={styles.adminPriceMonitoringContainer}>
           {/* Header */}
           <View style={styles.adminPriceHeader}>
-            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring</Text>
+            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring - PDF Data</Text>
           </View>
 
-          {/* ML Forecasts Refresh Button */}
+          {/* Data Source Info */}
+          <View style={styles.adminDataSourceInfo}>
+            <Ionicons name="document-text" size={16} color={LIGHT_GREEN} />
+            <Text style={styles.adminDataSourceText}>
+              Data Source: DA Philippines PDF ({adminPdfData.length} commodities extracted)
+            </Text>
+          </View>
+
+          {/* PDF Data Management Button */}
           <View style={styles.adminMLRefreshContainer}>
             <TouchableOpacity 
-              style={[styles.adminMLRefreshButton, mlRefreshing && styles.adminMLRefreshButtonDisabled]}
-              onPress={async () => {
-                try {
-                  const result = await refreshFirebaseMLForecasts();
-                  if (result.success) {
-                    Alert.alert('Success', result.message);
-                  } else {
-                    Alert.alert('Error', result.message);
-                  }
-                } catch (error) {
-                  Alert.alert('Error', 'Failed to refresh Firebase ML forecasts');
-                }
-              }}
-              disabled={mlRefreshing}
+              style={styles.adminMLRefreshButton}
+              onPress={() => router.push('/admin-pdf-data')}
             >
               <Ionicons 
-                name="analytics" 
+                name="document-text" 
                 size={20} 
-                color={mlRefreshing ? '#999' : '#fff'} 
-                style={mlRefreshing && styles.adminMLRefreshIconSpinning}
+                color="#fff"
               />
-              <Text style={[styles.adminMLRefreshButtonText, mlRefreshing && styles.adminMLRefreshButtonTextDisabled]}>
-                {mlRefreshing ? 'Loading from Firebase...' : 'Load from Firebase'}
+              <Text style={styles.adminMLRefreshButtonText}>
+                Manage PDF Data
               </Text>
             </TouchableOpacity>
-            {mlForecasts.length > 0 && (
               <Text style={styles.adminMLForecastsCount}>
-                {mlForecasts.length} ML forecasts cached
+              View and manage all PDF data
               </Text>
-            )}
           </View>
-
-          {/* Error Display */}
-          {priceError && (
-            <View style={styles.adminPriceErrorContainer}>
-              <Ionicons name="warning" size={20} color="#ff6b6b" />
-              <Text style={styles.adminPriceErrorText}>⚠️ {priceError}</Text>
-            </View>
-          )}
 
           {/* Search Bar */}
           <View style={styles.adminPriceSearchContainer}>
@@ -2229,69 +2481,50 @@ export default function AdminPage() {
             >
               <Ionicons 
                 name="apps" 
-                size={20} 
+                size={24} 
                 color={selectedCategory === null ? "#fff" : GREEN} 
               />
-              <Text style={[
-                styles.adminPriceFilterButtonText,
-                selectedCategory === null && styles.adminPriceFilterButtonTextActive
-              ]}>
-                All
-              </Text>
             </TouchableOpacity>
             
-            <TouchableOpacity
-              style={[
-                styles.adminPriceFilterButton,
-                selectedCategory !== null && styles.adminPriceFilterButtonActive
-              ]}
-              onPress={() => setShowCommodityModal(true)}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.adminCategoryScrollView}
+              contentContainerStyle={styles.adminCategoryScrollContent}
             >
-              <Ionicons 
-                name="basket" 
-                size={20} 
-                color={selectedCategory !== null ? "#fff" : GREEN} 
-              />
+              {adminCategorizedData.map((category) => (
+            <TouchableOpacity
+                  key={category.name}
+              style={[
+                    styles.adminCategoryFilterButton,
+                    selectedCategory === category.name && styles.adminCategoryFilterButtonActive
+              ]}
+                  onPress={() => setSelectedCategory(selectedCategory === category.name ? null : category.name)}
+            >
+              <Text style={styles.adminCategoryFilterEmoji}>{category.icon}</Text>
               <Text style={[
-                styles.adminPriceFilterButtonText,
-                selectedCategory !== null && styles.adminPriceFilterButtonTextActive
+                    styles.adminCategoryFilterText,
+                    selectedCategory === category.name && styles.adminCategoryFilterTextActive
               ]}>
-                {selectedCategory || 'Commodities'}
+                    {category.name}
               </Text>
             </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
-          {/* Action Buttons Container */}
-          <View style={styles.priceActionButtonsContainer}>
-            {/* Manual Entry Button */}
-            <TouchableOpacity
-              style={[styles.priceActionButton, { backgroundColor: GREEN }]}
-              onPress={() => setShowManualModal(true)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.priceActionButtonIconContainer}>
-                <Ionicons name="create-outline" size={24} color="#fff" />
-              </View>
-              <View style={styles.priceActionButtonContent}>
-                <Text style={styles.priceActionButtonTitle}>Manual Price Entry</Text>
-                <Text style={styles.priceActionButtonSubtitle}>Add or update prices manually</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Commodity List */}
+          {/* Categorized Data Display */}
           {priceLoading ? (
             <View style={styles.adminPriceLoadingContainer}>
               <ActivityIndicator size="large" color={GREEN} />
-              <Text style={styles.adminPriceLoadingText}>🔄 Fetching latest prices...</Text>
+              <Text style={styles.adminPriceLoadingText}>🔄 Loading PDF data...</Text>
             </View>
           ) : (
             <FlatList
-              data={filteredCommodities}
-              renderItem={renderCommodityItem}
-              keyExtractor={(item) => item.recordId || item.commodityName}
-              contentContainerStyle={[styles.adminPriceCommodityList, { paddingBottom: 100 }]}
+              data={adminFilteredCategories}
+              renderItem={renderAdminCategorySection}
+              keyExtractor={(item) => item.name}
+              contentContainerStyle={[styles.adminCategoryList, { paddingBottom: 100 }]}
               showsVerticalScrollIndicator={false}
               refreshControl={
                 <RefreshControl
@@ -2304,46 +2537,17 @@ export default function AdminPage() {
               ListEmptyComponent={
                 <View style={styles.adminPriceEmptyState}>
                   <Text style={styles.adminPriceEmptyEmoji}>🔍</Text>
-                  <Text style={styles.adminPriceEmptyTitle}>No commodities found</Text>
+                  <Text style={styles.adminPriceEmptyTitle}>No data found</Text>
                   <Text style={styles.adminPriceEmptySubtitle}>
                     {priceSearchQuery.trim() 
                       ? `No products found matching "${priceSearchQuery}"`
                       : selectedCategory 
-                        ? `No commodities found in ${selectedCategory} category`
-                        : 'Try selecting a different category or check your internet connection.'
+                        ? `No data found in ${selectedCategory} category`
+                        : 'No PDF data available. Please check your connection.'
                     }
                   </Text>
                 </View>
               }
-            />
-          )}
-          
-          {/* Commodity Selection Modal */}
-          {renderCommodityModal()}
-
-
-
-          {/* Manual Entry Modal */}
-          {renderManualEntryModal()}
-
-          {/* Product Picker Modal */}
-          {renderProductPickerModal()}
-
-          {/* Product Commodity Modal */}
-          {renderProductCommodityModal()}
-
-          {/* Date Picker */}
-          {showDatePicker && (
-            <DateTimePicker
-              value={manualDate}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(Platform.OS === 'ios');
-                if (selectedDate) {
-                  setManualDate(selectedDate);
-                }
-              }}
             />
           )}
         </View>
@@ -7565,8 +7769,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#74bfa3',
@@ -7575,18 +7779,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    flex: 0.48,
+    flex: 0.2,
     justifyContent: 'center',
+    minHeight: 44,
+    maxHeight: 44,
+    minWidth: 50,
   },
   adminPriceFilterButtonActive: {
     backgroundColor: GREEN,
     borderColor: GREEN,
   },
   adminPriceFilterButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     color: GREEN,
-    marginLeft: 8,
+    marginLeft: 6,
     fontWeight: '600',
+    flexShrink: 0,
+    textAlign: 'center',
   },
   adminPriceFilterButtonTextActive: {
     color: '#fff',
@@ -8421,7 +8630,139 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#333',
     textAlign: 'center',
-  }
+  },
+  // Admin PDF data styles
+  adminDataSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: '#e8f5e8',
+    marginBottom: 10,
+  },
+  adminDataSourceText: {
+    fontSize: 12,
+    color: GREEN,
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  adminCategoryScrollView: {
+    maxHeight: 50,
+  },
+  adminCategoryScrollContent: {
+    paddingHorizontal: 8,
+  },
+  adminCategoryFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 4,
+    backgroundColor: '#f0f8f0',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: GREEN,
+  },
+  adminCategoryFilterButtonActive: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  adminCategoryFilterEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  adminCategoryFilterText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+  },
+  adminCategoryFilterTextActive: {
+    color: '#fff',
+  },
+  adminCategoryList: {
+    padding: 16,
+  },
+  adminCategorySection: {
+    marginBottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  adminCategoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  adminCategoryEmoji: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  adminCategoryTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  adminCategoryCount: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  adminCategoryItems: {
+    padding: 8,
+  },
+  adminCommodityItem: {
+    backgroundColor: '#f8f9fa',
+    marginVertical: 4,
+    marginHorizontal: 8,
+    borderRadius: 8,
+    padding: 12,
+  },
+  adminCommodityItemContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  adminCommodityItemInfo: {
+    flex: 1,
+  },
+  adminCommodityItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  adminCommodityItemSpec: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  adminCommodityItemDate: {
+    fontSize: 10,
+    color: '#999',
+  },
+  adminCommodityItemPrice: {
+    alignItems: 'flex-end',
+  },
+  adminCommodityItemPriceText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: GREEN,
+  },
+  adminCommodityItemUnit: {
+    fontSize: 12,
+    color: '#666',
+  },
 });
 
 

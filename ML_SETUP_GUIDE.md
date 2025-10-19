@@ -248,3 +248,7 @@ Next Week: ₱465.00 | Next Month: ₱480.00
 
 Your AgriAssist app can now predict commodity prices using advanced algorithms, giving you and your users valuable insights into market trends and future pricing.
 
+
+
+
+

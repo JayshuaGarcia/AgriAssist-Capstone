@@ -13,6 +13,7 @@ export interface Commodity {
   priceChangePercent?: number; // percentage change (alternative name)
   priceChangeDirection?: 'up' | 'down' | 'stable';
   lastUpdated?: string;
+  isRealData?: boolean; // Indicates if this is real data from DA website
   forecast?: {
     nextWeek: number;
     nextMonth: number;

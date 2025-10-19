@@ -1,0 +1,576 @@
+[
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Striploin, Local",
+    "Specification": null,
+    "Amount": 472.4,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Striploin, Imported",
+    "Specification": null,
+    "Amount": 520,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Brisket, Local",
+    "Specification": "Meat with Bones",
+    "Amount": 355,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Brisket, Imported",
+    "Specification": null,
+    "Amount": 380,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Chuck, Local",
+    "Specification": null,
+    "Amount": 320,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Chuck, Imported",
+    "Specification": null,
+    "Amount": 350,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rump, Local",
+    "Specification": null,
+    "Amount": 385,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Rump, Imported",
+    "Specification": null,
+    "Amount": 420,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Flank, Local",
+    "Specification": null,
+    "Amount": 340,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Flank, Imported",
+    "Specification": null,
+    "Amount": 370,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Tenderloin, Local",
+    "Specification": null,
+    "Amount": 580,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "BEEF MEAT PRODUCTS",
+    "Type": "Beef Tenderloin, Imported",
+    "Specification": null,
+    "Amount": 650,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Ham, Local",
+    "Specification": null,
+    "Amount": 285,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Ham, Imported",
+    "Specification": null,
+    "Amount": 270,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Belly, Local",
+    "Specification": null,
+    "Amount": 325,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Pork Belly, Imported",
+    "Specification": null,
+    "Amount": 310,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Frozen Kasim",
+    "Specification": null,
+    "Amount": 265,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "PORK MEAT PRODUCTS",
+    "Type": "Frozen Liempo",
+    "Specification": null,
+    "Amount": 305,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Whole Chicken, Local",
+    "Specification": null,
+    "Amount": 155,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Whole Chicken, Imported",
+    "Specification": null,
+    "Amount": 140,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Breast, Local",
+    "Specification": null,
+    "Amount": 180,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "POULTRY PRODUCTS",
+    "Type": "Chicken Thigh, Local",
+    "Specification": null,
+    "Amount": 160,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Bangus",
+    "Specification": "Large",
+    "Amount": 185,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Tilapia",
+    "Specification": "Medium",
+    "Amount": 125,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Galunggong (Local)",
+    "Specification": "Medium",
+    "Amount": 145,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Galunggong (Imported)",
+    "Specification": "Medium",
+    "Amount": 135,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Alumahan",
+    "Specification": "Medium",
+    "Amount": 165,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Bonito",
+    "Specification": "Medium",
+    "Amount": 175,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Salmon Head",
+    "Specification": null,
+    "Amount": 155,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Sardines (Tamban)",
+    "Specification": null,
+    "Amount": 115,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Squid (Pusit Bisaya)",
+    "Specification": "Fresh",
+    "Amount": 205,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FISH",
+    "Type": "Yellow-Fin Tuna (Tambakol)",
+    "Specification": null,
+    "Amount": 255,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "KADIWA RICE-FOR-ALL",
+    "Type": "Premium (RFA5)",
+    "Specification": "5% per strain",
+    "Amount": 45,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "KADIWA RICE-FOR-ALL",
+    "Type": "Well Milled (RFA25)",
+    "Specification": "15% per strain",
+    "Amount": 42,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "KADIWA RICE-FOR-ALL",
+    "Type": "Regular Milled (RFA100)",
+    "Specification": "25-50% back stock",
+    "Amount": 40,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "KADIWA RICE-FOR-ALL",
+    "Type": "P20 Benteng Bigas Meron Na",
+    "Specification": null,
+    "Amount": 20,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Special (Imported)",
+    "Specification": "White Rice",
+    "Amount": 65.5,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Premium (Imported)",
+    "Specification": "5% per strain",
+    "Amount": 58.75,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Well Milled (Imported)",
+    "Specification": "15% per strain",
+    "Amount": 52.25,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "IMPORTED COMMERCIAL RICE",
+    "Type": "Regular Milled (Imported)",
+    "Specification": "25-50% back stock",
+    "Amount": 48.5,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Special (Local)",
+    "Specification": "White Rice",
+    "Amount": 62,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Premium (Local)",
+    "Specification": "5% per strain",
+    "Amount": 55.25,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Well Milled (Local)",
+    "Specification": "15% per strain",
+    "Amount": 50.75,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOCAL COMMERCIAL RICE",
+    "Type": "Regular Milled (Local)",
+    "Specification": "25-50% back stock",
+    "Amount": 45.5,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "CORN",
+    "Type": "Corn (White)",
+    "Specification": "Cob, Dried/Fresh",
+    "Amount": 25,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "CORN",
+    "Type": "Corn (Yellow)",
+    "Specification": "Cob, Dried/Fresh",
+    "Amount": 23,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "CORN",
+    "Type": "Corn Grits (White, Food Grade)",
+    "Specification": "Food Grade",
+    "Amount": 28,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "CORN",
+    "Type": "Corn Grits (Yellow, Food Grade)",
+    "Specification": "Food Grade",
+    "Amount": 26,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "CORN",
+    "Type": "Corn Cracked (Yellow, Feed Grade)",
+    "Specification": "Feed Grade",
+    "Amount": 22,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "CORN",
+    "Type": "Corn Grits (Feed Grade)",
+    "Specification": "Feed Grade",
+    "Amount": 20,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Ampalaya",
+    "Specification": null,
+    "Amount": 45,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Sitao",
+    "Specification": null,
+    "Amount": 60,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Pechay (Native)",
+    "Specification": null,
+    "Amount": 30,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Squash",
+    "Specification": null,
+    "Amount": 35,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Eggplant",
+    "Specification": null,
+    "Amount": 50,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "LOWLAND VEGETABLES",
+    "Type": "Tomato",
+    "Specification": null,
+    "Amount": 65,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Bell Pepper (Green)",
+    "Specification": null,
+    "Amount": 80,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Bell Pepper (Red)",
+    "Specification": null,
+    "Amount": 100,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Broccoli",
+    "Specification": null,
+    "Amount": 120,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Cabbage (Scorpio)",
+    "Specification": null,
+    "Amount": 40,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "Carrots",
+    "Specification": null,
+    "Amount": 55,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "HIGHLAND VEGETABLES",
+    "Type": "White Potato",
+    "Specification": null,
+    "Amount": 45,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Mango (Carabao)",
+    "Specification": null,
+    "Amount": 120,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Banana (Lakatan)",
+    "Specification": null,
+    "Amount": 80,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Banana (Latundan)",
+    "Specification": null,
+    "Amount": 70,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Banana (Saba)",
+    "Specification": null,
+    "Amount": 60,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Papaya",
+    "Specification": null,
+    "Amount": 40,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Avocado",
+    "Specification": null,
+    "Amount": 100,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Watermelon",
+    "Specification": null,
+    "Amount": 60,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "FRUITS",
+    "Type": "Pomelo",
+    "Specification": null,
+    "Amount": 80,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Red Onion",
+    "Specification": null,
+    "Amount": 90,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "White Onion",
+    "Specification": null,
+    "Amount": 80,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Garlic (Native)",
+    "Specification": null,
+    "Amount": 120,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Garlic (Imported)",
+    "Specification": null,
+    "Amount": 110,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Ginger",
+    "Specification": null,
+    "Amount": 100,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "SPICES",
+    "Type": "Chilli (Red)",
+    "Specification": null,
+    "Amount": 80,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Sugar (Refined)",
+    "Specification": null,
+    "Amount": 65,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Sugar (Washed)",
+    "Specification": null,
+    "Amount": 55,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Sugar (Brown)",
+    "Specification": null,
+    "Amount": 50,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Palm)",
+    "Specification": null,
+    "Amount": 80,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Cooking Oil (Coconut)",
+    "Specification": null,
+    "Amount": 85,
+    "Date": "2025-10-18"
+  },
+  {
+    "Commodity": "OTHER BASIC COMMODITIES",
+    "Type": "Salt",
+    "Specification": null,
+    "Amount": 20,
+    "Date": "2025-10-18"
+  }
+]

@@ -1,0 +1,6 @@
+FORCE RELOAD TRIGGER
+Created: 2025-10-18T23:02:59.256Z
+Action: Clear all caches and reload price data
+Reason: User requested price update
+
+This file should be deleted after the app reloads.

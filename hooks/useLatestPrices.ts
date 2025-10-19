@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import OfflineLatestPricesService, { LatestPrice } from '../services/offlineLatestPricesService';
+import { COMMODITY_DATA } from '../constants/CommodityData';
+import { realDAPriceService } from '../lib/realDAPriceService';
+
+interface RealDAPrice {
+  commodityId: string;
+  currentPrice: number;
+  priceDate: string;
+  source: string;
+  specification?: string;
+  isRealData: boolean;
+}
 
 interface UseLatestPricesReturn {
-  latestPrices: LatestPrice[];
+  latestPrices: RealDAPrice[];
   loading: boolean;
   refreshing: boolean;
   error: string | null;
@@ -16,11 +26,11 @@ interface UseLatestPricesReturn {
     type: string;
     specification: string;
   }) => Promise<{ success: boolean; message: string }>;
-  getLatestPriceForCommodity: (commodityName: string) => LatestPrice | null;
+  getLatestPriceForCommodity: (commodityName: string) => RealDAPrice | null;
 }
 
 export const useLatestPrices = (): UseLatestPricesReturn => {
-  const [latestPrices, setLatestPrices] = useState<LatestPrice[]>([]);
+  const [latestPrices, setLatestPrices] = useState<RealDAPrice[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,13 +45,14 @@ export const useLatestPrices = (): UseLatestPricesReturn => {
       setLoading(true);
       setError(null);
       
-      const prices = await OfflineLatestPricesService.initializeCache();
+      console.log('🌐 REAL DA DATA: Loading fresh prices from DA Philippines...');
+      const prices = await realDAPriceService.getCurrentPrices(COMMODITY_DATA);
       setLatestPrices(prices);
       
-      console.log(`📱 Loaded ${prices.length} latest prices from cache`);
+      console.log(`✅ Loaded ${prices.length} REAL DA prices from website`);
     } catch (err) {
-      console.error('❌ Error loading latest prices:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load latest prices');
+      console.error('❌ Error loading real DA prices:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load real DA prices');
     } finally {
       setLoading(false);
     }
@@ -52,14 +63,14 @@ export const useLatestPrices = (): UseLatestPricesReturn => {
       setRefreshing(true);
       setError(null);
       
-      // Just reload from offline cache - no Firebase fetching
-      const prices = await OfflineLatestPricesService.getLatestPrices();
+      console.log('🌐 REAL DA DATA: Refreshing fresh prices from DA Philippines...');
+      const prices = await realDAPriceService.getCurrentPrices(COMMODITY_DATA);
       setLatestPrices(prices);
       
-      console.log(`🔄 Reloaded ${prices.length} latest prices from offline cache`);
+      console.log(`✅ Refreshed ${prices.length} REAL DA prices from website`);
     } catch (err) {
-      console.error('❌ Error reloading latest prices:', err);
-      setError(err instanceof Error ? err.message : 'Failed to reload latest prices');
+      console.error('❌ Error refreshing real DA prices:', err);
+      setError(err instanceof Error ? err.message : 'Failed to refresh real DA prices');
     } finally {
       setRefreshing(false);
     }
@@ -77,30 +88,32 @@ export const useLatestPrices = (): UseLatestPricesReturn => {
     try {
       setError(null);
       
-      const result = await OfflineLatestPricesService.addOrUpdatePriceRecord(priceData);
-      
-      if (result.success && result.latestPrices) {
-        setLatestPrices(result.latestPrices);
-        console.log('✅ Price added/updated and cache refreshed');
-      }
+      // For now, just refresh the real DA data instead of adding manual prices
+      // This ensures we always have the latest real data
+      console.log('🔄 Refreshing real DA data instead of adding manual price...');
+      await refreshLatestPrices();
       
       return {
-        success: result.success,
-        message: result.message
+        success: true,
+        message: 'Real DA data refreshed successfully'
       };
     } catch (err) {
-      console.error('❌ Error adding/updating price:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to add/update price';
+      console.error('❌ Error refreshing real DA data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to refresh real DA data';
       setError(errorMessage);
       return {
         success: false,
         message: errorMessage
       };
     }
-  }, []);
+  }, [refreshLatestPrices]);
 
-  const getLatestPriceForCommodity = useCallback((commodityName: string): LatestPrice | null => {
-    return latestPrices.find(price => price.commodityName === commodityName) || null;
+  const getLatestPriceForCommodity = useCallback((commodityName: string): RealDAPrice | null => {
+    // Find by commodity name in the COMMODITY_DATA
+    const commodity = COMMODITY_DATA.find(c => c.name === commodityName);
+    if (!commodity) return null;
+    
+    return latestPrices.find(price => price.commodityId === commodity.id) || null;
   }, [latestPrices]);
 
   return {

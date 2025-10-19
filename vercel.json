@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/check-pdfs.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/check-pdfs",
+      "dest": "/api/check-pdfs"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
