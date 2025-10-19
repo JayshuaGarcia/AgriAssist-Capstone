@@ -189,9 +189,9 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
 
   const getTrendColor = (trend: 'up' | 'down' | 'stable') => {
     switch (trend) {
-      case 'up': return '#e74c3c';
-      case 'down': return '#27ae60';
-      default: return '#95a5a6';
+      case 'up': return '#27ae60'; // Green for up
+      case 'down': return '#e74c3c'; // Red for down
+      default: return '#95a5a6'; // Gray for stable
     }
   };
 
