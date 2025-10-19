@@ -103,6 +103,45 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
     });
   };
 
+  const generateWeeklyForecasts = () => {
+    const today = new Date();
+    const weeklyForecasts = [];
+    
+    // Generate next 3 weeks
+    for (let week = 0; week < 3; week++) {
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() + (week * 7));
+      
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      
+      // Generate forecasts for each day in the week
+      const weekForecasts = [];
+      for (let day = 0; day < 7; day++) {
+        const currentDate = new Date(weekStart);
+        currentDate.setDate(weekStart.getDate() + day);
+        const forecast = generateForecast(currentDate.toISOString().split('T')[0]);
+        weekForecasts.push(forecast);
+      }
+      
+      // Calculate min and max prices for the week
+      const prices = weekForecasts.map(f => f.predictedPrice);
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      
+      weeklyForecasts.push({
+        weekStart: weekStart.toISOString().split('T')[0],
+        weekEnd: weekEnd.toISOString().split('T')[0],
+        minPrice: Math.round(minPrice * 100) / 100,
+        maxPrice: Math.round(maxPrice * 100) / 100,
+        avgPrice: Math.round((minPrice + maxPrice) / 2 * 100) / 100,
+        confidence: Math.round(weekForecasts.reduce((sum, f) => sum + f.confidence, 0) / 7)
+      });
+    }
+    
+    return weeklyForecasts;
+  };
+
   const generateCalendarWeeks = () => {
     const weeks = [];
     const today = new Date();
@@ -124,13 +163,12 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
         const currentDate = new Date(startDate);
         currentDate.setDate(startDate.getDate() + (week * 7) + day);
         
-        // Only show dates that are in the current month and today or in the future
+        // Show all dates in the current month
         if (currentDate.getMonth() === currentMonth.getMonth() && 
-            currentDate.getFullYear() === currentMonth.getFullYear() &&
-            currentDate >= today) {
+            currentDate.getFullYear() === currentMonth.getFullYear()) {
           weekDates.push(currentDate.toISOString().split('T')[0]);
         } else {
-          weekDates.push(null); // Empty cell for other months or past dates
+          weekDates.push(null); // Empty cell for other months
         }
       }
       
@@ -228,15 +266,17 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                       style={[
                         styles.calendarDay,
                         selectedDate === date && styles.selectedCalendarDay,
-                        !date && styles.emptyDay
+                        !date && styles.emptyDay,
+                        date && new Date(date) < new Date() && styles.pastDay
                       ]}
-                      onPress={() => date && handleDateSelect(date)}
-                      disabled={!date}
+                      onPress={() => date && new Date(date) >= new Date() && handleDateSelect(date)}
+                      disabled={!date || new Date(date) < new Date()}
                     >
                       {date && (
                         <Text style={[
                           styles.calendarDayNumber,
-                          selectedDate === date && styles.selectedDayNumber
+                          selectedDate === date && styles.selectedDayNumber,
+                          new Date(date) < new Date() && styles.pastDayNumber
                         ]}>
                           {new Date(date).getDate()}
                         </Text>
@@ -246,6 +286,32 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                 </View>
               ))}
             </View>
+          </View>
+
+          {/* Weekly Forecast Summary */}
+          <View style={styles.weeklyForecastContainer}>
+            <Text style={styles.weeklyForecastTitle}>📊 Next 3 Weeks Forecast</Text>
+            {generateWeeklyForecasts().map((week, index) => (
+              <View key={index} style={styles.weeklyForecastCard}>
+                <View style={styles.weeklyForecastHeader}>
+                  <Text style={styles.weeklyForecastWeek}>
+                    Week {index + 1}: {formatDate(week.weekStart)} - {formatDate(week.weekEnd)}
+                  </Text>
+                  <Text style={styles.weeklyForecastConfidence}>
+                    {week.confidence}% confidence
+                  </Text>
+                </View>
+                <View style={styles.weeklyForecastPrice}>
+                  <Text style={styles.weeklyForecastPriceText}>
+                    ₱{week.minPrice} - ₱{week.maxPrice}
+                  </Text>
+                  <Text style={styles.weeklyForecastUnit}>/{unit}</Text>
+                </View>
+                <Text style={styles.weeklyForecastAvg}>
+                  Average: ₱{week.avgPrice}/{unit}
+                </Text>
+              </View>
+            ))}
           </View>
 
           {forecastData && (
@@ -450,6 +516,75 @@ const styles = StyleSheet.create({
   },
   selectedDayNumber: {
     color: '#fff',
+  },
+  pastDay: {
+    backgroundColor: '#f5f5f5',
+    borderColor: '#e0e0e0',
+  },
+  pastDayNumber: {
+    color: '#ccc',
+  },
+  weeklyForecastContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  weeklyForecastTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: GREEN,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  weeklyForecastCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: GREEN,
+  },
+  weeklyForecastHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  weeklyForecastWeek: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  weeklyForecastConfidence: {
+    fontSize: 12,
+    color: GREEN,
+    fontWeight: 'bold',
+  },
+  weeklyForecastPrice: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 4,
+  },
+  weeklyForecastPriceText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: GREEN,
+  },
+  weeklyForecastUnit: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 4,
+  },
+  weeklyForecastAvg: {
+    fontSize: 12,
+    color: '#666',
   },
   forecastCard: {
     backgroundColor: '#fff',
