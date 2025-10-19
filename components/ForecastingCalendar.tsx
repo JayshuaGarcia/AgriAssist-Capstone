@@ -83,17 +83,35 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
     setForecastData(forecast);
   };
 
-  const generateCalendarDates = () => {
-    const dates = [];
+  const generateCalendarWeeks = () => {
+    const weeks = [];
     const today = new Date();
+    const startDate = new Date(today);
     
-    for (let i = 0; i < 90; i++) { // Next 90 days
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      dates.push(date.toISOString().split('T')[0]);
+    // Start from the beginning of the current week
+    const dayOfWeek = startDate.getDay();
+    startDate.setDate(startDate.getDate() - dayOfWeek);
+    
+    // Generate 12 weeks (84 days)
+    for (let week = 0; week < 12; week++) {
+      const weekDates = [];
+      
+      for (let day = 0; day < 7; day++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + (week * 7) + day);
+        
+        // Only show dates that are today or in the future
+        if (currentDate >= today) {
+          weekDates.push(currentDate.toISOString().split('T')[0]);
+        } else {
+          weekDates.push(null); // Empty cell for past dates
+        }
+      }
+      
+      weeks.push(weekDates);
     }
     
-    return dates;
+    return weeks;
   };
 
   const formatDate = (dateString: string) => {
@@ -141,24 +159,56 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
         <ScrollView style={styles.calendarContainer}>
           <Text style={styles.calendarTitle}>Select Date for Forecast</Text>
           
-          <View style={styles.calendarGrid}>
-            {generateCalendarDates().map((date, index) => (
-              <TouchableOpacity
-                key={date}
-                style={[
-                  styles.dateButton,
-                  selectedDate === date && styles.selectedDateButton
-                ]}
-                onPress={() => handleDateSelect(date)}
-              >
-                <Text style={[
-                  styles.dateText,
-                  selectedDate === date && styles.selectedDateText
-                ]}>
-                  {formatDate(date)}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.calendarWrapper}>
+            {/* Calendar Header */}
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarHeaderText}>📅 Price Forecast Calendar</Text>
+            </View>
+            
+            {/* Calendar Grid */}
+            <View style={styles.calendarGrid}>
+              {/* Day Headers */}
+              <View style={styles.dayHeaders}>
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                  <Text key={day} style={styles.dayHeaderText}>{day}</Text>
+                ))}
+              </View>
+              
+              {/* Calendar Days */}
+              {generateCalendarWeeks().map((week, weekIndex) => (
+                <View key={weekIndex} style={styles.calendarWeek}>
+                  {week.map((date, dayIndex) => (
+                    <TouchableOpacity
+                      key={date}
+                      style={[
+                        styles.calendarDay,
+                        selectedDate === date && styles.selectedCalendarDay,
+                        !date && styles.emptyDay
+                      ]}
+                      onPress={() => date && handleDateSelect(date)}
+                      disabled={!date}
+                    >
+                      {date && (
+                        <>
+                          <Text style={[
+                            styles.calendarDayNumber,
+                            selectedDate === date && styles.selectedDayNumber
+                          ]}>
+                            {new Date(date).getDate()}
+                          </Text>
+                          <Text style={[
+                            styles.calendarDayMonth,
+                            selectedDate === date && styles.selectedDayMonth
+                          ]}>
+                            {new Date(date).toLocaleDateString('en-US', { month: 'short' })}
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ))}
+            </View>
           </View>
 
           {forecastData && (
@@ -278,34 +328,82 @@ const styles = StyleSheet.create({
     color: GREEN,
     marginBottom: 15,
   },
-  calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  dateButton: {
-    width: (width - 60) / 3,
+  calendarWrapper: {
     backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 10,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  calendarHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  calendarHeaderText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: GREEN,
+  },
+  calendarGrid: {
+    backgroundColor: '#fff',
+  },
+  dayHeaders: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  dayHeaderText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#666',
+    paddingVertical: 8,
+  },
+  calendarWeek: {
+    flexDirection: 'row',
+    marginBottom: 2,
+  },
+  calendarDay: {
+    flex: 1,
+    aspectRatio: 1,
+    backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#e9ecef',
     alignItems: 'center',
+    justifyContent: 'center',
+    margin: 1,
+    borderRadius: 6,
   },
-  selectedDateButton: {
+  selectedCalendarDay: {
     backgroundColor: GREEN,
     borderColor: GREEN,
   },
-  dateText: {
-    fontSize: 12,
-    color: '#495057',
-    textAlign: 'center',
+  emptyDay: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
   },
-  selectedDateText: {
-    color: '#fff',
+  calendarDayNumber: {
+    fontSize: 14,
     fontWeight: 'bold',
+    color: '#333',
+  },
+  selectedDayNumber: {
+    color: '#fff',
+  },
+  calendarDayMonth: {
+    fontSize: 10,
+    color: '#666',
+    marginTop: 2,
+  },
+  selectedDayMonth: {
+    color: '#fff',
   },
   forecastCard: {
     backgroundColor: '#fff',
