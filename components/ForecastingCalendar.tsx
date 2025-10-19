@@ -213,6 +213,45 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
         </View>
 
           <ScrollView style={styles.calendarContainer}>
+            {/* Weekly Forecast Summary */}
+            <View style={styles.weeklyForecastContainer}>
+              <Text style={styles.weeklyForecastTitle}>📊 Next 3 Weeks Forecast</Text>
+              {generateWeeklyForecasts().map((week, index) => (
+                <View key={index} style={styles.weeklyForecastCard}>
+                  <View style={styles.weeklyForecastHeader}>
+                    <Text style={styles.weeklyForecastWeek}>
+                      Week {index + 1}: {formatDate(week.weekStart)} - {formatDate(week.weekEnd)}
+                    </Text>
+                  </View>
+                  <View style={styles.weeklyForecastPrices}>
+                    <View style={styles.weeklyForecastPriceItem}>
+                      <Text style={styles.weeklyForecastDate}>{formatDate(week.weekStart)}</Text>
+                      <View style={styles.weeklyForecastPriceRow}>
+                        <Text style={styles.weeklyForecastPriceText}>₱{week.startPrice.toFixed(2)}</Text>
+                        <Ionicons 
+                          name={week.startTrend === 'up' ? 'arrow-up' : week.startTrend === 'down' ? 'arrow-down' : 'remove'} 
+                          size={16} 
+                          color={week.startTrend === 'up' ? '#28a745' : week.startTrend === 'down' ? '#dc3545' : '#6c757d'} 
+                        />
+                      </View>
+                    </View>
+                    <Text style={styles.weeklyForecastSeparator}>-</Text>
+                    <View style={styles.weeklyForecastPriceItem}>
+                      <Text style={styles.weeklyForecastDate}>{formatDate(week.weekEnd)}</Text>
+                      <View style={styles.weeklyForecastPriceRow}>
+                        <Text style={styles.weeklyForecastPriceText}>₱{week.endPrice.toFixed(2)}</Text>
+                        <Ionicons 
+                          name={week.endTrend === 'up' ? 'arrow-up' : week.endTrend === 'down' ? 'arrow-down' : 'remove'} 
+                          size={16} 
+                          color={week.endTrend === 'up' ? '#28a745' : week.endTrend === 'down' ? '#dc3545' : '#6c757d'} 
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+
             <Text style={styles.calendarTitle}>Select Date for Forecast</Text>
             
             <View style={styles.calendarWrapper}>
@@ -278,45 +317,6 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                 </View>
               ))}
             </View>
-          </View>
-
-          {/* Weekly Forecast Summary */}
-          <View style={styles.weeklyForecastContainer}>
-            <Text style={styles.weeklyForecastTitle}>📊 Next 3 Weeks Forecast</Text>
-            {generateWeeklyForecasts().map((week, index) => (
-              <View key={index} style={styles.weeklyForecastCard}>
-                <View style={styles.weeklyForecastHeader}>
-                  <Text style={styles.weeklyForecastWeek}>
-                    Week {index + 1}: {formatDate(week.weekStart)} - {formatDate(week.weekEnd)}
-                  </Text>
-                </View>
-                <View style={styles.weeklyForecastPrices}>
-                  <View style={styles.weeklyForecastPriceItem}>
-                    <Text style={styles.weeklyForecastDate}>{formatDate(week.weekStart)}</Text>
-                    <View style={styles.weeklyForecastPriceRow}>
-                      <Text style={styles.weeklyForecastPriceText}>₱{week.startPrice.toFixed(2)}</Text>
-                      <Ionicons 
-                        name={week.startTrend === 'up' ? 'arrow-up' : week.startTrend === 'down' ? 'arrow-down' : 'remove'} 
-                        size={16} 
-                        color={week.startTrend === 'up' ? '#28a745' : week.startTrend === 'down' ? '#dc3545' : '#6c757d'} 
-                      />
-                    </View>
-                  </View>
-                  <Text style={styles.weeklyForecastSeparator}>-</Text>
-                  <View style={styles.weeklyForecastPriceItem}>
-                    <Text style={styles.weeklyForecastDate}>{formatDate(week.weekEnd)}</Text>
-                    <View style={styles.weeklyForecastPriceRow}>
-                      <Text style={styles.weeklyForecastPriceText}>₱{week.endPrice.toFixed(2)}</Text>
-                      <Ionicons 
-                        name={week.endTrend === 'up' ? 'arrow-up' : week.endTrend === 'down' ? 'arrow-down' : 'remove'} 
-                        size={16} 
-                        color={week.endTrend === 'up' ? '#28a745' : week.endTrend === 'down' ? '#dc3545' : '#6c757d'} 
-                      />
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ))}
           </View>
 
           {forecastData && (
