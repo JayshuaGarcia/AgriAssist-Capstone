@@ -168,17 +168,28 @@ class ForecastingService {
     const basePrice = currentPrice || historicalData.averagePrice;
     const predictedPrice = basePrice * (1 + seasonalAdjustment + timeAdjustment);
     
+    // Calculate trend by comparing predicted price with current price
+    const priceDifference = predictedPrice - basePrice;
+    const priceChangePercent = (priceDifference / basePrice) * 100;
+    
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    if (priceChangePercent > 1) { // More than 1% increase
+      trend = 'up';
+    } else if (priceChangePercent < -1) { // More than 1% decrease
+      trend = 'down';
+    }
+    
     // Calculate confidence based on data quality
     const confidence = Math.min(95, Math.max(60, 100 - (historicalData.priceVariance / historicalData.averagePrice) * 100));
     
     // Generate factors
-    const factors = this.generateFactors(commodity, seasonalAdjustment, historicalData.trend, daysFromNow, historicalData.prices.length);
+    const factors = this.generateFactors(commodity, seasonalAdjustment, trend, daysFromNow, historicalData.prices.length);
 
     return {
       date: targetDate,
       predictedPrice: Math.round(predictedPrice * 100) / 100,
       confidence: Math.round(confidence),
-      trend: historicalData.trend,
+      trend: trend,
       factors,
       seasonalAdjustment: Math.round(seasonalAdjustment * 100),
       historicalDataPoints: historicalData.prices.length
@@ -202,12 +213,23 @@ class ForecastingService {
     
     const predictedPrice = currentPrice * (1 + priceChange + seasonalAdjustment);
     
+    // Calculate trend by comparing predicted price with current price
+    const priceDifference = predictedPrice - currentPrice;
+    const priceChangePercent = (priceDifference / currentPrice) * 100;
+    
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    if (priceChangePercent > 1) { // More than 1% increase
+      trend = 'up';
+    } else if (priceChangePercent < -1) { // More than 1% decrease
+      trend = 'down';
+    }
+    
     return {
       date: targetDate,
       predictedPrice: Math.round(predictedPrice * 100) / 100,
       confidence: 70, // Lower confidence for fallback
-      trend: priceChange > 0 ? 'up' : 'down',
-      factors: this.generateFactors(commodity, seasonalAdjustment, 'up', daysFromNow, 0),
+      trend: trend,
+      factors: this.generateFactors(commodity, seasonalAdjustment, trend, daysFromNow, 0),
       seasonalAdjustment: Math.round(seasonalAdjustment * 100),
       historicalDataPoints: 0
     };
