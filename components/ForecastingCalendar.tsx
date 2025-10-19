@@ -220,10 +220,36 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
           <Text style={styles.currentPrice}>Current: ₱{currentPrice.toFixed(2)}/{unit}</Text>
         </View>
 
-        <ScrollView style={styles.calendarContainer}>
-          <Text style={styles.calendarTitle}>Select Date for Forecast</Text>
-          
-          <View style={styles.calendarWrapper}>
+          <ScrollView style={styles.calendarContainer}>
+            <Text style={styles.calendarTitle}>Select Date for Forecast</Text>
+            
+            {/* Weekly Forecast Summary */}
+            <View style={styles.weeklyForecastContainer}>
+              <Text style={styles.weeklyForecastTitle}>📊 Next 3 Weeks Forecast</Text>
+              {generateWeeklyForecasts().map((week, index) => (
+                <View key={index} style={styles.weeklyForecastCard}>
+                  <View style={styles.weeklyForecastHeader}>
+                    <Text style={styles.weeklyForecastWeek}>
+                      Week {index + 1}: {formatDate(week.weekStart)} - {formatDate(week.weekEnd)}
+                    </Text>
+                    <Text style={styles.weeklyForecastConfidence}>
+                      {week.confidence}% confidence
+                    </Text>
+                  </View>
+                  <View style={styles.weeklyForecastPrice}>
+                    <Text style={styles.weeklyForecastPriceText}>
+                      ₱{week.minPrice} - ₱{week.maxPrice}
+                    </Text>
+                    <Text style={styles.weeklyForecastUnit}>/{unit}</Text>
+                  </View>
+                  <Text style={styles.weeklyForecastAvg}>
+                    Average: ₱{week.avgPrice}/{unit}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            
+            <View style={styles.calendarWrapper}>
             {/* Calendar Header */}
             <View style={styles.calendarHeader}>
               <Text style={styles.calendarHeaderText}>📅 Price Forecast Calendar</Text>
@@ -262,7 +288,7 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                 <View key={weekIndex} style={styles.calendarWeek}>
                   {week.map((date, dayIndex) => (
                     <TouchableOpacity
-                      key={date}
+                      key={date || `empty-${weekIndex}-${dayIndex}`}
                       style={[
                         styles.calendarDay,
                         selectedDate === date && styles.selectedCalendarDay,
@@ -286,32 +312,6 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
                 </View>
               ))}
             </View>
-          </View>
-
-          {/* Weekly Forecast Summary */}
-          <View style={styles.weeklyForecastContainer}>
-            <Text style={styles.weeklyForecastTitle}>📊 Next 3 Weeks Forecast</Text>
-            {generateWeeklyForecasts().map((week, index) => (
-              <View key={index} style={styles.weeklyForecastCard}>
-                <View style={styles.weeklyForecastHeader}>
-                  <Text style={styles.weeklyForecastWeek}>
-                    Week {index + 1}: {formatDate(week.weekStart)} - {formatDate(week.weekEnd)}
-                  </Text>
-                  <Text style={styles.weeklyForecastConfidence}>
-                    {week.confidence}% confidence
-                  </Text>
-                </View>
-                <View style={styles.weeklyForecastPrice}>
-                  <Text style={styles.weeklyForecastPriceText}>
-                    ₱{week.minPrice} - ₱{week.maxPrice}
-                  </Text>
-                  <Text style={styles.weeklyForecastUnit}>/{unit}</Text>
-                </View>
-                <Text style={styles.weeklyForecastAvg}>
-                  Average: ₱{week.avgPrice}/{unit}
-                </Text>
-              </View>
-            ))}
           </View>
 
           {forecastData && (
