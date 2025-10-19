@@ -384,7 +384,14 @@ export default function AdminPDFDataScreen() {
             },
           });
           
-          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const responseText = await response.text();
+          console.log(`📄 Response from ${url}:`, responseText.substring(0, 200));
+          
+          const result = JSON.parse(responseText);
           
           if (result.success) {
             serviceConnected = true;
@@ -452,11 +459,19 @@ export default function AdminPDFDataScreen() {
             console.log('⚠️ Could not read current data count');
           }
           
-          Alert.alert(
-            '✅ Refresh Complete', 
-            `📊 Current data: ${currentCount} commodities\n\nℹ️ To check for new PDFs automatically, run: node scripts/directPDFCheck.js`,
-            [{ text: 'OK' }]
-          );
+          if (serviceConnected) {
+            Alert.alert(
+              '✅ Refresh Complete', 
+              `📊 Current data: ${currentCount} commodities\n\n🔄 Data refreshed via API service successfully!`,
+              [{ text: 'OK' }]
+            );
+          } else {
+            Alert.alert(
+              '⚠️ Refresh Complete (Offline Mode)', 
+              `📊 Current data: ${currentCount} commodities\n\n🌐 API services unavailable - using local fallback method.\n\nℹ️ To check for new PDFs automatically, run: node scripts/directPDFCheck.js`,
+              [{ text: 'OK' }]
+            );
+          }
         }
       }
       
