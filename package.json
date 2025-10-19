@@ -2,7 +2,6 @@
   "name": "agriassist-pdf-api",
   "version": "1.0.0",
   "description": "PDF fetching API for AgriAssist app",
-  "main": "index.js",
   "scripts": {
     "start": "node scripts/renderPDFService.js",
     "dev": "node scripts/renderPDFService.js",
