@@ -16,8 +16,8 @@ import {
   View
 } from 'react-native';
 import { useAuth } from '../components/AuthContext';
-import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
 import { ForecastingCalendar } from '../components/ForecastingCalendar';
+import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
 import { useNavigationBar } from '../hooks/useNavigationBar';
 
 const { width } = Dimensions.get('window');

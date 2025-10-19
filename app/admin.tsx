@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshCo
 import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
 import { useNotification } from '../components/NotificationContext';
+import { ForecastingCalendar } from '../components/ForecastingCalendar';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
 import { Commodity, COMMODITY_DATA } from '../constants/CommodityData';
 import { useLatestPrices } from '../hooks/useLatestPrices';
@@ -179,6 +180,15 @@ export default function AdminPage() {
   // Admin PDF data states
   const [adminPdfData, setAdminPdfData] = useState<any[]>([]);
   const [adminCategorizedData, setAdminCategorizedData] = useState<any[]>([]);
+  
+  // Forecasting calendar states
+  const [forecastModalVisible, setForecastModalVisible] = useState(false);
+  const [selectedCommodity, setSelectedCommodity] = useState<{
+    name: string;
+    specification: string;
+    price: number;
+    unit: string;
+  } | null>(null);
   
   // Offline latest prices hook
   const { latestPrices, loading: priceLoading, error: priceError, refreshing: priceRefreshing, refreshLatestPrices, addOrUpdatePrice } = useLatestPrices();
@@ -799,7 +809,17 @@ export default function AdminPage() {
       style={styles.adminCommodityItem}
       onPress={() => {
         console.log('🎯 Admin PDF Data item pressed:', item.commodity);
-        Alert.alert('PDF Data', `Commodity: ${item.commodity}\nPrice: ₱${item.price}\nSpecification: ${item.specification}`);
+        
+        // Set selected commodity for forecasting
+        setSelectedCommodity({
+          name: item.commodity,
+          specification: item.specification,
+          price: item.price,
+          unit: item.unit
+        });
+        
+        // Show forecasting calendar
+        setForecastModalVisible(true);
       }}
       activeOpacity={0.7}
     >
@@ -4894,6 +4914,21 @@ export default function AdminPage() {
           )}
         </View>
       </Modal>
+
+      {/* Forecasting Calendar Modal */}
+      {selectedCommodity && (
+        <ForecastingCalendar
+          visible={forecastModalVisible}
+          onClose={() => {
+            setForecastModalVisible(false);
+            setSelectedCommodity(null);
+          }}
+          commodity={selectedCommodity.name}
+          specification={selectedCommodity.specification}
+          currentPrice={selectedCommodity.price}
+          unit={selectedCommodity.unit}
+        />
+      )}
 
      </View>
    );
