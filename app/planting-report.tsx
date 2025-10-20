@@ -393,22 +393,79 @@ export default function PlantingReportScreen() {
 
   // Load user's planting reports
   const loadPlantingReports = async () => {
-    if (!user?.uid) return;
+    if (!user?.email) {
+      console.log('⚠️ No user email available for loading planting reports');
+      return;
+    }
     
     setLoadingReports(true);
     try {
+      console.log('🔄 Loading planting reports for user email:', user.email);
+      console.log('🔄 Current user object:', { uid: user.uid, email: user.email, displayName: user.displayName });
+      
+      // Try querying by email first (more reliable for mock auth)
       const plantingQuery = query(
         collection(db, 'plantingReports'),
-        where('userId', '==', user.uid)
+        where('farmerEmail', '==', user.email)
       );
       const plantingSnapshot = await getDocs(plantingQuery);
       const reports = plantingSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setPlantingReports(reports);
-      calculateAnalytics(reports);
+      
+      console.log('📋 Raw planting reports found:', reports.length);
+      
+      // If no reports found by email, try by userId as fallback
+      if (reports.length === 0 && user.uid) {
+        console.log('🔄 No reports found by email, trying userId:', user.uid);
+        const plantingQueryByUid = query(
+          collection(db, 'plantingReports'),
+          where('userId', '==', user.uid)
+        );
+        const plantingSnapshotByUid = await getDocs(plantingQueryByUid);
+        const reportsByUid = plantingSnapshotByUid.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        console.log('📋 Planting reports found by userId:', reportsByUid.length);
+        setPlantingReports(reportsByUid);
+        calculateAnalytics(reportsByUid);
+      } else {
+        setPlantingReports(reports);
+        calculateAnalytics(reports);
+      }
+      
+      // Debug: Also try to see ALL planting reports in database (for debugging)
+      console.log('🔍 DEBUG: Checking all planting reports in database...');
+      const allPlantingQuery = query(collection(db, 'plantingReports'));
+      const allPlantingSnapshot = await getDocs(allPlantingQuery);
+      const allPlantingReports = allPlantingSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      console.log('🔍 DEBUG: Total planting reports in database:', allPlantingReports.length);
+      allPlantingReports.forEach((report, index) => {
+        console.log(`🔍 DEBUG: Planting report ${index + 1}:`, {
+          id: report.id,
+          farmerEmail: report.farmerEmail,
+          userId: report.userId,
+          crop: report.crop
+        });
+      });
+      
+      // Auto-create missing harvest reports for existing planting reports
+      await createMissingHarvestReports(allPlantingReports);
+      
       console.log('✅ Loaded planting reports:', reports.length);
+      
+      // Debug: Log the actual reports data
+      if (reports.length > 0) {
+        console.log('📋 Sample planting report data:', reports[0]);
+        console.log('📋 All planting report IDs:', reports.map(r => r.id));
+      } else {
+        console.log('⚠️ No planting reports found for user:', user.email);
+      }
     } catch (error) {
       console.error('Error loading planting reports:', error);
       Alert.alert('Error', 'Failed to load planting reports. Please try again.');
@@ -486,6 +543,119 @@ export default function PlantingReportScreen() {
     );
   };
 
+  const createMissingHarvestReports = async (allPlantingReports: any[]) => {
+    try {
+      console.log('🔧 Checking for missing harvest reports...');
+      
+      for (const plantingReport of allPlantingReports) {
+        // Check if harvest report already exists for this planting report
+        const existingHarvestQuery = query(
+          collection(db, 'harvestReports'),
+          where('plantingReportId', '==', plantingReport.id)
+        );
+        const existingHarvestSnapshot = await getDocs(existingHarvestQuery);
+        
+        if (existingHarvestSnapshot.empty) {
+          console.log('🔧 Creating missing harvest report for planting report:', plantingReport.id);
+          
+          // Create harvest report from planting report data with all planting information
+          const harvestReportData = {
+            plantingReportId: plantingReport.id,
+            userEmail: plantingReport.farmerEmail,
+            userName: plantingReport.farmerName,
+            userBarangay: '', // Not available in planting report
+            crop: plantingReport.crop,
+            // Copy all planting data to harvest report
+            plantingDate: plantingReport.plantingDate,
+            expectedHarvestDate: plantingReport.expectedHarvestDate,
+            area: plantingReport.areaPlanted,
+            areaType: plantingReport.areaType,
+            plantCount: plantingReport.plantCount,
+            expectedYield: plantingReport.expectedHarvest,
+            // Harvest-specific data
+            actualHarvest: 0, // Will be updated when user records actual harvest
+            isHarvested: false,
+            harvestDate: null,
+            harvestWeight: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          };
+          
+          const docRef = await addDoc(collection(db, 'harvestReports'), harvestReportData);
+          console.log('✅ Auto-created harvest report with ID:', docRef.id);
+        } else {
+          console.log('✅ Harvest report already exists for planting report:', plantingReport.id);
+        }
+      }
+      
+      console.log('🔧 Finished checking for missing harvest reports');
+    } catch (error) {
+      console.error('Error creating missing harvest reports:', error);
+    }
+  };
+
+  const handleCreateHarvestReport = async (plantingReport: any) => {
+    try {
+      console.log('🌱 Creating harvest report for planting report:', plantingReport.id);
+      
+      // Check if harvest report already exists for this planting report
+      const existingHarvestQuery = query(
+        collection(db, 'harvestReports'),
+        where('plantingReportId', '==', plantingReport.id)
+      );
+      const existingHarvestSnapshot = await getDocs(existingHarvestQuery);
+      
+      if (!existingHarvestSnapshot.empty) {
+        Alert.alert('Harvest Report Exists', 'A harvest report already exists for this planting report.');
+        return;
+      }
+      
+      // Create harvest report from planting report data with all planting information
+      const harvestReportData = {
+        plantingReportId: plantingReport.id,
+        userEmail: user?.email,
+        userName: user?.displayName || profile?.name || 'User',
+        userBarangay: profile?.barangay || '',
+        crop: plantingReport.crop,
+        // Copy all planting data to harvest report
+        plantingDate: plantingReport.plantingDate,
+        expectedHarvestDate: plantingReport.expectedHarvestDate,
+        area: plantingReport.areaPlanted,
+        areaType: plantingReport.areaType,
+        plantCount: plantingReport.plantCount,
+        expectedYield: plantingReport.expectedHarvest,
+        // Harvest-specific data
+        actualHarvest: 0, // Will be updated when user records actual harvest
+        isHarvested: false,
+        harvestDate: null,
+        harvestWeight: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(collection(db, 'harvestReports'), harvestReportData);
+      console.log('✅ Harvest report created with ID:', docRef.id);
+      
+      Alert.alert(
+        'Success', 
+        `Harvest report created for ${plantingReport.crop}. You can now record your harvest when ready.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate to harvest reports view
+              router.push('/harvest-view-reports');
+            }
+          }
+        ]
+      );
+      
+    } catch (error) {
+      console.error('Error creating harvest report:', error);
+      Alert.alert('Error', 'Failed to create harvest report. Please try again.');
+    }
+  };
+
   const clearForm = () => {
               setSelectedCrop('');
               setSearchQuery('');
@@ -536,8 +706,33 @@ export default function PlantingReportScreen() {
       };
 
       if (isEditMode && editingReport) {
-        // Update existing report
+        // Update existing planting report
         await updateDoc(doc(db, 'plantingReports', editingReport.id), plantingData);
+
+        // Also sync the linked harvest report (old-format)
+        try {
+          const linkedHarvestQuery = query(
+            collection(db, 'harvestReports'),
+            where('plantingReportId', '==', editingReport.id)
+          );
+          const linkedSnap = await getDocs(linkedHarvestQuery);
+          if (!linkedSnap.empty) {
+            const hr = linkedSnap.docs[0];
+            await updateDoc(doc(db, 'harvestReports', hr.id), {
+              crop: selectedCrop,
+              expectedHarvestDate: expectedHarvestDate,
+              area: parseFloat(amount),
+              areaType: amountType,
+              plantCount: plantCount,
+              expectedYield: parseFloat(expectedHarvest),
+              farmerEmail: user.email,
+              farmerName: profile.name,
+              updatedAt: new Date().toISOString()
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to sync linked harvest report on edit:', e);
+        }
       Alert.alert(
         'Success!',
           'Planting report updated successfully.',
@@ -553,22 +748,48 @@ export default function PlantingReportScreen() {
         ]
       );
       } else {
-        // Create new report
-        await addDoc(collection(db, 'plantingReports'), plantingData);
-      Alert.alert(
-        'Success!',
-        'Planting report submitted successfully and sent to admin for review.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              clearForm();
-              setCurrentView('main');
-              loadPlantingReports();
+        // Create new planting report
+        const plantingDocRef = await addDoc(collection(db, 'plantingReports'), plantingData);
+        console.log('✅ Planting report created with ID:', plantingDocRef.id);
+        
+        // Automatically create corresponding harvest report (old-format) and link it
+        const oldFormatHarvest = {
+          plantingReportId: plantingDocRef.id,
+          farmerEmail: user.email,
+          farmerName: profile.name,
+          crop: selectedCrop,
+          // Old-format status/amount fields
+          status: 'pending',
+          amount: 0,
+          amountType: 'kg',
+          // Carry planting context for views (not required by old format but safe)
+          plantingDate: plantingDate,
+          expectedHarvestDate: expectedHarvestDate,
+          area: parseFloat(amount),
+          areaType: amountType,
+          plantCount: plantCount,
+          expectedYield: parseFloat(expectedHarvest),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        const harvestDocRef = await addDoc(collection(db, 'harvestReports'), oldFormatHarvest);
+        console.log('✅ Linked old-format harvest report created with ID:', harvestDocRef.id);
+        
+        Alert.alert(
+          'Success!',
+          'Planting report submitted successfully and harvest report created automatically. You can record your harvest when ready.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                clearForm();
+                setCurrentView('main');
+                loadPlantingReports();
+              }
             }
-          }
-        ]
-      );
+          ]
+        );
       }
     } catch (error) {
       console.error('Error submitting planting report:', error);
@@ -1881,6 +2102,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 8,
+    gap: 8,
   },
   editButton: {
     flex: 1,
@@ -1891,7 +2113,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
   },
   editButtonText: {
     color: '#fff',
@@ -1908,7 +2129,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
   },
   deleteButtonText: {
     color: '#fff',

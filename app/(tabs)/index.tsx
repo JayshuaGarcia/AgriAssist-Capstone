@@ -1300,7 +1300,17 @@ export default function HomeScreen() {
       style={styles.adminCommodityItem}
       onPress={() => {
         console.log('🎯 User PDF Data item pressed:', item.commodity);
-        Alert.alert('PDF Data', `Commodity: ${item.commodity}\nPrice: ₱${item.price}\nSpecification: ${item.specification}`);
+        
+        // Set selected commodity for forecasting
+        setSelectedCommodity({
+          name: item.commodity,
+          specification: item.specification || '',
+          price: item.price || 0,
+          unit: item.unit || 'kg'
+        });
+        
+        // Show forecasting calendar
+        setForecastModalVisible(true);
       }}
       activeOpacity={0.7}
     >
@@ -1516,14 +1526,14 @@ export default function HomeScreen() {
         <View style={styles.adminPriceMonitoringContainer}>
           {/* Header */}
           <View style={styles.adminPriceHeader}>
-            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring - PDF Data</Text>
+            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring</Text>
           </View>
 
           {/* Data Source Info */}
           <View style={styles.adminDataSourceInfo}>
             <Ionicons name="document-text" size={16} color={LIGHT_GREEN} />
             <Text style={styles.adminDataSourceText}>
-              Data Source: DA Philippines PDF (149 commodities extracted)
+              Data Source: DA Website (https://www.da.gov.ph/)
             </Text>
           </View>
 

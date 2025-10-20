@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform, Alert, Image } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../../components/AuthContext';
 
 const GREEN = '#16543a';

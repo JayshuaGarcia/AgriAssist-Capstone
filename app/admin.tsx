@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
-import { useNotification } from '../components/NotificationContext';
 import { ForecastingCalendar } from '../components/ForecastingCalendar';
+import { useNotification } from '../components/NotificationContext';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
 import { Commodity, COMMODITY_DATA } from '../constants/CommodityData';
 import { useLatestPrices } from '../hooks/useLatestPrices';
@@ -72,6 +73,14 @@ export default function AdminPage() {
       category: 'Communication',
       icon: 'chatbubbles',
       action: () => setActiveNav('messages')
+    },
+    {
+      id: 'user-management',
+      title: 'User Management',
+      description: 'Manage users, block, and delete accounts',
+      category: 'Management',
+      icon: 'people',
+      action: () => setActiveNav('user-management')
     },
     {
       id: 'planting-records',
@@ -450,6 +459,8 @@ export default function AdminPage() {
   // User list state
   const [showUserList, setShowUserList] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [showComposeMessage, setShowComposeMessage] = useState(false);
@@ -457,6 +468,14 @@ export default function AdminPage() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [adminMessages, setAdminMessages] = useState<any[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // User Management state
+  const [showUserManagement, setShowUserManagement] = useState(false);
+  const [userManagementUsers, setUserManagementUsers] = useState<any[]>([]);
+  const [loadingUserManagement, setLoadingUserManagement] = useState(false);
+  const [userManagementSearchQuery, setUserManagementSearchQuery] = useState('');
+  const [filteredUserManagementUsers, setFilteredUserManagementUsers] = useState<any[]>([]);
+  const [userActivityStatus, setUserActivityStatus] = useState<{[key: string]: 'active' | 'inactive' | 'no-reports'}>({});
 
   // Daily price index data structure
   const [dailyPriceData, setDailyPriceData] = useState<any>(null);
@@ -467,6 +486,38 @@ export default function AdminPage() {
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [showFarmerDetail, setShowFarmerDetail] = useState(false);
   
+  // Maintenance: clear all planting and harvest reports
+  const clearAllReports = async () => {
+    Alert.alert(
+      'Clear All Reports',
+      'This will permanently delete ALL plantingReports and harvestReports. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete plantingReports
+              const plantingSnap = await getDocs(collection(db, 'plantingReports'));
+              for (const d of plantingSnap.docs) {
+                await deleteDoc(doc(db, 'plantingReports', d.id));
+              }
+              // Delete harvestReports
+              const harvestSnap = await getDocs(collection(db, 'harvestReports'));
+              for (const d of harvestSnap.docs) {
+                await deleteDoc(doc(db, 'harvestReports', d.id));
+              }
+              Alert.alert('Success', 'All planting and harvest reports have been cleared.');
+            } catch (e) {
+              console.error('Error clearing reports:', e);
+              Alert.alert('Error', 'Failed to clear reports. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1319,6 +1370,7 @@ export default function AdminPage() {
 
   // Group messages by contact
   const groupMessagesByContact = (messages: any[], usersDirectory: Record<string, { name?: string; email?: string; userCropEmoji?: string }> = {}) => {
+    console.log('Grouping messages:', messages.length, 'messages');
     const contactMap = new Map();
     
     messages.forEach(message => {
@@ -1357,19 +1409,34 @@ export default function AdminPage() {
         contact.lastMessage = message;
       }
       
-      if (message.type === 'received' && !message.isRead) {
+      // Count unread messages that are received by admin (sent by users)
+      if (message.type === 'received' && !message.isRead && message.receiverId === 'admin') {
         contact.unreadCount++;
+        console.log(`📊 Unread count for ${contactName}: ${contact.unreadCount} (message: ${message.content.substring(0, 20)}...)`);
       }
     });
     
     // Sort contacts by last message timestamp
-    return Array.from(contactMap.values()).sort((a, b) => 
+    const contacts = Array.from(contactMap.values()).sort((a, b) => 
       (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0)
     );
+    
+    console.log('Grouped contacts:', contacts.length);
+    console.log('Sample contacts:', contacts.slice(0, 2));
+    
+    // Log unread counts for debugging
+    contacts.forEach(contact => {
+      if (contact.unreadCount > 0) {
+        console.log(`🔔 ${contact.name} has ${contact.unreadCount} unread messages`);
+      }
+    });
+    
+    return contacts;
   };
 
   // Navigate to full-screen chat
   const openChat = (contact: any) => {
+    console.log('Opening chat with contact:', contact);
     router.push(`/admin-chat?contactId=${contact.id}&contactName=${encodeURIComponent(contact.name)}&contactEmail=${encodeURIComponent(contact.email)}`);
   };
 
@@ -1377,6 +1444,23 @@ export default function AdminPage() {
   const loadAdminMessages = async () => {
     setLoadingMessages(true);
     try {
+      // Wait a bit to ensure Firebase is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
+      // Debug: Check if db is properly initialized
+      console.log('Admin messages - db object:', {
+        db: !!db,
+        dbType: typeof db,
+        dbConstructor: db?.constructor?.name,
+        hasCollection: typeof db?.collection === 'function'
+      });
+      
+      // Check if Firebase is properly initialized
+      if (!db) {
+        console.error('Firebase db is not properly initialized:', db);
+        setLoadingMessages(false);
+        return;
+      }
+      
       // Build users directory for name/email enrichment
       const newUsersDirectory: Record<string, { name?: string; email?: string; userCropEmoji?: string }> = {};
       try {
@@ -1453,6 +1537,9 @@ export default function AdminPage() {
       
       setAdminMessages(allMessages);
       console.log('Loaded admin messages:', allMessages.length);
+      console.log('Sent messages:', sentMessages.length);
+      console.log('Received messages:', receivedMessages.length);
+      console.log('Sample messages:', allMessages.slice(0, 3));
     } catch (error) {
       console.error('Error loading admin messages:', error);
     } finally {
@@ -1526,6 +1613,23 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeNav === 'messages') {
       loadAdminMessages();
+    }
+  }, [activeNav]);
+
+  // Refresh messages when component becomes focused (returning from chat)
+  useFocusEffect(
+    useCallback(() => {
+      if (activeNav === 'messages') {
+        console.log('Admin page focused - refreshing messages');
+        loadAdminMessages();
+      }
+    }, [activeNav])
+  );
+
+  // Load users when navigating to user management section
+  useEffect(() => {
+    if (activeNav === 'user-management') {
+      loadUserManagementUsers();
     }
   }, [activeNav]);
 
@@ -2267,6 +2371,12 @@ export default function AdminPage() {
       const usersList: any[] = [];
       querySnapshot.forEach((doc) => {
         const userData = doc.data();
+        
+        // Skip admin accounts from messaging
+        if (userData.role === 'admin' || userData.email === 'agriassistme@gmail.com' || userData.email === 'AAadmin') {
+          return;
+        }
+        
         usersList.push({
           id: doc.id,
           uid: userData.uid || doc.id, // Include UID field, fallback to doc.id
@@ -2284,11 +2394,13 @@ export default function AdminPage() {
       });
       
       setUsers(usersList);
+      setFilteredUsers(usersList); // Initialize filtered users with all users
       console.log('Successfully loaded users from Firebase:', usersList.length);
       
     } catch (error: any) {
       console.error('Error fetching users:', error);
       setUsers([]); // Set empty array if fetch fails
+      setFilteredUsers([]); // Also clear filtered users
       
       let errorMessage = 'Failed to load users from database.';
       if (error.code === 'permission-denied') {
@@ -2300,6 +2412,304 @@ export default function AdminPage() {
       Alert.alert('Error', errorMessage);
     } finally {
       setLoadingUsers(false);
+    }
+  };
+
+  // Filter users based on search query
+  const filterUsers = (query: string) => {
+    if (!query.trim()) {
+      setFilteredUsers(users);
+      return;
+    }
+    
+    const filtered = users.filter(user => {
+      const searchLower = query.toLowerCase();
+      const name = user.displayName?.toLowerCase() || '';
+      const email = user.email?.toLowerCase() || '';
+      const role = user.role?.toLowerCase() || '';
+      const location = user.location?.toLowerCase() || '';
+      const barangay = user.barangay?.toLowerCase() || '';
+      
+      return name.includes(searchLower) || 
+             email.includes(searchLower) || 
+             role.includes(searchLower) ||
+             location.includes(searchLower) ||
+             barangay.includes(searchLower);
+    });
+    
+    setFilteredUsers(filtered);
+  };
+
+  // Handle search query change
+  const handleUserSearch = (query: string) => {
+    setUserSearchQuery(query);
+    filterUsers(query);
+  };
+
+  // Load users for user management
+  const loadUserManagementUsers = async () => {
+    setLoadingUserManagement(true);
+    try {
+      console.log('Attempting to fetch users for management...');
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersList: any[] = [];
+      
+      usersSnapshot.forEach((doc) => {
+        const userData = doc.data();
+        
+        // Skip admin accounts from user management
+        if (userData.role === 'admin' || userData.email === 'agriassistme@gmail.com' || userData.email === 'AAadmin') {
+          return;
+        }
+        
+        usersList.push({
+          id: doc.id,
+          uid: userData.uid || doc.id,
+          displayName: userData.displayName || userData.name || 'Unknown User',
+          email: userData.email || 'No email',
+          role: userData.role || 'user',
+          location: userData.location || 'Unknown',
+          barangay: userData.barangay || '',
+          userCropEmoji: userData.selectedCropEmoji,
+          isBlocked: userData.isBlocked || false,
+          createdAt: userData.createdAt,
+          lastLogin: userData.lastLogin,
+          ...userData
+        });
+      });
+      
+      setUserManagementUsers(usersList);
+      setFilteredUserManagementUsers(usersList);
+      console.log('Successfully loaded users for management:', usersList.length);
+      
+      // Check user activity after loading users
+      setTimeout(() => {
+        checkUserActivity();
+      }, 500);
+      
+    } catch (error: any) {
+      console.error('Error fetching users for management:', error);
+      setUserManagementUsers([]);
+      setFilteredUserManagementUsers([]);
+      
+      let errorMessage = 'Failed to load users from database.';
+      if (error.code === 'permission-denied') {
+        errorMessage = 'Permission denied. Please check Firebase security rules.';
+      } else if (error.code === 'unavailable') {
+        errorMessage = 'Database is currently unavailable. Please try again later.';
+      }
+      
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoadingUserManagement(false);
+    }
+  };
+
+  // Filter users for user management
+  const filterUserManagementUsers = (query: string) => {
+    if (!query.trim()) {
+      setFilteredUserManagementUsers(userManagementUsers);
+      return;
+    }
+    
+    const filtered = userManagementUsers.filter(user => {
+      const searchLower = query.toLowerCase();
+      const name = user.displayName?.toLowerCase() || '';
+      const email = user.email?.toLowerCase() || '';
+      const role = user.role?.toLowerCase() || '';
+      const location = user.location?.toLowerCase() || '';
+      const barangay = user.barangay?.toLowerCase() || '';
+      
+      return name.includes(searchLower) || 
+             email.includes(searchLower) || 
+             role.includes(searchLower) ||
+             location.includes(searchLower) ||
+             barangay.includes(searchLower);
+    });
+    
+    setFilteredUserManagementUsers(filtered);
+  };
+
+  // Handle user management search
+  const handleUserManagementSearch = (query: string) => {
+    setUserManagementSearchQuery(query);
+    filterUserManagementUsers(query);
+  };
+
+  // Block/Unblock user
+  const toggleUserBlock = async (userId: string, isCurrentlyBlocked: boolean) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        isBlocked: !isCurrentlyBlocked,
+        blockedAt: !isCurrentlyBlocked ? new Date().toISOString() : null,
+        blockedBy: !isCurrentlyBlocked ? user?.email || 'admin' : null
+      });
+
+      // Update local state
+      setUserManagementUsers(prev => prev.map(user => 
+        user.id === userId ? { ...user, isBlocked: !isCurrentlyBlocked } : user
+      ));
+      setFilteredUserManagementUsers(prev => prev.map(user => 
+        user.id === userId ? { ...user, isBlocked: !isCurrentlyBlocked } : user
+      ));
+
+      Alert.alert(
+        'Success', 
+        `User has been ${!isCurrentlyBlocked ? 'blocked' : 'unblocked'} successfully.`
+      );
+    } catch (error) {
+      console.error('Error toggling user block status:', error);
+      Alert.alert('Error', 'Failed to update user status. Please try again.');
+    }
+  };
+
+  // Delete user
+  const deleteUser = async (userId: string, userName: string) => {
+    Alert.alert(
+      'Delete User',
+      `Are you sure you want to permanently delete "${userName}"? This action cannot be undone and will remove all user data including records and messages.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete user document
+              const userRef = doc(db, 'users', userId);
+              await deleteDoc(userRef);
+
+              // Update local state
+              setUserManagementUsers(prev => prev.filter(user => user.id !== userId));
+              setFilteredUserManagementUsers(prev => prev.filter(user => user.id !== userId));
+
+              Alert.alert('Success', 'User has been deleted successfully.');
+            } catch (error) {
+              console.error('Error deleting user:', error);
+              Alert.alert('Error', 'Failed to delete user. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Check for duplicate emails
+  const checkDuplicateEmails = () => {
+    const emailCounts: { [key: string]: number } = {};
+    const duplicates: string[] = [];
+    
+    userManagementUsers.forEach(user => {
+      if (user.email && user.email !== 'No email') {
+        emailCounts[user.email] = (emailCounts[user.email] || 0) + 1;
+        if (emailCounts[user.email] > 1 && !duplicates.includes(user.email)) {
+          duplicates.push(user.email);
+        }
+      }
+    });
+    
+    if (duplicates.length > 0) {
+      Alert.alert(
+        'Duplicate Emails Found',
+        `The following email addresses have multiple accounts:\n\n${duplicates.join('\n')}\n\nPlease review and clean up these duplicate accounts.`,
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert('No Duplicates', 'All email addresses are unique.');
+    }
+  };
+
+  // Check user activity based on recent reports
+  const checkUserActivity = async () => {
+    const activityStatus: {[key: string]: 'active' | 'inactive' | 'no-reports'} = {};
+    const currentDate = new Date();
+    const oneMonthAgo = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, currentDate.getDate());
+    
+    try {
+      // Try to get planting and harvest records with error handling
+      let plantingSnapshot: any = null;
+      let harvestSnapshot: any = null;
+      
+      try {
+        plantingSnapshot = await getDocs(collection(db, 'plantingRecords'));
+        console.log('Successfully loaded planting records for activity check');
+      } catch (plantingError: any) {
+        console.log('Could not access planting records:', plantingError?.message || 'Unknown error');
+      }
+      
+      try {
+        harvestSnapshot = await getDocs(collection(db, 'harvestRecords'));
+        console.log('Successfully loaded harvest records for activity check');
+      } catch (harvestError: any) {
+        console.log('Could not access harvest records:', harvestError?.message || 'Unknown error');
+      }
+      
+      // Process planting records if available
+      if (plantingSnapshot) {
+        plantingSnapshot.forEach((doc) => {
+          const data = doc.data();
+          const userId = data.userId || data.uid;
+          const recordDate = data.date ? new Date(data.date) : new Date(data.createdAt);
+          
+          if (userId && recordDate >= oneMonthAgo) {
+            activityStatus[userId] = 'active';
+          }
+        });
+      }
+      
+      // Process harvest records if available
+      if (harvestSnapshot) {
+        harvestSnapshot.forEach((doc) => {
+          const data = doc.data();
+          const userId = data.userId || data.uid;
+          const recordDate = data.date ? new Date(data.date) : new Date(data.createdAt);
+          
+          if (userId && recordDate >= oneMonthAgo) {
+            activityStatus[userId] = 'active';
+          }
+        });
+      }
+      
+      // Set status for all users
+      userManagementUsers.forEach(user => {
+        if (!activityStatus[user.id]) {
+          // Check if user has any reports at all (if we have access to records)
+          let hasAnyReports = false;
+          
+          if (plantingSnapshot) {
+            hasAnyReports = plantingSnapshot.docs.some(doc => {
+              const data = doc.data();
+              return (data.userId || data.uid) === user.id;
+            });
+          }
+          
+          if (!hasAnyReports && harvestSnapshot) {
+            hasAnyReports = harvestSnapshot.docs.some(doc => {
+              const data = doc.data();
+              return (data.userId || data.uid) === user.id;
+            });
+          }
+          
+          // If we can't access records, mark as no-reports
+          if (!plantingSnapshot && !harvestSnapshot) {
+            activityStatus[user.id] = 'no-reports';
+          } else {
+            activityStatus[user.id] = hasAnyReports ? 'inactive' : 'no-reports';
+          }
+        }
+      });
+      
+      setUserActivityStatus(activityStatus);
+      console.log('User activity status updated:', Object.keys(activityStatus).length, 'users processed');
+    } catch (error) {
+      console.error('Error checking user activity:', error);
+      // Set all users to no-reports as fallback
+      const fallbackStatus: {[key: string]: 'no-reports'} = {};
+      userManagementUsers.forEach(user => {
+        fallbackStatus[user.id] = 'no-reports';
+      });
+      setUserActivityStatus(fallbackStatus);
     }
   };
 
@@ -2381,6 +2791,20 @@ export default function AdminPage() {
               </View>
               </TouchableOpacity>
               
+              {/* User Management */}
+                <TouchableOpacity 
+                style={styles.wideToolCard}
+                  onPress={() => setActiveNav('user-management')}
+                >
+                <View style={styles.horizontalIconContainer}>
+                  <Ionicons name="people" size={24} color={GREEN} />
+                  </View>
+                <View style={styles.horizontalTextContainer}>
+                  <Text style={styles.horizontalToolTitle}>User Management</Text>
+                  <Text style={styles.horizontalToolDescription}>Manage users, block, and delete accounts</Text>
+              </View>
+              </TouchableOpacity>
+              
               {/* Farmers Records */}
                 <TouchableOpacity 
                 style={styles.wideToolCard}
@@ -2435,14 +2859,14 @@ export default function AdminPage() {
         <View style={styles.adminPriceMonitoringContainer}>
           {/* Header */}
           <View style={styles.adminPriceHeader}>
-            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring - PDF Data</Text>
+            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring</Text>
           </View>
 
           {/* Data Source Info */}
           <View style={styles.adminDataSourceInfo}>
             <Ionicons name="document-text" size={16} color={LIGHT_GREEN} />
             <Text style={styles.adminDataSourceText}>
-              Data Source: DA Philippines PDF ({adminPdfData.length} commodities extracted)
+              Data Source: DA Website (https://www.da.gov.ph/)
             </Text>
           </View>
 
@@ -2974,6 +3398,211 @@ export default function AdminPage() {
         </ScrollView>
       )}
 
+      {activeNav === 'user-management' && (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={loadingUserManagement}
+              onRefresh={loadUserManagementUsers}
+              colors={[GREEN]}
+              tintColor={GREEN}
+            />
+          }
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setActiveNav('home')}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>User Management</Text>
+              <TouchableOpacity 
+                style={styles.duplicateCheckButton}
+                onPress={checkDuplicateEmails}
+              >
+                <Ionicons name="warning" size={20} color="#f39c12" />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Search Input */}
+            <View style={styles.userSearchContainer}>
+              <View style={styles.userSearchInputContainer}>
+                <Ionicons name="search" size={20} color="#666" style={styles.userSearchIcon} />
+                <TextInput
+                  style={styles.userSearchInput}
+                  placeholder="Search users by name, email, role, or location..."
+                  value={userManagementSearchQuery}
+                  onChangeText={handleUserManagementSearch}
+                  placeholderTextColor="#999"
+                />
+                {userManagementSearchQuery.length > 0 && (
+                  <TouchableOpacity 
+                    onPress={() => handleUserManagementSearch('')}
+                    style={styles.userClearSearchButton}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#666" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* User Statistics */}
+            <View style={styles.userStatsContainer}>
+              <View style={styles.userStatCard}>
+                <Text style={styles.userStatNumber}>{filteredUserManagementUsers.length}</Text>
+                <Text style={styles.userStatLabel}>Total Users</Text>
+              </View>
+              <View style={styles.userStatCard}>
+                <Text style={styles.userStatNumber}>
+                  {filteredUserManagementUsers.filter(u => userActivityStatus[u.id] === 'active').length}
+                </Text>
+                <Text style={styles.userStatLabel}>Active</Text>
+              </View>
+              <View style={styles.userStatCard}>
+                <Text style={styles.userStatNumber}>
+                  {filteredUserManagementUsers.filter(u => u.isBlocked).length}
+                </Text>
+                <Text style={styles.userStatLabel}>Blocked</Text>
+              </View>
+            </View>
+
+            {/* Activity Legend */}
+            <View style={styles.activityLegendContainer}>
+              <Text style={styles.activityLegendTitle}>Activity Status</Text>
+              <View style={styles.activityLegendItems}>
+                <View style={styles.activityLegendItem}>
+                  <View style={[styles.activityDot, styles.activeDot]} />
+                  <Text style={styles.activityLegendText}>Active (reports this month)</Text>
+                </View>
+                <View style={styles.activityLegendItem}>
+                  <View style={[styles.activityDot, styles.inactiveDot]} />
+                  <Text style={styles.activityLegendText}>Inactive (old reports)</Text>
+                </View>
+                <View style={styles.activityLegendItem}>
+                  <View style={[styles.activityDot, styles.noReportsDot]} />
+                  <Text style={styles.activityLegendText}>No reports / Limited access</Text>
+                </View>
+              </View>
+              <Text style={styles.activityLegendNote}>
+                Note: Activity status may be limited due to database permissions
+              </Text>
+            </View>
+
+            {/* Users List */}
+            <View style={styles.userManagementListContainer}>
+              {loadingUserManagement ? (
+                <View style={styles.loadingContainer}>
+                  <Ionicons name="cloud-download" size={40} color={GREEN} />
+                  <Text style={styles.loadingText}>Loading users...</Text>
+                </View>
+              ) : filteredUserManagementUsers.length > 0 ? (
+                filteredUserManagementUsers.map((user, index) => {
+                  // Check if this email is duplicated
+                  const isDuplicate = userManagementUsers.filter(u => u.email === user.email && u.email !== 'No email').length > 1;
+                  
+                  return (
+                  <View key={user.id || index} style={[
+                    styles.userManagementItem,
+                    user.isBlocked && styles.blockedUserItem,
+                    isDuplicate && styles.duplicateUserItem
+                  ]}>
+                    <View style={styles.userManagementItemHeader}>
+                      <View style={styles.userManagementAvatarContainer}>
+                        <View style={styles.userManagementAvatar}>
+                          {user.userCropEmoji ? (
+                            <Text style={styles.userManagementCropEmoji}>{user.userCropEmoji}</Text>
+                          ) : (
+                            <Ionicons name="person" size={24} color="#fff" />
+                          )}
+                        </View>
+                        {/* Activity Status Dot */}
+                        <View style={[
+                          styles.activityStatusDot,
+                          userActivityStatus[user.id] === 'active' && styles.activeStatusDot,
+                          userActivityStatus[user.id] === 'inactive' && styles.inactiveStatusDot,
+                          userActivityStatus[user.id] === 'no-reports' && styles.noReportsStatusDot
+                        ]} />
+                      </View>
+                      <View style={styles.userManagementItemContent}>
+                        <View style={styles.userManagementNameRow}>
+                          <Text style={styles.userManagementName}>{user.displayName}</Text>
+                          {user.isBlocked && (
+                            <View style={styles.blockedBadge}>
+                              <Text style={styles.blockedBadgeText}>BLOCKED</Text>
+                            </View>
+                          )}
+                          {isDuplicate && (
+                            <View style={styles.duplicateBadge}>
+                              <Text style={styles.duplicateBadgeText}>DUPLICATE</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.userManagementEmail}>{user.email}</Text>
+                        <Text style={styles.userManagementDetails}>
+                          {user.role} • {user.barangay ? user.barangay : user.location}
+                        </Text>
+                        {user.createdAt && (
+                          <Text style={styles.userManagementDate}>
+                            Joined: {new Date(user.createdAt).toLocaleDateString()}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    
+                    {/* Action Buttons */}
+                    <View style={styles.userManagementActions}>
+                      <TouchableOpacity 
+                        style={[
+                          styles.userManagementActionButton,
+                          user.isBlocked ? styles.unblockButton : styles.blockButton
+                        ]}
+                        onPress={() => toggleUserBlock(user.id, user.isBlocked)}
+                      >
+                        <Ionicons 
+                          name={user.isBlocked ? "checkmark-circle" : "ban"} 
+                          size={16} 
+                          color="#fff" 
+                        />
+                        <Text style={styles.userManagementActionText}>
+                          {user.isBlocked ? 'Unblock' : 'Block'}
+                        </Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={styles.userManagementActionButton}
+                        onPress={() => deleteUser(user.id, user.displayName)}
+                      >
+                        <Ionicons name="trash" size={16} color="#fff" />
+                        <Text style={styles.userManagementActionText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  );
+                })
+              ) : (
+                <View style={styles.noAnnouncementsContainer}>
+                  <Ionicons name="people-outline" size={64} color="#ccc" />
+                  <Text style={styles.noAnnouncementsTitle}>
+                    {userManagementSearchQuery ? 'No Users Found' : 'No Users Available'}
+                  </Text>
+                  <Text style={styles.noAnnouncementsText}>
+                    {userManagementSearchQuery 
+                      ? `No users match "${userManagementSearchQuery}". Try a different search term.`
+                      : 'No users are currently registered in the system.'
+                    }
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+      )}
+
       {activeNav === 'settings' && (
         <ScrollView 
           style={styles.scrollView}
@@ -3103,7 +3732,9 @@ export default function AdminPage() {
                 <Ionicons name="arrow-back" size={24} color={GREEN} />
               </TouchableOpacity>
               <Text style={styles.sectionTitle}>Planting Records</Text>
-              <View style={{ width: 24 }} />
+              <TouchableOpacity onPress={clearAllReports} style={{ width: 24 }}>
+                <Ionicons name="trash" size={22} color="#c0392b" />
+              </TouchableOpacity>
             </View>
             
             <Text style={styles.sectionDescription}>
@@ -4672,7 +5303,13 @@ export default function AdminPage() {
                               { 
                                 text: 'Delete', 
                                 style: 'destructive',
-                                onPress: () => deleteAnnouncement(announcement.id)
+                                onPress: () => {
+                                  deleteAnnouncement(announcement.id);
+                                  // If we're viewing this announcement, go back to the list
+                                  if (selectedAnnouncement && selectedAnnouncement.id === announcement.id) {
+                                    setSelectedAnnouncement(null);
+                                  }
+                                }
                               }
                             ]
                           );
@@ -4753,15 +5390,45 @@ export default function AdminPage() {
         visible={showUserList}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowUserList(false)}
+        onRequestClose={() => {
+          setShowUserList(false);
+          setUserSearchQuery('');
+          setFilteredUsers(users);
+        }}
       >
         <View style={styles.fullScreenModalOverlay}>
           <View style={styles.viewModalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select User to Message ({users.length})</Text>
-              <TouchableOpacity onPress={() => setShowUserList(false)}>
+              <Text style={styles.modalTitle}>Select User to Message ({filteredUsers.length})</Text>
+              <TouchableOpacity onPress={() => {
+                setShowUserList(false);
+                setUserSearchQuery('');
+                setFilteredUsers(users);
+              }}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
+            </View>
+
+            {/* Search Input */}
+            <View style={styles.userSearchContainer}>
+              <View style={styles.userSearchInputContainer}>
+                <Ionicons name="search" size={20} color="#666" style={styles.userSearchIcon} />
+                <TextInput
+                  style={styles.userSearchInput}
+                  placeholder="Search by name, email, role, or location..."
+                  value={userSearchQuery}
+                  onChangeText={handleUserSearch}
+                  placeholderTextColor="#999"
+                />
+                {userSearchQuery.length > 0 && (
+                  <TouchableOpacity 
+                    onPress={() => handleUserSearch('')}
+                    style={styles.userClearSearchButton}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#666" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
             <ScrollView style={styles.announcementsListContainer} showsVerticalScrollIndicator={false}>
@@ -4770,8 +5437,8 @@ export default function AdminPage() {
                   <Ionicons name="cloud-download" size={40} color={GREEN} />
                   <Text style={styles.loadingText}>Loading users...</Text>
                 </View>
-              ) : users.length > 0 ? (
-                users.map((user, index) => (
+              ) : filteredUsers.length > 0 ? (
+                filteredUsers.map((user, index) => (
                   <TouchableOpacity 
                     key={user.id || index} 
                     style={styles.userItem}
@@ -4803,9 +5470,14 @@ export default function AdminPage() {
               ) : (
                 <View style={styles.noAnnouncementsContainer}>
                   <Ionicons name="people-outline" size={64} color="#ccc" />
-                  <Text style={styles.noAnnouncementsTitle}>No Users Found</Text>
+                  <Text style={styles.noAnnouncementsTitle}>
+                    {userSearchQuery ? 'No Users Found' : 'No Users Available'}
+                  </Text>
                   <Text style={styles.noAnnouncementsText}>
-                    No users are currently registered in the system.
+                    {userSearchQuery 
+                      ? `No users match "${userSearchQuery}". Try a different search term.`
+                      : 'No users are currently registered in the system.'
+                    }
                   </Text>
                 </View>
               )}
@@ -6129,6 +6801,275 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  // User Search Styles
+  userSearchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  userSearchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  userSearchIcon: {
+    marginRight: 8,
+  },
+  userSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 4,
+  },
+  userClearSearchButton: {
+    marginLeft: 8,
+    padding: 2,
+  },
+  // User Management Styles
+  userStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    paddingHorizontal: 16,
+  },
+  userStatCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 4,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  userStatNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: GREEN,
+    marginBottom: 4,
+  },
+  userStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  userManagementListContainer: {
+    paddingHorizontal: 16,
+  },
+  userManagementItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: GREEN,
+  },
+  blockedUserItem: {
+    backgroundColor: '#f8f9fa',
+    borderLeftColor: '#e74c3c',
+    opacity: 0.8,
+  },
+  duplicateUserItem: {
+    borderLeftColor: '#f39c12',
+    backgroundColor: '#fffbf0',
+  },
+  userManagementItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  userManagementAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: GREEN,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  userManagementCropEmoji: {
+    fontSize: 24,
+  },
+  userManagementItemContent: {
+    flex: 1,
+  },
+  userManagementNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  userManagementName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    flex: 1,
+  },
+  blockedBadge: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  blockedBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  duplicateBadge: {
+    backgroundColor: '#f39c12',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  duplicateBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  userManagementEmail: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  userManagementDetails: {
+    fontSize: 14,
+    color: '#888',
+    marginBottom: 2,
+  },
+  userManagementDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  userManagementActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  userManagementActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#6c757d',
+  },
+  blockButton: {
+    backgroundColor: '#f39c12',
+  },
+  unblockButton: {
+    backgroundColor: '#27ae60',
+  },
+  userManagementActionText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  duplicateCheckButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#fff3cd',
+    borderWidth: 1,
+    borderColor: '#f39c12',
+  },
+  // Activity Legend Styles
+  activityLegendContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  activityLegendTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  activityLegendItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  activityLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: '30%',
+  },
+  activityDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  activeDot: {
+    backgroundColor: '#27ae60',
+  },
+  inactiveDot: {
+    backgroundColor: '#95a5a6',
+  },
+  noReportsDot: {
+    backgroundColor: '#2c3e50',
+  },
+  activityLegendText: {
+    fontSize: 12,
+    color: '#666',
+    flex: 1,
+  },
+  activityLegendNote: {
+    fontSize: 11,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  // Activity Status Dot Styles
+  userManagementAvatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  activityStatusDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  activeStatusDot: {
+    backgroundColor: '#27ae60',
+  },
+  inactiveStatusDot: {
+    backgroundColor: '#95a5a6',
+  },
+  noReportsStatusDot: {
+    backgroundColor: '#2c3e50',
   },
   // User List Modal Styles
   userItem: {

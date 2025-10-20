@@ -3,7 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import 'react-native-reanimated';
+// import 'react-native-reanimated'; // Temporarily disabled to avoid Worklets version mismatch
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { forceFullScreen, useFullScreen } from '@/hooks/useFullScreen';
@@ -57,11 +57,14 @@ export default function RootLayout() {
                 <Stack.Screen name="language" options={{ headerShown: false }} />
                 <Stack.Screen name="admin" options={{ headerShown: false }} />
                 <Stack.Screen name="admin-chat" options={{ headerShown: false }} />
+                <Stack.Screen name="admin-pdf-data" options={{ headerShown: false }} />
                 <Stack.Screen name="user-chat" options={{ headerShown: false }} />
                 <Stack.Screen name="feature-placeholder" options={{ headerShown: false }} />
                 <Stack.Screen name="planting-report" options={{ headerShown: false }} />
                 <Stack.Screen name="harvest-report" options={{ headerShown: false }} />
+                <Stack.Screen name="harvest-view-reports" options={{ headerShown: false }} />
                 <Stack.Screen name="commodity-analytics" options={{ headerShown: false }} />
+                <Stack.Screen name="ml-predictions" options={{ headerShown: false }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
               <StatusBar style="auto" />

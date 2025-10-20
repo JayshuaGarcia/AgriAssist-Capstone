@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
 import { useNavigationBar } from '../hooks/useNavigationBar';
@@ -66,6 +67,34 @@ export default function UserChatPage() {
     }
   };
 
+  // Mark received messages as read
+  const markMessagesAsRead = async () => {
+    if (!userDocId) return;
+    
+    try {
+      const q = query(
+        collection(db, 'messages'),
+        where('senderId', '==', 'admin'),
+        where('receiverId', '==', userDocId),
+        where('isRead', '==', false)
+      );
+      
+      const unreadSnapshot = await getDocs(q);
+      
+      const updatePromises = unreadSnapshot.docs.map(doc => 
+        updateDoc(doc.ref, { isRead: true, readAt: new Date().toISOString() })
+      );
+      
+      await Promise.all(updatePromises);
+      console.log(`Marked ${unreadSnapshot.docs.length} messages as read`);
+      
+      // Force a small delay to ensure database is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  };
+
   // Load messages for this contact
   const loadMessages = async () => {
     if (!userDocId) return;
@@ -107,6 +136,9 @@ export default function UserChatPage() {
         .sort((a, b) => a.timestamp - b.timestamp);
       
       setMessages(allMessages);
+      
+      // Mark received messages as read
+      await markMessagesAsRead();
     } catch (error) {
       console.error('Error loading messages:', error);
       Alert.alert('Error', 'Failed to load messages');
@@ -122,7 +154,6 @@ export default function UserChatPage() {
     setSending(true);
     try {
       const messageData = {
-        id: Date.now().toString(),
         senderId: userDocId, // User's ID
         senderName: user?.displayName || 'User',
         receiverId: 'admin',
@@ -134,10 +165,11 @@ export default function UserChatPage() {
         type: 'user_message'
       };
 
-      await addDoc(collection(db, 'messages'), messageData);
+      const docRef = await addDoc(collection(db, 'messages'), messageData);
+      console.log('✅ Message sent with ID:', docRef.id);
       
-      // Add to local state immediately
-      setMessages(prev => [...prev, { ...messageData, type: 'sent' }]);
+      // Add to local state immediately with the correct Firebase-generated ID
+      setMessages(prev => [...prev, { ...messageData, id: docRef.id, type: 'sent' }]);
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -145,6 +177,97 @@ export default function UserChatPage() {
     } finally {
       setSending(false);
     }
+  };
+
+  // Delete a message
+  const deleteMessage = async (messageId: string, messageContent: string) => {
+    Alert.alert(
+      'Delete Message',
+      `Are you sure you want to delete this message?\n\n"${messageContent.length > 50 ? messageContent.substring(0, 50) + '...' : messageContent}"`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('🗑️ Attempting to delete message:', messageId);
+              
+              // Find the message document reference
+              const messageRef = doc(db, 'messages', messageId);
+              console.log('📄 Message reference created:', messageRef.path);
+              
+              // Try to read the document first to confirm it exists
+              const beforeDelete = await getDoc(messageRef);
+              console.log('📖 Document exists before deletion:', beforeDelete.exists());
+              
+              if (beforeDelete.exists()) {
+                console.log('📖 Document data before deletion:', beforeDelete.data());
+                
+                // Delete the document
+                await deleteDoc(messageRef);
+                console.log('✅ Message deleted from database successfully');
+                
+                // Remove from local state
+                setMessages(prev => prev.filter(msg => msg.id !== messageId));
+                console.log('🔄 Local state updated - message removed from UI');
+                
+                Alert.alert('Success', 'Message deleted successfully');
+              } else {
+                console.log('⚠️ Document does not exist - searching for correct ID...');
+                
+                // Find the correct Firebase document ID by searching for the message content
+                const messageToDelete = messages.find(msg => msg.id === messageId);
+                if (messageToDelete) {
+                  console.log('🔍 Looking for message with content:', messageToDelete.content);
+                  
+                  // Search for the message by content and sender
+                  const searchQuery = query(
+                    collection(db, 'messages'),
+                    where('content', '==', messageToDelete.content),
+                    where('senderId', '==', messageToDelete.senderId || userDocId)
+                  );
+                  
+                  const searchSnapshot = await getDocs(searchQuery);
+                  if (searchSnapshot.docs.length > 0) {
+                    const correctDoc = searchSnapshot.docs[0];
+                    console.log('✅ Found correct document with ID:', correctDoc.id);
+                    
+                    // Update the message reference to use the correct ID
+                    const correctMessageRef = doc(db, 'messages', correctDoc.id);
+                    console.log('🔄 Using correct message reference:', correctMessageRef.path);
+                    
+                    // Delete the correct document
+                    await deleteDoc(correctMessageRef);
+                    console.log('✅ Message deleted from database successfully (using correct ID)');
+                    
+                    // Remove from local state
+                    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+                    console.log('🔄 Local state updated - message removed from UI');
+                    
+                    Alert.alert('Success', 'Message deleted successfully');
+                  } else {
+                    console.log('❌ Could not find message in database');
+                    Alert.alert('Error', 'Message not found in database');
+                  }
+                } else {
+                  console.log('❌ Could not find message in local state');
+                  Alert.alert('Error', 'Message not found');
+                }
+              }
+            } catch (error) {
+              console.error('❌ Error deleting message:', error);
+              console.error('Error details:', {
+                messageId,
+                errorMessage: error.message,
+                errorCode: error.code
+              });
+              Alert.alert('Error', `Failed to delete message: ${error.message}`);
+            }
+          }
+        }
+      ]
+    );
   };
 
   useEffect(() => {
@@ -162,6 +285,16 @@ export default function UserChatPage() {
       loadMessages();
     }
   }, [userDocId]);
+
+  // Mark messages as read when chat is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (userDocId) {
+        console.log('User chat focused - marking messages as read');
+        markMessagesAsRead();
+      }
+    }, [userDocId])
+  );
 
   return (
     <View style={styles.container}>
@@ -205,10 +338,21 @@ export default function UserChatPage() {
           </View>
         ) : messages.length > 0 ? (
           messages.map((message) => (
-            <View key={message.id} style={[
-              styles.messageContainer,
-              message.type === 'sent' ? styles.sentMessageContainer : styles.receivedMessageContainer
-            ]}>
+            <TouchableOpacity 
+              key={message.id} 
+              style={[
+                styles.messageContainer,
+                message.type === 'sent' ? styles.sentMessageContainer : styles.receivedMessageContainer
+              ]}
+              onLongPress={() => {
+                // Only allow deletion of sent messages (user's own messages)
+                if (message.type === 'sent') {
+                  deleteMessage(message.id, message.content);
+                }
+              }}
+              delayLongPress={500}
+              activeOpacity={message.type === 'sent' ? 0.7 : 1}
+            >
               {message.type === 'sent' && (
                 <View style={styles.sentMessageAvatar}>
                   <Text style={styles.sentMessageCropIcon}>
@@ -240,7 +384,7 @@ export default function UserChatPage() {
                   {message.createdAt ? new Date(message.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown'}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         ) : (
           <View style={styles.emptyContainer}>

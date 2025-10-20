@@ -60,7 +60,9 @@ export default function ProfileScreen() {
 
       {/* Profile Info */}
       <View style={styles.profileSection}>
-        <Image source={{ uri: profile.profileImage }} style={styles.profileImage} />
+        <View style={styles.profileIconContainer}>
+          <Text style={styles.profileIcon}>{profile.selectedCropEmoji || '🌱'}</Text>
+        </View>
         <Text style={styles.profileName}>{profile.name}</Text>
         <Text style={styles.profileRole}>{profile.role}</Text>
         <Text style={styles.profileLocation}>{profile.location}</Text>
@@ -197,6 +199,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 4,
     borderColor: GREEN,
+  },
+  profileIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 16,
+    borderWidth: 4,
+    borderColor: GREEN,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileIcon: {
+    fontSize: 48,
   },
   profileName: {
     fontSize: 24,

@@ -36,13 +36,12 @@ export default function LoginScreen() {
     try {
       // Check for admin credentials
       if ((email === 'AAadmin' || email === 'agriassistme@gmail.com') && password === 'AAadmin') {
-        // Call login to set admin user state
+        // Call login to set admin user state - AuthContext will handle navigation
         await login(email, password, 'admin');
-        // Navigate to admin page
-        router.replace('/admin');
         return;
       }
 
+      // For regular users, go to farmer form
       await login(email, password, 'Farmer');
       router.replace('/farmers'); // Always go to farmer fill up form after login
     } catch (error: any) {

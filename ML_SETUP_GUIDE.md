@@ -252,3 +252,4 @@ Your AgriAssist app can now predict commodity prices using advanced algorithms, 
 
 
 
+

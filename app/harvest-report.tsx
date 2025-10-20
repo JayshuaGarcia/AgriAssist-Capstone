@@ -196,17 +196,69 @@ export default function HarvestReportScreen() {
     
     setLoading(true);
     try {
-      // Get user's harvest reports
-      const harvestQuery = query(
+      // Get user's harvest reports (accept both old and new formats)
+      const harvestQueryNew = query(
         collection(db, 'harvestReports'),
         where('userEmail', '==', user.email)
       );
-      const harvestSnapshot = await getDocs(harvestQuery);
-      const harvestReports = harvestSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const harvestQueryOld = query(
+        collection(db, 'harvestReports'),
+        where('farmerEmail', '==', user.email)
+      );
+      const [snapNew, snapOld] = await Promise.all([
+        getDocs(harvestQueryNew),
+        getDocs(harvestQueryOld)
+      ]);
+      const harvestReports = [
+        ...snapNew.docs.map(d => ({ id: d.id, ...d.data() })),
+        ...snapOld.docs.map(d => ({ id: d.id, ...d.data() })),
+      ].filter((r, idx, arr) => idx === arr.findIndex(x => x.id === r.id));
 
+      // Debug: Log harvest analytics data
+      console.log('📊 Harvest analytics for user:', user.email);
+      console.log('📊 Current user object:', { uid: user.uid, email: user.email, displayName: user.displayName });
+      console.log('📊 Harvest reports found for analytics:', harvestReports.length);
+      harvestReports.forEach((report, index) => {
+        console.log(`📊 Harvest report ${index + 1} for analytics:`, {
+          id: report.id,
+          farmerEmail: report.farmerEmail,
+          crop: report.crop,
+          status: report.status,
+          amount: report.amount,
+          amountType: report.amountType
+        });
+      });
+      
+      // Debug: Log which reports are being counted as harvested (both formats)
+      const harvestedReports = harvestReports.filter(report => 
+        report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed'
+      );
+      const pendingReports = harvestReports.filter(report => 
+        !(report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed')
+      );
+      
+      console.log('📊 Reports counted as harvested:', harvestedReports.length);
+      console.log('📊 Reports still pending:', pendingReports.length);
+      
+      // Calculate total harvested weight for debugging (both formats)
+      const totalHarvestedWeight = harvestedReports.reduce((sum, report) => {
+        const fromNew = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
+        const fromOld = typeof report.amount === 'number' ? report.amount : parseFloat(report.amount) || 0;
+        const harvest = fromNew || fromOld;
+        return sum + harvest;
+      }, 0);
+      
+      console.log('📊 Total harvested weight calculated:', totalHarvestedWeight, 'kg');
+      
+      harvestedReports.forEach(report => {
+        const harvestAmount = report.amount || 0;
+        console.log(`📊 Harvested report: ${report.crop} - ${harvestAmount}kg (status: ${report.status})`);
+      });
+      pendingReports.forEach(report => {
+        const harvestAmount = report.amount || 0;
+        console.log(`📊 Pending report: ${report.crop} - ${harvestAmount}kg (status: ${report.status}) - not counted`);
+      });
+      
       // Calculate analytics
       calculateHarvestAnalytics(harvestReports);
       
@@ -244,28 +296,34 @@ export default function HarvestReportScreen() {
       return;
     }
 
-    // Calculate total harvested
+    // Calculate total harvested (count both formats)
     const totalHarvested = reports.reduce((sum, report) => {
-      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-      return sum + harvest;
+      const isHarvested = report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed';
+      if (!isHarvested) return sum;
+      const fromNew = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
+      const fromOld = typeof report.amount === 'number' ? report.amount : parseFloat(report.amount) || 0;
+      return sum + (fromNew || fromOld);
     }, 0);
 
-    // Calculate harvest distribution by crop
+    // Calculate harvest distribution by crop (count both formats)
     const cropHarvestMap = new Map();
     reports.forEach(report => {
+      const isHarvested = report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed';
+      if (!isHarvested) return;
       const crop = report.crop;
-      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-      
+      const fromNew = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
+      const fromOld = typeof report.amount === 'number' ? report.amount : parseFloat(report.amount) || 0;
+      const harvestAmount = fromNew || fromOld;
       if (cropHarvestMap.has(crop)) {
         const existing = cropHarvestMap.get(crop);
         cropHarvestMap.set(crop, {
           count: existing.count + 1,
-          totalHarvest: existing.totalHarvest + harvest
+          totalHarvest: existing.totalHarvest + harvestAmount
         });
       } else {
         cropHarvestMap.set(crop, {
           count: 1,
-          totalHarvest: harvest
+          totalHarvest: harvestAmount
         });
       }
     });

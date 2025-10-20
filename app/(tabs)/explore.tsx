@@ -1,14 +1,12 @@
-import { Platform, StyleSheet, View, Text, TouchableOpacity, TextInput, Dimensions, Image } from 'react-native';
-import React, { useState, useEffect } from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as NavigationBar from 'expo-navigation-bar';
-import { useAuth } from '../../components/AuthContext';
+import { useState } from 'react';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { Collapsible } from '@/components/Collapsible';
 import { ExternalLink } from '@/components/ExternalLink';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
+import SimpleScrollView from '@/components/SimpleScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -16,7 +14,9 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 export default function TabTwoScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('explore');
-  const { profile } = useAuth();
+  // Temporarily disable useAuth to test app startup
+  // const { profile } = useAuth();
+  const profile = { name: 'Mock User', role: 'Farmer' };
 
   const handleTabPress = (tab: string) => {
     setActiveTab(tab);
@@ -56,7 +56,7 @@ export default function TabTwoScreen() {
         </View>
         <Image source={{ uri: profile.profileImage }} style={styles.profileImg} />
       </View>
-      <ParallaxScrollView
+      <SimpleScrollView
         headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
         headerImage={
           <IconSymbol
@@ -157,7 +157,7 @@ export default function TabTwoScreen() {
             <Text style={[styles.tabLabel, { color: activeTab === 'profile' ? '#b6ff3c' : '#fff' }]}>Profile</Text>
           </TouchableOpacity>
         </View>
-      </ParallaxScrollView>
+      </SimpleScrollView>
     </View>
   );
 }
