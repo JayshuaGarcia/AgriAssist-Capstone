@@ -53,7 +53,7 @@ export const AnnouncementProvider: React.FC<AnnouncementProviderProps> = ({ chil
       setError(null);
       
       // Check if user is authenticated (optional for now)
-      const currentUser = auth.currentUser;
+      const currentUser = auth?.currentUser ?? null;
       if (currentUser) {
         console.log('Loading announcements for authenticated user:', currentUser.email);
       } else {
@@ -116,7 +116,7 @@ export const AnnouncementProvider: React.FC<AnnouncementProviderProps> = ({ chil
       setError(null);
       
       // Check if user is authenticated (optional for now)
-      const currentUser = auth.currentUser;
+      const currentUser = auth?.currentUser ?? null;
       if (currentUser) {
         console.log('Creating announcement for authenticated user:', currentUser.email);
       } else {

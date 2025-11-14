@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EmailJS Direct Test</title>
+</head>
+<body>
+    <h1>EmailJS Direct Test</h1>
+    <button onclick="testEmailJS()">Send Test Email</button>
+    <div id="result"></div>
+
+    <script>
+        async function testEmailJS() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Sending...';
+            
+            try {
+                const serviceId = 'service_i6p64a1';
+                const templateId = 'template_1exyjna';
+                const publicKey = 'DyGZv9F-XQehhXrDZ';
+                
+                const templateParams = {
+                    to_email: 'learjayencina018@gmail.com',
+                    subject: 'AgriAssist - Password Reset Code',
+                    message: 'Your password reset code is: 123456. This code will expire in 15 minutes.',
+                    reset_code: '123456',
+                    from_name: 'AgriAssist Team'
+                };
+                
+                const params = new URLSearchParams();
+                params.append('service_id', serviceId);
+                params.append('template_id', templateId);
+                params.append('user_id', publicKey);
+                params.append('template_params', JSON.stringify(templateParams));
+                
+                console.log('Request params:', params.toString());
+                
+                const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: params.toString(),
+                });
+                
+                const responseText = await response.text();
+                
+                resultDiv.innerHTML = `
+                    <h3>Status: ${response.status}</h3>
+                    <pre>${responseText}</pre>
+                `;
+                
+                console.log('Response:', responseText);
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

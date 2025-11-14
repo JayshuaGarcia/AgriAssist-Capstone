@@ -8,14 +8,15 @@ import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshCo
 import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
 import { ForecastingCalendar } from '../components/ForecastingCalendar';
+import { PriceMonitoringList } from '../components/PriceMonitoringList';
 import { useNotification } from '../components/NotificationContext';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
+import { getAllCommodities, CommodityPrice } from '../services/csvPriceService';
 import { Commodity, COMMODITY_DATA } from '../constants/CommodityData';
-import { useLatestPrices } from '../hooks/useLatestPrices';
 import { useNavigationBar } from '../hooks/useNavigationBar';
 import { useCategories, useCommodityManagement } from '../hooks/useOfflineCommodities';
 import { db } from '../lib/firebase';
-import { realDAPriceService } from '../lib/realDAPriceService';
+import { convertToUnifiedFormat } from '../types/UnifiedReportFormat';
 
 const { width } = Dimensions.get('window');
 const GREEN = '#16543a';
@@ -46,7 +47,18 @@ export default function AdminPage() {
   }, [user, profile.role]);
 
   const { announcements, addAnnouncement, loadAnnouncements, deleteAnnouncement, loading: announcementLoading, error: announcementError } = useAnnouncements();
+  
+  // Debug announcements
+  useEffect(() => {
+    console.log('🔔 Admin announcements state:', {
+      count: announcements.length,
+      loading: announcementLoading,
+      error: announcementError,
+      announcements: announcements.map(a => ({ id: a.id, title: a.title, createdBy: a.createdBy }))
+    });
+  }, [announcements, announcementLoading, announcementError]);
   const { showNotification } = useNotification();
+
   const scrollViewRef = useRef<ScrollView>(null);
   const [activeNav, setActiveNav] = useState('home');
   
@@ -55,6 +67,14 @@ export default function AdminPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [usersDirectory, setUsersDirectory] = useState<Record<string, { name?: string; email?: string; userCropEmoji?: string }>>({});
+
+  useEffect(() => {
+    if (activeNav !== 'harvest-records') {
+      setShowUserReports(false);
+      setShowAllHarvestEntries(false);
+      setSelectedUserAccount(null);
+    }
+  }, [activeNav]);
 
   // Search data for navigation
   const searchData = [
@@ -179,16 +199,12 @@ export default function AdminPage() {
   const [processingProgress, setProcessingProgress] = useState(0);
   const [products, setProducts] = useState<Commodity[]>(COMMODITY_DATA);
   const [hasUploadedPDF, setHasUploadedPDF] = useState(false);
-  
-  // Price monitoring states
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [showCommodityModal, setShowCommodityModal] = useState(false);
-  const [priceSearchQuery, setPriceSearchQuery] = useState('');
   const [adminRefreshing, setAdminRefreshing] = useState(false);
   
-  // Admin PDF data states
-  const [adminPdfData, setAdminPdfData] = useState<any[]>([]);
-  const [adminCategorizedData, setAdminCategorizedData] = useState<any[]>([]);
+  // Price monitoring state
+  const [priceCommodities, setPriceCommodities] = useState<CommodityPrice[]>([]);
+  const [loadingPrices, setLoadingPrices] = useState(false);
+  const [showAllRecords, setShowAllRecords] = useState(false);
   
   // Forecasting calendar states
   const [forecastModalVisible, setForecastModalVisible] = useState(false);
@@ -198,9 +214,6 @@ export default function AdminPage() {
     price: number;
     unit: string;
   } | null>(null);
-  
-  // Offline latest prices hook
-  const { latestPrices, loading: priceLoading, error: priceError, refreshing: priceRefreshing, refreshLatestPrices, addOrUpdatePrice } = useLatestPrices();
   const { categories } = useCategories();
   const { addCommodity, updateCommodity, deleteCommodity, loading: commodityLoading } = useCommodityManagement();
   
@@ -216,11 +229,11 @@ export default function AdminPage() {
       setMLLoading(true);
       setMLError(null);
       
-      console.log('🤖 Loading ML forecasts from real DA service...');
-      const forecasts = await realDAPriceService.getPriceForecasts(COMMODITY_DATA);
-      setMLForecasts(forecasts);
+      console.log('🤖 Loading ML forecasts...');
+      // Price forecasting removed
+      setMLForecasts([]);
       
-      console.log(`✅ Loaded ${forecasts.length} ML forecasts from real DA service`);
+      console.log(`✅ ML forecasts disabled`);
     } catch (err) {
       console.error('❌ Error loading ML forecasts:', err);
       setMLError(err instanceof Error ? err.message : 'Failed to load ML forecasts');
@@ -235,11 +248,11 @@ export default function AdminPage() {
       setMLRefreshing(true);
       setMLError(null);
       
-      console.log('🔄 Refreshing ML forecasts from real DA service...');
-      const forecasts = await realDAPriceService.getPriceForecasts(COMMODITY_DATA);
-      setMLForecasts(forecasts);
+      console.log('🔄 Refreshing ML forecasts...');
+      // Price forecasting removed
+      setMLForecasts([]);
       
-      console.log(`✅ Refreshed ${forecasts.length} ML forecasts from real DA service`);
+      console.log(`✅ ML forecasts disabled`);
     } catch (err) {
       console.error('❌ Error refreshing ML forecasts:', err);
       setMLError(err instanceof Error ? err.message : 'Failed to refresh ML forecasts');
@@ -262,8 +275,9 @@ export default function AdminPage() {
       let allPDFData: any[] = [];
       
       try {
-        // Try to load from automated extracted data
-        const extractedData = require('../data/extracted_pdf_data.json');
+        // Load from latest available data file (today's or yesterday's)
+        // Price data loading removed
+        const extractedData: any[] = [];
         allPDFData = extractedData.map((item: any, index: number) => ({
           id: (index + 1).toString(),
           commodity: item.commodity || 'Unknown',
@@ -304,13 +318,9 @@ export default function AdminPage() {
         ];
       }
       
-      // Categorize the data
-      const categorized = categorizeAdminData(allPDFData);
-      
-      setAdminPdfData(allPDFData);
-      setAdminCategorizedData(categorized);
-      console.log(`✅ ADMIN: Successfully loaded and categorized ${allPDFData.length} commodities`);
-      console.log(`📊 ADMIN: Categories: ${categorized.length} types`);
+      // Price data loading removed - using CSV/JSON data instead
+      // Old PDF data loading is disabled
+      console.log(`✅ ADMIN: Price data loading disabled (using CSV/JSON system)`);
     } catch (error) {
       console.error('❌ ADMIN: Error loading PDF data:', error);
     }
@@ -396,19 +406,30 @@ export default function AdminPage() {
   useEffect(() => {
     loadAdminPDFData();
   }, [loadAdminPDFData]);
-  
-  // Get last updated time from latest prices
-  const lastUpdated = React.useMemo(() => {
-    if (latestPrices.length > 0) {
-      const latestPrice = latestPrices
-        .sort((a, b) => new Date(b.priceDate).getTime() - new Date(a.priceDate).getTime())[0];
-      
-      if (latestPrice?.priceDate) {
-        return new Date(latestPrice.priceDate).toLocaleTimeString();
+
+  // Load price data when price monitoring tab is active
+  useEffect(() => {
+    async function loadPrices() {
+      if (activeNav === 'price-monitoring' && priceCommodities.length === 0) {
+        setLoadingPrices(true);
+        try {
+          const data = await getAllCommodities();
+          setPriceCommodities(data);
+          console.log(`✅ Admin: Loaded ${data.length} commodities for price monitoring`);
+        } catch (error) {
+          console.error('Error loading prices:', error);
+        } finally {
+          setLoadingPrices(false);
+        }
       }
     }
+    loadPrices();
+  }, [activeNav, priceCommodities.length]);
+  
+  // Get last updated time - price data removed
+  const lastUpdated = React.useMemo(() => {
     return null;
-  }, [latestPrices]);
+  }, []);
   
   // Manual entry states
   const [showManualModal, setShowManualModal] = useState(false);
@@ -441,6 +462,8 @@ export default function AdminPage() {
   const [groupedHarvestRecords, setGroupedHarvestRecords] = useState<any[]>([]);
   const [selectedUserAccount, setSelectedUserAccount] = useState<any>(null);
   const [showUserReports, setShowUserReports] = useState(false);
+  const [showAllHarvestEntries, setShowAllHarvestEntries] = useState(false);
+  const [harvestSortOption, setHarvestSortOption] = useState<'expectedDesc' | 'expectedAsc' | 'actualDesc' | 'actualAsc'>('expectedDesc');
   const [reportType, setReportType] = useState<'planting' | 'harvest'>('planting');
   
   // Individual report detail view
@@ -728,132 +751,6 @@ export default function AdminPage() {
     return getCategoryEmoji(category);
   };
 
-  // Price monitoring functions
-  const onPriceRefresh = async () => {
-    await refreshLatestPrices();
-    Alert.alert('Success', '✅ Latest prices reloaded from cache!');
-  };
-
-
-
-
-  const filteredCommodities = React.useMemo(() => {
-    let filtered = latestPrices as any[];
-    
-    // Filter out products with "No Data" status (no price or price is 0)
-    filtered = filtered.filter(price => 
-      price.currentPrice && 
-      price.currentPrice > 0 && 
-      !isNaN(price.currentPrice)
-    );
-    
-    // Filter by category - need to find commodity category from COMMODITY_DATA
-    if (selectedCategory) {
-      filtered = filtered.filter(price => {
-        const commodity = COMMODITY_DATA.find(c => c.id === price.commodityId);
-        return commodity?.category === selectedCategory;
-      });
-    }
-    
-    // Filter by search query
-    if (priceSearchQuery.trim()) {
-      filtered = filtered.filter(price => 
-        price.commodityName.toLowerCase().includes(priceSearchQuery.toLowerCase().trim())
-      );
-    }
-    
-    return filtered;
-  }, [selectedCategory, priceSearchQuery, latestPrices]);
-
-  // Admin PDF data filtering
-  const adminFilteredCategories = React.useMemo(() => {
-    console.log('🔍 ADMIN FILTERING: Starting with', adminCategorizedData.length, 'categories');
-    let filtered = adminCategorizedData;
-    
-    // Filter by selected category
-    if (selectedCategory) {
-      filtered = filtered.filter(category => category.name === selectedCategory);
-      console.log('🔍 ADMIN FILTERING: After category filter:', filtered.length, 'categories');
-    }
-    
-    // Filter by search query
-    if (priceSearchQuery.trim()) {
-      filtered = filtered.map(category => ({
-        ...category,
-        items: category.items.filter(item => 
-          item.commodity.toLowerCase().includes(priceSearchQuery.toLowerCase().trim()) ||
-          item.specification.toLowerCase().includes(priceSearchQuery.toLowerCase().trim())
-        )
-      })).filter(category => category.items.length > 0);
-      console.log('🔍 ADMIN FILTERING: After search filter:', filtered.length, 'categories');
-    }
-    
-    console.log('🔍 ADMIN FILTERING: Final result:', filtered.length, 'categories');
-    return filtered;
-  }, [selectedCategory, priceSearchQuery, adminCategorizedData]);
-
-  // Price monitoring render functions
-  const renderCommodityItem = ({ item }: { item: any }) => {
-    const commodity = COMMODITY_DATA.find(c => c.id === item.commodityId);
-    
-    return (
-    <TouchableOpacity 
-      style={styles.adminPriceCommodityCard}
-      onPress={async () => {
-        console.log('🎯 Admin commodity card pressed:', item.commodityName);
-          console.log('📊 Commodity details:', { id: item.commodityId, name: item.commodityName, category: commodity?.category });
-        try {
-          // Save commodity parameters to AsyncStorage
-            await AsyncStorage.setItem('selected_commodity_id', item.commodityId);
-          await AsyncStorage.setItem('selected_commodity_name', item.commodityName);
-            await AsyncStorage.setItem('selected_commodity_category', commodity?.category || '');
-          
-          console.log('💾 Saved commodity params to storage');
-          
-          // Navigate to analytics
-          router.push('/commodity-analytics');
-          console.log('✅ Admin navigation triggered successfully');
-        } catch (error) {
-          console.error('❌ Admin navigation error:', error);
-        }
-      }}
-      activeOpacity={0.7}
-    >
-      <View style={styles.adminPriceCommodityHeader}>
-        <View style={styles.adminPriceCommodityInfo}>
-            <Text style={styles.adminPriceCommodityName}>{getProductEmoji(item.commodityName, commodity?.category || '')} {item.commodityName}</Text>
-            <Text style={styles.adminPriceCommodityCategory}>{commodity?.category || 'Unknown'}</Text>
-            {commodity?.type && (
-              <Text style={styles.adminPriceDate}>🏷️ {commodity.type}</Text>
-          )}
-          {item.specification && (
-            <Text style={styles.adminPriceSpecification}>📝 {item.specification}</Text>
-          )}
-            <Text style={styles.adminPriceDate}>📅 {new Date(item.priceDate).toLocaleDateString()}</Text>
-        </View>
-        <View style={styles.adminPriceContainer}>
-            {item.currentPrice > 0 ? (
-            <>
-                <Text style={styles.adminPriceCurrentPrice}>💰 ₱{item.currentPrice.toFixed(2)}</Text>
-                <Text style={styles.adminPriceUnit}>/{commodity?.unit || 'kg'}</Text>
-            </>
-          ) : (
-            <>
-              <View style={[styles.adminPriceStatusBadge, styles.adminPriceStatusBadgeUnavailable]}>
-                <Text style={[styles.adminPriceStatusText, styles.adminPriceStatusTextUnavailable]}>❌ No Data</Text>
-              </View>
-            </>
-          )}
-        </View>
-      </View>
-      
-        {item.currentPrice > 0 && (
-          <Text style={styles.adminPriceLastUpdated}>🕒 Updated: {new Date(item.priceDate).toLocaleString()}</Text>
-      )}
-    </TouchableOpacity>
-    );
-  };
-
   // Admin PDF data render functions
   const renderAdminCommodityItem = ({ item }: { item: any }) => (
     <TouchableOpacity 
@@ -905,75 +802,8 @@ export default function AdminPage() {
     </View>
   );
 
-  const renderCommodityModal = () => (
-    <Modal
-      visible={showCommodityModal}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setShowCommodityModal(false)}
-    >
-      <View style={styles.adminPriceModalOverlay}>
-        <View style={styles.adminPriceModalContent}>
-          <View style={styles.adminPriceModalHeader}>
-            <Text style={styles.adminPriceModalTitle}>🛒 Select Commodity</Text>
-            <TouchableOpacity
-              style={styles.adminPriceModalCloseButton}
-              onPress={() => setShowCommodityModal(false)}
-            >
-              <Ionicons name="close" size={24} color={GREEN} />
-            </TouchableOpacity>
-          </View>
-          
-          <ScrollView style={styles.adminPriceModalScrollView}>
-              <TouchableOpacity
-                style={[
-                  styles.adminPriceModalItem,
-                selectedCategory === null && styles.adminPriceModalItemActive
-                ]}
-                onPress={() => {
-                setSelectedCategory(null);
-                  setShowCommodityModal(false);
-                }}
-              >
-              <Text style={styles.adminPriceModalCategoryEmoji}>
-                {getCategoryEmoji('ALL')}
-              </Text>
-                <Text style={[
-                  styles.adminPriceModalItemText,
-                selectedCategory === null && styles.adminPriceModalItemTextActive
-              ]}>
-                All Categories
-              </Text>
-            </TouchableOpacity>
-            
-            {categories.map(category => (
-              <TouchableOpacity
-                key={category.id}
-                style={[
-                  styles.adminPriceModalItem,
-                  selectedCategory === category.name && styles.adminPriceModalItemActive
-                ]}
-                onPress={() => {
-                  setSelectedCategory(category.name);
-                  setShowCommodityModal(false);
-                }}
-              >
-                <Text style={styles.adminPriceModalCategoryEmoji}>
-                  {category.emoji}
-                </Text>
-                <Text style={[
-                  styles.adminPriceModalItemText,
-                  selectedCategory === category.name && styles.adminPriceModalItemTextActive
-                ]}>
-                  {category.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
+  // Price monitoring modal removed
+  const renderCommodityModal = () => null;
 
 
 
@@ -1648,11 +1478,11 @@ export default function AdminPage() {
     }
   }, [selectedMonth]);
 
-  // Load global analytics
+  // Load global analytics (all users data)
   const loadGlobalAnalytics = async () => {
     setGlobalLoading(true);
     try {
-      // Get all planting reports
+      // Get all planting reports from all users for global trends
       const allReportsQuery = query(collection(db, 'plantingReports'));
       const allReportsSnapshot = await getDocs(allReportsQuery);
       let allReports = allReportsSnapshot.docs.map(doc => ({
@@ -1781,13 +1611,16 @@ export default function AdminPage() {
   const loadGlobalHarvestAnalytics = async (month: Date) => {
     setGlobalHarvestLoading(true);
     try {
-      // Get all harvest reports
+      // Get all harvest reports from all users for global trends
       const harvestQuery = query(collection(db, 'harvestReports'));
       const harvestSnapshot = await getDocs(harvestQuery);
-      const allHarvestReports = harvestSnapshot.docs.map(doc => ({
-        id: doc.id,
+      const rawHarvestReports = harvestSnapshot.docs.map(doc => ({
         ...doc.data(),
+        id: doc.id, // Ensure ID is preserved
       }));
+      
+      // Convert to unified format
+      const allHarvestReports = rawHarvestReports.map(convertToUnifiedFormat);
 
       // Filter by month - only show records from the selected month
       const targetMonth = month.getMonth();
@@ -1827,7 +1660,7 @@ export default function AdminPage() {
 
     // Calculate total harvested globally
     const totalHarvested = reports.reduce((sum, report) => {
-      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
+      const harvest = report.actualHarvest || report.harvestWeight || 0;
       return sum + harvest;
     }, 0);
 
@@ -1841,8 +1674,8 @@ export default function AdminPage() {
 
     reports.forEach(report => {
       const crop = report.crop;
-      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-      const userEmail = report.userEmail;
+      const harvest = report.actualHarvest || report.harvestWeight || 0;
+      const userEmail = report.farmerEmail;
       
       // Track harvest amounts
       if (cropHarvestMap.has(crop)) {
@@ -1955,32 +1788,25 @@ export default function AdminPage() {
 
   // Function to update records state with read status
   const updateRecordsReadStatus = (reportId: string) => {
-    // Update planting records
-    setPlantingRecords(prevRecords => 
-      prevRecords.map(record => 
-        record.id === reportId ? { ...record, read: true } : record
-      )
-    );
-    
-    // Update harvest records
-    setHarvestRecords(prevRecords => 
-      prevRecords.map(record => 
-        record.id === reportId ? { ...record, read: true } : record
-      )
-    );
-    
-    // Regroup records with updated read status
-    setTimeout(() => {
-      const updatedPlanting = plantingRecords.map(record => 
+    // Update planting records and regroup immediately
+    setPlantingRecords(prevRecords => {
+      const updatedRecords = prevRecords.map(record => 
         record.id === reportId ? { ...record, read: true } : record
       );
-      const updatedHarvest = harvestRecords.map(record => 
+      // Regroup with updated records
+      setGroupedPlantingRecords(groupRecordsByUser(updatedRecords, 'planting'));
+      return updatedRecords;
+    });
+    
+    // Update harvest records and regroup immediately
+    setHarvestRecords(prevRecords => {
+      const updatedRecords = prevRecords.map(record => 
         record.id === reportId ? { ...record, read: true } : record
       );
-      
-      setGroupedPlantingRecords(groupRecordsByUser(updatedPlanting, 'planting'));
-      setGroupedHarvestRecords(groupRecordsByUser(updatedHarvest, 'harvest'));
-    }, 100);
+      // Regroup with updated records
+      setGroupedHarvestRecords(groupRecordsByUser(updatedRecords, 'harvest'));
+      return updatedRecords;
+    });
   };
 
 
@@ -1990,47 +1816,57 @@ export default function AdminPage() {
     try {
       console.log('🔄 Loading records...');
       
-      // Load planting records
+      // Load all planting records from all users for admin view
       try {
-          const plantingQuery = query(collection(db, 'plantingReports'));
-          const plantingSnapshot = await getDocs(plantingQuery);
-          const plantingData = plantingSnapshot.docs.map(doc => ({
+        const plantingQuery = query(collection(db, 'plantingReports'));
+        const plantingSnapshot = await getDocs(plantingQuery);
+        const plantingData = plantingSnapshot.docs.map(doc => {
+          const unified = convertToUnifiedFormat({
             id: doc.id,
             ...doc.data(),
-          read: readReports.has(doc.id) // Use persistent read status
-        }));
+          });
+          return {
+            ...unified,
+            read: readReports.has(doc.id), // Use persistent read status
+          };
+        });
         setPlantingRecords(plantingData);
-        
+
         // Group planting records by user
         const groupedPlanting = groupRecordsByUser(plantingData, 'planting');
         setGroupedPlantingRecords(groupedPlanting);
-        
+
         console.log('✅ Loaded planting records:', plantingData.length);
         console.log('✅ Grouped planting records:', groupedPlanting.length, 'users');
-        } catch (plantingError) {
+      } catch (plantingError) {
         console.log('⚠️ No planting records found or error:', plantingError);
         setPlantingRecords([]);
         setGroupedPlantingRecords([]);
-        }
+      }
 
-      // Load harvest records
-        try {
-          const harvestQuery = query(collection(db, 'harvestReports'));
-          const harvestSnapshot = await getDocs(harvestQuery);
-          const harvestData = harvestSnapshot.docs.map(doc => ({
+      // Load all harvest records from all users for admin view
+      try {
+        const harvestQuery = query(collection(db, 'harvestReports'));
+        const harvestSnapshot = await getDocs(harvestQuery);
+        const harvestData = harvestSnapshot.docs.map(doc => {
+          const unified = convertToUnifiedFormat({
             id: doc.id,
             ...doc.data(),
-          read: readReports.has(doc.id) // Use persistent read status
-        }));
+          });
+          return {
+            ...unified,
+            read: readReports.has(doc.id), // Use persistent read status
+          };
+        });
         setHarvestRecords(harvestData);
-        
+
         // Group harvest records by user
         const groupedHarvest = groupRecordsByUser(harvestData, 'harvest');
         setGroupedHarvestRecords(groupedHarvest);
-        
+
         console.log('✅ Loaded harvest records:', harvestData.length);
         console.log('✅ Grouped harvest records:', groupedHarvest.length, 'users');
-        } catch (harvestError) {
+      } catch (harvestError) {
         console.log('⚠️ No harvest records found or error:', harvestError);
         setHarvestRecords([]);
         setGroupedHarvestRecords([]);
@@ -2080,6 +1916,446 @@ export default function AdminPage() {
     return cropTagalog[crop] || crop;
   };
 
+  type CropTimelineStats = {
+    crop: string;
+    averageExpectedDurationDays: number | null;
+    averageActualDurationDays: number | null;
+    expectedSampleSize: number;
+    actualSampleSize: number;
+    totalReportCount: number;
+    dateDifferenceDays: number | null;
+    averageExpectedYieldPerPlant: number | null;
+    averageActualYieldPerPlant: number | null;
+    expectedYieldPerPlantSampleSize: number;
+    actualYieldPerPlantSampleSize: number;
+    yieldDifference: number | null;
+  };
+
+  const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+  const coerceNumber = (value: any): number | null => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/,/g, '').trim();
+      if (cleaned.length === 0) {
+        return null;
+      }
+      const parsed = Number(cleaned);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    if (typeof value === 'object') {
+      if (typeof value.toNumber === 'function') {
+        const num = value.toNumber();
+        return Number.isFinite(num) ? num : null;
+      }
+    }
+    return null;
+  };
+
+  const firstValidNumber = (values: any[]): number | null => {
+    for (const value of values) {
+      const parsed = coerceNumber(value);
+      if (parsed !== null) {
+        return parsed;
+      }
+    }
+    return null;
+  };
+
+  const toTimestamp = (value: any): number | null => {
+    if (!value && value !== 0) {
+      return null;
+    }
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value.getTime();
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+    }
+    if (typeof value === 'object') {
+      if (typeof value.toDate === 'function') {
+        const date = value.toDate();
+        return Number.isNaN(date.getTime()) ? null : date.getTime();
+      }
+      if ('seconds' in value && typeof value.seconds === 'number') {
+        const milliseconds = value.seconds * 1000 + (value.nanoseconds || 0) / 1_000_000;
+        return milliseconds;
+      }
+    }
+    return null;
+  };
+
+  const extractDateFromFields = (record: any, fields: string[]): number | null => {
+    for (const field of fields) {
+      if (field in record) {
+        const timestamp = toTimestamp(record[field]);
+        if (timestamp !== null) {
+          return timestamp;
+        }
+      }
+    }
+    return null;
+  };
+
+  const extractExpectedHarvestDateMs = (report: any): number | null => {
+    return extractDateFromFields(report, [
+      'expectedHarvestDate',
+      'expectedDate',
+      'expectedHarvestTime',
+      'expectedHarvestSchedule',
+    ]);
+  };
+
+  const extractActualHarvestDateMs = (report: any): number | null => {
+    return extractDateFromFields(report, [
+      'actualHarvestDate',
+      'harvestDate',
+      'dateHarvested',
+      'actualDate',
+      'completedAt',
+    ]);
+  };
+
+  const extractExpectedYieldKg = (report: any): number | null => {
+    return firstValidNumber([
+      report.expectedYield,
+      report.expectedHarvest,
+      report.expectedWeight,
+      report.expectedHarvestKg,
+    ]);
+  };
+
+  const extractActualHarvestKg = (report: any): number | null => {
+    const candidates = [
+      report.actualHarvestAmount,
+      report.actualHarvest,
+      report.harvestWeight,
+      report.actualYield,
+      report.amount,
+      report.totalHarvest,
+    ]
+      .map(coerceNumber)
+      .filter(value => value !== null) as number[];
+
+    const positive = candidates.find(value => value > 0);
+    if (positive !== undefined) {
+      return positive;
+    }
+    if (candidates.length > 0) {
+      return candidates[0];
+    }
+    return null;
+  };
+
+  const extractPlantCount = (report: any): number | null => {
+    return coerceNumber(
+      report?.plantCount ??
+        report?.plantNumber ??
+        report?.numberOfPlants ??
+        report?.plants ??
+        report?.plantingCount
+    );
+  };
+
+  const isReportHarvested = (report: any): boolean => {
+    if (!report) return false;
+    if (report.isHarvested === true) return true;
+    const status = typeof report.status === 'string' ? report.status.toLowerCase() : '';
+    if (status === 'harvested' || status === 'completed') return true;
+    if (report.harvestDate || report.actualHarvestDate) return true;
+    const harvest = extractActualHarvestKg(report);
+    return harvest !== null && harvest > 0;
+  };
+
+  const formatDurationValue = (days?: number | null, emptyLabel: string = 'N/A') => {
+    if (days === null || days === undefined || Number.isNaN(days)) {
+      return emptyLabel;
+    }
+    const rounded = Math.round(days);
+    const months = Math.floor(rounded / 30);
+    const remainingDays = Math.max(0, rounded - months * 30);
+    const parts: string[] = [];
+    if (months > 0) {
+      parts.push(`${months} month${months === 1 ? '' : 's'}`);
+    }
+    if (remainingDays > 0 || parts.length === 0) {
+      parts.push(`${remainingDays} day${remainingDays === 1 ? '' : 's'}`);
+    }
+    return parts.join(' ');
+  };
+
+  const formatYieldPerPlantValue = (value?: number | null, emptyLabel: string = 'N/A') => {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      return emptyLabel;
+    }
+    return `${value.toFixed(2)} kg/plant`;
+  };
+
+  const average = (values: number[]): number | null => {
+    if (!values || values.length === 0) return null;
+    const sum = values.reduce((acc, value) => acc + value, 0);
+    return sum / values.length;
+  };
+
+  const formatPerPlantDisplay = (value: number | null, blankIfMissing = false) => {
+    if (value === null || Number.isNaN(value)) {
+      return blankIfMissing ? '' : 'N/A';
+    }
+    return `${value.toFixed(2)} kg/plant`;
+  };
+
+  const formatDurationLabel = (daysValue: number) => {
+    const rounded = Math.round(daysValue);
+    const months = Math.floor(rounded / 30);
+    const days = Math.max(0, rounded - months * 30);
+    const parts: string[] = [];
+    if (months > 0) {
+      parts.push(`${months} month${months === 1 ? '' : 's'}`);
+    }
+    if (days > 0 || parts.length === 0) {
+      parts.push(`${days} day${days === 1 ? '' : 's'}`);
+    }
+    return parts.join(' ');
+  };
+
+  const formatDurationDays = (value: number | null, blankIfMissing = false) => {
+    if (value === null || Number.isNaN(value)) {
+      return blankIfMissing ? '' : 'N/A';
+    }
+    return formatDurationLabel(value);
+  };
+
+  const formatDateDifference = (value: number | null) => {
+    if (value === null) {
+      return '';
+    }
+    if (Math.abs(value) < 1) {
+      return 'On schedule';
+    }
+    const durationText = formatDurationLabel(Math.abs(value));
+    return value > 0 ? `${durationText} later than expected` : `${durationText} earlier than expected`;
+  };
+
+  const formatYieldDifference = (value: number | null) => {
+    if (value === null) {
+      return '';
+    }
+    if (Math.abs(value) < 0.1) {
+      return 'Yield on target';
+    }
+    const formatted = `${value > 0 ? '+' : ''}${value.toFixed(2)} kg/plant`;
+    return value > 0 ? `${formatted} above expected` : `${formatted} below expected`;
+  };
+
+  const buildCropTimeline = (plantingReports: any[], harvestedReports: any[]): CropTimelineStats[] => {
+    if (plantingReports.length === 0) {
+      return [];
+    }
+
+    const expectedMap = new Map<
+      string,
+      {
+        expectedDurations: number[];
+        expectedYieldPerPlant: number[];
+      }
+    >();
+
+    const actualMap = new Map<
+      string,
+      {
+        actualDurations: number[];
+        actualYieldPerPlant: number[];
+      }
+    >();
+    const totalCounts = new Map<string, number>();
+
+    const ensureExpectedEntry = (crop: string) => {
+      if (!expectedMap.has(crop)) {
+        expectedMap.set(crop, {
+          expectedDurations: [],
+          expectedYieldPerPlant: [],
+        });
+      }
+      return expectedMap.get(crop)!;
+    };
+
+    const ensureActualEntry = (crop: string) => {
+      if (!actualMap.has(crop)) {
+        actualMap.set(crop, {
+          actualDurations: [],
+          actualYieldPerPlant: [],
+        });
+      }
+      return actualMap.get(crop)!;
+    };
+
+    plantingReports.forEach(report => {
+      const crop = report.crop || 'Unspecified Crop';
+      const expectedEntry = ensureExpectedEntry(crop);
+      totalCounts.set(crop, (totalCounts.get(crop) || 0) + 1);
+
+      const expectedDateMs = extractExpectedHarvestDateMs(report);
+      const plantingDateMs = extractDateFromFields(report, ['plantingDate', 'plantedDate']);
+      if (expectedDateMs !== null && plantingDateMs !== null) {
+        const durationDays = (expectedDateMs - plantingDateMs) / ONE_DAY_IN_MS;
+        if (Number.isFinite(durationDays)) {
+          expectedEntry.expectedDurations.push(durationDays);
+        }
+      }
+
+      const expectedYield = extractExpectedYieldKg(report);
+      if (expectedYield !== null) {
+        const plantCount = extractPlantCount(report);
+        if (plantCount && plantCount > 0) {
+          expectedEntry.expectedYieldPerPlant.push(expectedYield / plantCount);
+        }
+      }
+    });
+
+    harvestedReports.forEach(report => {
+      const crop = report.crop || 'Unspecified Crop';
+      const actualEntry = ensureActualEntry(crop);
+
+      const actualDateMs = extractActualHarvestDateMs(report);
+      const plantingDateMs = extractDateFromFields(report, ['plantingDate', 'plantedDate']);
+      if (actualDateMs !== null && plantingDateMs !== null) {
+        const durationDays = (actualDateMs - plantingDateMs) / ONE_DAY_IN_MS;
+        if (Number.isFinite(durationDays)) {
+          actualEntry.actualDurations.push(durationDays);
+        }
+      }
+
+      const actualYield = extractActualHarvestKg(report);
+      if (actualYield !== null) {
+        const plantCount = extractPlantCount(report);
+        if (plantCount && plantCount > 0) {
+          actualEntry.actualYieldPerPlant.push(actualYield / plantCount);
+        }
+      }
+    });
+
+    const crops = new Set<string>([
+      ...Array.from(expectedMap.keys()),
+      ...Array.from(actualMap.keys()),
+    ]);
+
+    return Array.from(crops)
+      .map(crop => {
+        const expectedEntry = expectedMap.get(crop);
+        const actualEntry = actualMap.get(crop);
+
+        if (!expectedEntry || expectedEntry.expectedDurations.length === 0) {
+          return null;
+        }
+
+        const avgExpectedDuration = average(expectedEntry.expectedDurations);
+        const avgActualDuration = actualEntry ? average(actualEntry.actualDurations) : null;
+        const avgExpectedYieldPerPlant = average(expectedEntry.expectedYieldPerPlant);
+        const avgActualYieldPerPlant = actualEntry ? average(actualEntry.actualYieldPerPlant) : null;
+
+        const dateDifferenceDays =
+          avgExpectedDuration !== null && avgActualDuration !== null
+            ? avgActualDuration - avgExpectedDuration
+            : null;
+        const yieldDifference =
+          avgExpectedYieldPerPlant !== null && avgActualYieldPerPlant !== null
+            ? avgActualYieldPerPlant - avgExpectedYieldPerPlant
+            : null;
+
+        const expectedSampleSize = expectedEntry.expectedDurations.length;
+        const actualSampleSize = actualEntry ? actualEntry.actualDurations.length : 0;
+        const expectedYieldPerPlantSampleSize = expectedEntry.expectedYieldPerPlant.length;
+        const actualYieldPerPlantSampleSize = actualEntry ? actualEntry.actualYieldPerPlant.length : 0;
+
+        return {
+          crop,
+          averageExpectedDurationDays: avgExpectedDuration,
+          averageActualDurationDays: avgActualDuration,
+          expectedSampleSize,
+          actualSampleSize,
+          totalReportCount: totalCounts.get(crop) || 0,
+          dateDifferenceDays,
+          averageExpectedYieldPerPlant: avgExpectedYieldPerPlant,
+          averageActualYieldPerPlant: avgActualYieldPerPlant,
+          expectedYieldPerPlantSampleSize,
+          actualYieldPerPlantSampleSize,
+          yieldDifference,
+        } as CropTimelineStats;
+      })
+      .filter((item): item is CropTimelineStats => item !== null)
+      .filter(item => item.expectedSampleSize > 0)
+      .sort((a, b) => {
+        const aScore =
+          (a.actualSampleSize || 0) +
+          (a.expectedSampleSize || 0) +
+          (a.expectedYieldPerPlantSampleSize || 0) +
+          (a.actualYieldPerPlantSampleSize || 0);
+        const bScore =
+          (b.actualSampleSize || 0) +
+          (b.expectedSampleSize || 0) +
+          (b.expectedYieldPerPlantSampleSize || 0) +
+          (b.actualYieldPerPlantSampleSize || 0);
+        return bScore - aScore;
+      });
+  };
+
+  const sortedHarvestEntries = React.useMemo(() => {
+    const entries = harvestRecords.slice();
+
+    const getExpected = (record: any) =>
+      typeof record.expectedDurationDays === 'number' ? record.expectedDurationDays : null;
+    const getActual = (record: any) =>
+      typeof record.actualDurationDays === 'number' ? record.actualDurationDays : null;
+
+    const compareDesc = (aVal: number | null, bVal: number | null) => {
+      const aNum = typeof aVal === 'number' ? aVal : -Infinity;
+      const bNum = typeof bVal === 'number' ? bVal : -Infinity;
+      return bNum - aNum;
+    };
+
+    const compareAsc = (aVal: number | null, bVal: number | null) => {
+      const aNum = typeof aVal === 'number' ? aVal : Infinity;
+      const bNum = typeof bVal === 'number' ? bVal : Infinity;
+      return aNum - bNum;
+    };
+
+    switch (harvestSortOption) {
+      case 'expectedDesc':
+        entries.sort((a, b) => compareDesc(getExpected(a), getExpected(b)));
+        break;
+      case 'expectedAsc':
+        entries.sort((a, b) => compareAsc(getExpected(a), getExpected(b)));
+        break;
+      case 'actualDesc':
+        entries.sort((a, b) => compareDesc(getActual(a), getActual(b)));
+        break;
+      case 'actualAsc':
+        entries.sort((a, b) => compareAsc(getActual(a), getActual(b)));
+        break;
+      default:
+        break;
+    }
+
+    return entries;
+  }, [harvestRecords, harvestSortOption]);
+
+  const harvestTimelineStats = React.useMemo(() => {
+    if (plantingRecords.length === 0) {
+      return [];
+    }
+    const harvestedReports = harvestRecords.filter(isReportHarvested);
+    return buildCropTimeline(plantingRecords, harvestedReports);
+  }, [plantingRecords, harvestRecords]);
+
   // Function to group records by user account
   const groupRecordsByUser = (records: any[], recordType: 'planting' | 'harvest' = 'planting') => {
     const userGroups: { [key: string]: any } = {};
@@ -2112,32 +2388,45 @@ export default function AdminPage() {
       console.log(`📊 Filtered harvest records: ${records.length} → ${processedRecords.length} (removed duplicates)`);
     }
     
-    processedRecords.forEach(record => {
-      const userId = record.userId || record.farmerEmail || record.userEmail;
+    const emailSet = new Set<string>();
+    const uniqueEmailRecords = processedRecords.filter(record => {
+      if (recordType !== 'harvest') return true;
+      const email = record.farmerEmail || record.userEmail || '';
+      if (!email) return true;
+      if (emailSet.has(email)) {
+        return false;
+      }
+      emailSet.add(email);
+      return true;
+    });
+
+    uniqueEmailRecords.forEach(record => {
+      const email = record.farmerEmail || record.userEmail || '';
+      const userKey = email || record.userId || 'unknown-user';
       const userName = record.farmerName || record.userName || 'Unknown User';
-      const userEmail = record.farmerEmail || record.userEmail || 'unknown@email.com';
+      const userEmail = email || record.userEmail || record.farmerEmail || 'unknown@email.com';
       
-      if (!userGroups[userId]) {
-        userGroups[userId] = {
-          userId: userId,
+      if (!userGroups[userKey]) {
+        userGroups[userKey] = {
+          userId: userKey,
           userName: userName,
           userEmail: userEmail,
-          userCropEmoji: usersDirectory[userId]?.userCropEmoji,
+          userCropEmoji: usersDirectory[userKey]?.userCropEmoji,
           reports: [],
           unreadCount: 0,
           latestReportDate: null
         };
       }
       
-      userGroups[userId].reports.push(record);
+      userGroups[userKey].reports.push(record);
       if (!record.read) {
-        userGroups[userId].unreadCount++;
+        userGroups[userKey].unreadCount++;
       }
       
       // Track latest report date
       const reportDate = record.submittedAt?.toDate?.() || record.updatedAt?.toDate?.() || new Date();
-      if (!userGroups[userId].latestReportDate || reportDate > userGroups[userId].latestReportDate) {
-        userGroups[userId].latestReportDate = reportDate;
+      if (!userGroups[userKey].latestReportDate || reportDate > userGroups[userKey].latestReportDate) {
+        userGroups[userKey].latestReportDate = reportDate;
       }
     });
     
@@ -2148,10 +2437,23 @@ export default function AdminPage() {
   };
 
   // Function to mark reports as read
-  const markReportsAsRead = (userId: string, reportType: 'planting' | 'harvest') => {
+  const markReportsAsRead = async (userId: string, reportType: 'planting' | 'harvest') => {
     const records = reportType === 'planting' ? plantingRecords : harvestRecords;
     const setRecords = reportType === 'planting' ? setPlantingRecords : setHarvestRecords;
     const setGroupedRecords = reportType === 'planting' ? setGroupedPlantingRecords : setGroupedHarvestRecords;
+    
+    // Get records for this user that are unread
+    const userRecords = records.filter(record => 
+      record.userId === userId && !record.read
+    );
+    
+    // Update persistent read status for all user's unread records
+    const newReadReports = new Set(readReports);
+    userRecords.forEach(record => {
+      newReadReports.add(record.id);
+    });
+    setReadReports(newReadReports);
+    await saveReadReports(newReadReports);
     
     // Update individual records
     const updatedRecords = records.map(record => 
@@ -2197,7 +2499,9 @@ export default function AdminPage() {
       };
 
       // Add announcement to Firebase (this will be visible to all users)
+      console.log('📢 Creating announcement:', announcementData);
       await addAnnouncement(announcementData);
+      console.log('✅ Announcement created successfully');
 
       // Reset form
       setAnnouncementTitle('');
@@ -2857,143 +3161,19 @@ export default function AdminPage() {
 
       {activeNav === 'price-monitoring' && (
         <View style={styles.adminPriceMonitoringContainer}>
-          {/* Header */}
-          <View style={styles.adminPriceHeader}>
-            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring</Text>
-          </View>
-
-          {/* Data Source Info */}
-          <View style={styles.adminDataSourceInfo}>
-            <Ionicons name="document-text" size={16} color={LIGHT_GREEN} />
-            <Text style={styles.adminDataSourceText}>
-              Data Source: DA Website (https://www.da.gov.ph/)
-            </Text>
-          </View>
-
-          {/* PDF Data Management Button */}
-          <View style={styles.adminMLRefreshContainer}>
-            <TouchableOpacity 
-              style={styles.adminMLRefreshButton}
-              onPress={() => router.push('/admin-pdf-data')}
-            >
-              <Ionicons 
-                name="document-text" 
-                size={20} 
-                color="#fff"
-              />
-              <Text style={styles.adminMLRefreshButtonText}>
-                Manage PDF Data
-              </Text>
-            </TouchableOpacity>
-              <Text style={styles.adminMLForecastsCount}>
-              View and manage all PDF data
-              </Text>
-          </View>
-
-          {/* Search Bar */}
-          <View style={styles.adminPriceSearchContainer}>
-            <View style={styles.adminPriceSearchInputContainer}>
-              <Ionicons name="search" size={20} color="#666" style={styles.adminPriceSearchIcon} />
-              <TextInput
-                style={styles.adminPriceSearchInput}
-                placeholder="🔍 Search for a product..."
-                placeholderTextColor="#999"
-                value={priceSearchQuery}
-                onChangeText={setPriceSearchQuery}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {priceSearchQuery.length > 0 && (
-                <TouchableOpacity
-                  style={styles.adminPriceClearButton}
-                  onPress={() => setPriceSearchQuery('')}
-                >
-                  <Ionicons name="close-circle" size={20} color="#666" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* Filter Buttons */}
-          <View style={styles.adminPriceFilterButtonsContainer}>
-            <TouchableOpacity
-              style={[
-                styles.adminPriceFilterButton,
-                selectedCategory === null && styles.adminPriceFilterButtonActive
-              ]}
-              onPress={() => setSelectedCategory(null)}
-            >
-              <Ionicons 
-                name="apps" 
-                size={24} 
-                color={selectedCategory === null ? "#fff" : GREEN} 
-              />
-            </TouchableOpacity>
-            
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.adminCategoryScrollView}
-              contentContainerStyle={styles.adminCategoryScrollContent}
-            >
-              {adminCategorizedData.map((category) => (
-            <TouchableOpacity
-                  key={category.name}
-              style={[
-                    styles.adminCategoryFilterButton,
-                    selectedCategory === category.name && styles.adminCategoryFilterButtonActive
-              ]}
-                  onPress={() => setSelectedCategory(selectedCategory === category.name ? null : category.name)}
-            >
-              <Text style={styles.adminCategoryFilterEmoji}>{category.icon}</Text>
-              <Text style={[
-                    styles.adminCategoryFilterText,
-                    selectedCategory === category.name && styles.adminCategoryFilterTextActive
-              ]}>
-                    {category.name}
-              </Text>
-            </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Categorized Data Display */}
-          {priceLoading ? (
-            <View style={styles.adminPriceLoadingContainer}>
-              <ActivityIndicator size="large" color={GREEN} />
-              <Text style={styles.adminPriceLoadingText}>🔄 Loading PDF data...</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={adminFilteredCategories}
-              renderItem={renderAdminCategorySection}
-              keyExtractor={(item) => item.name}
-              contentContainerStyle={[styles.adminCategoryList, { paddingBottom: 100 }]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={priceRefreshing}
-                  onRefresh={onPriceRefresh}
-                  colors={[GREEN]}
-                  tintColor={GREEN}
-                />
-              }
-              ListEmptyComponent={
-                <View style={styles.adminPriceEmptyState}>
-                  <Text style={styles.adminPriceEmptyEmoji}>🔍</Text>
-                  <Text style={styles.adminPriceEmptyTitle}>No data found</Text>
-                  <Text style={styles.adminPriceEmptySubtitle}>
-                    {priceSearchQuery.trim() 
-                      ? `No products found matching "${priceSearchQuery}"`
-                      : selectedCategory 
-                        ? `No data found in ${selectedCategory} category`
-                        : 'No PDF data available. Please check your connection.'
-                    }
-                  </Text>
-                </View>
-              }
-            />
-          )}
+          <PriceMonitoringList 
+            commodities={priceCommodities} 
+            loading={loadingPrices}
+            showViewAllButton={true}
+            onViewAllPress={() => {
+              // Toggle showing all records or show in a modal
+              Alert.alert(
+                'View All Records',
+                `Total commodities: ${priceCommodities.length}\n\nThis feature will show all price records in detail view.`,
+                [{ text: 'OK' }]
+              );
+            }}
+          />
         </View>
       )}
 
@@ -3096,13 +3276,12 @@ export default function AdminPage() {
           {/* Header */}
           <View style={styles.searchPageHeader}>
             <TouchableOpacity 
-              style={styles.backButton}
+              style={[styles.backButton, styles.searchPageBackButton]}
               onPress={() => setActiveNav('home')}
             >
               <Ionicons name="arrow-back" size={24} color={GREEN} />
             </TouchableOpacity>
             <Text style={styles.searchPageTitle}>Search</Text>
-            <View style={{ width: 24 }} />
           </View>
           
           <ScrollView 
@@ -3732,9 +3911,7 @@ export default function AdminPage() {
                 <Ionicons name="arrow-back" size={24} color={GREEN} />
               </TouchableOpacity>
               <Text style={styles.sectionTitle}>Planting Records</Text>
-              <TouchableOpacity onPress={clearAllReports} style={{ width: 24 }}>
-                <Ionicons name="trash" size={22} color="#c0392b" />
-              </TouchableOpacity>
+              <View style={{ width: 24 }} />
             </View>
             
             <Text style={styles.sectionDescription}>
@@ -3758,7 +3935,7 @@ export default function AdminPage() {
             {/* Global Planting Trends */}
             <View style={styles.globalTrendsCard}>
               <View style={styles.globalTrendsHeader}>
-                <Text style={styles.globalTrendsTitle}>🌍 Global Planting Trends</Text>
+                <Text style={styles.globalTrendsTitle}>🌍 Lopez Planting Trends</Text>
               </View>
 
               {globalLoading ? (
@@ -3769,7 +3946,7 @@ export default function AdminPage() {
                 <>
                   {/* Global Crop Distribution */}
                   <View style={styles.barChartContainer}>
-                    <Text style={styles.barChartTitle}>Global Crop Distribution</Text>
+                    <Text style={styles.barChartTitle}>Lopez Crop Distribution</Text>
                     
                     {/* Month Navigation */}
                     <View style={styles.monthNavigationContainer}>
@@ -3861,8 +4038,8 @@ export default function AdminPage() {
                                 <View style={styles.cropInfoContainer}>
                                   <View style={styles.cropNameRow}>
                                     <Text style={styles.cropIcon}>{getCropIcon(item.crop)}</Text>
-                                    <Text style={styles.horizontalBarCropName}>{item.crop}</Text>
-                                    <Text style={styles.cropTagalogName}> / {getCropTagalogName(item.crop)}</Text>
+                                    <Text style={styles.horizontalBarCropName} numberOfLines={1}>{item.crop}</Text>
+                                    <Text style={styles.cropTagalogName} numberOfLines={1}> / {getCropTagalogName(item.crop)}</Text>
                                   </View>
                                 </View>
                                 
@@ -3969,8 +4146,8 @@ export default function AdminPage() {
                                 <View style={styles.cropInfoContainer}>
                                   <View style={styles.cropNameRow}>
                                     <Text style={styles.cropIcon}>{getCropIcon(item.crop)}</Text>
-                                    <Text style={styles.horizontalBarCropName}>{item.crop}</Text>
-                                    <Text style={styles.cropTagalogName}> / {getCropTagalogName(item.crop)}</Text>
+                                    <Text style={styles.horizontalBarCropName} numberOfLines={1}>{item.crop}</Text>
+                                    <Text style={styles.cropTagalogName} numberOfLines={1}> / {getCropTagalogName(item.crop)}</Text>
                                   </View>
                                 </View>
                                 
@@ -4230,7 +4407,7 @@ export default function AdminPage() {
         </ScrollView>
       )}
 
-      {activeNav === 'harvest-records' && !showUserReports && (
+      {activeNav === 'harvest-records' && !showUserReports && !showAllHarvestEntries && (
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -4252,12 +4429,12 @@ export default function AdminPage() {
               >
                 <Ionicons name="arrow-back" size={24} color={GREEN} />
               </TouchableOpacity>
-              <Text style={styles.sectionTitle}>Harvest Records</Text>
+              <Text style={styles.sectionTitle}>All Harvest Records</Text>
               <View style={{ width: 24 }} />
             </View>
             
             <Text style={styles.sectionDescription}>
-              Reports grouped by farmer account
+              All harvest reports from all farmers
             </Text>
 
             {/* View Records Button */}
@@ -4266,18 +4443,19 @@ export default function AdminPage() {
               onPress={() => {
                 setReportType('harvest');
                 setShowUserReports(true);
+                setShowAllHarvestEntries(false);
                 setSelectedUserAccount(null);
               }}
             >
               <Ionicons name="list" size={24} color="#2E7D32" />
               <Text style={styles.viewRecordsButtonTitle}>View Records</Text>
-              <Text style={styles.viewRecordsButtonSubtitle}>View your submitted harvest reports</Text>
+              <Text style={styles.viewRecordsButtonSubtitle}>Review harvest reports by farmer</Text>
             </TouchableOpacity>
 
             {/* Global Harvest Trends Section */}
             <View style={styles.globalTrendsCard}>
               <View style={styles.globalTrendsHeader}>
-                <Text style={styles.globalTrendsTitle}>🌍 Global Harvest Trends</Text>
+                <Text style={styles.globalTrendsTitle}>🌍 Lopez Harvest Trends</Text>
               </View>
 
               {/* Loading State */}
@@ -4290,7 +4468,7 @@ export default function AdminPage() {
                 <>
                   {/* Horizontal Bar Chart with Rankings */}
                   <View style={styles.barChartContainer}>
-                    <Text style={styles.barChartTitle}>Global Harvest Distribution</Text>
+                    <Text style={styles.barChartTitle}>Lopez Harvest Distribution</Text>
                     
                     {/* Month Navigation */}
                     <View style={styles.monthNavigationContainer}>
@@ -4515,6 +4693,118 @@ export default function AdminPage() {
               )}
             </View>
 
+            <View style={styles.cropTimelineCard}>
+              <Text style={styles.cropTimelineTitle}>📈 Expected and Actual Harvest</Text>
+              <Text style={styles.cropTimelineSubtitle}>
+                Compare planned harvest timelines and yields for each crop
+              </Text>
+
+              {harvestTimelineStats.length > 0 ? (
+                harvestTimelineStats.map((item, index) => {
+                  const dateDifferenceText = formatDateDifference(item.dateDifferenceDays);
+                  const yieldDifferenceText = formatYieldDifference(item.yieldDifference);
+
+                  return (
+                    <View
+                      key={item.crop}
+                      style={[
+                        styles.cropTimelineItem,
+                        index === harvestTimelineStats.length - 1 && styles.cropTimelineItemLast,
+                      ]}
+                    >
+                      <View style={styles.cropTimelineHeader}>
+                        <View style={styles.cropTimelineName}>
+                          <Text style={styles.cropTimelineIcon}>{getCropIcon(item.crop)}</Text>
+                          <Text style={styles.cropTimelineCrop}>{item.crop}</Text>
+                          <Text style={styles.cropTimelineTagalog}> / {getCropTagalogName(item.crop)}</Text>
+                        </View>
+                        <Text style={styles.cropTimelineSamples}>
+                          {item.totalReportCount} report{item.totalReportCount === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+
+                      <View style={styles.cropTimelineRow}>
+                        <Text style={styles.cropTimelineLabel}>Expected</Text>
+                        <View style={styles.cropTimelineValues}>
+                          <View style={styles.cropTimelineStatGroup}>
+                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
+                            <Text style={styles.cropTimelineValue}>
+                              {formatDurationDays(item.averageExpectedDurationDays)}
+                            </Text>
+                          </View>
+                          <View style={styles.cropTimelineStatGroupRight}>
+                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
+                            <Text style={styles.cropTimelinePerPlant}>
+                              {formatPerPlantDisplay(item.averageExpectedYieldPerPlant)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={styles.cropTimelineRow}>
+                        <Text style={styles.cropTimelineLabel}>Actual</Text>
+                        <View style={styles.cropTimelineValues}>
+                          <View style={styles.cropTimelineStatGroup}>
+                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
+                            <Text style={styles.cropTimelineValue}>
+                              {formatDurationDays(item.averageActualDurationDays, true)}
+                            </Text>
+                          </View>
+                          <View style={styles.cropTimelineStatGroupRight}>
+                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
+                            <Text style={styles.cropTimelinePerPlant}>
+                              {formatPerPlantDisplay(item.averageActualYieldPerPlant, true)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {(dateDifferenceText || yieldDifferenceText) && (
+                        <View style={styles.cropTimelineDeltaRow}>
+                          {dateDifferenceText ? (
+                            <Text
+                              style={[
+                                styles.cropTimelineDeltaText,
+                                item.dateDifferenceDays !== null && Math.abs(item.dateDifferenceDays) < 1
+                                  ? styles.cropTimelineOnTime
+                                  : item.dateDifferenceDays !== null && item.dateDifferenceDays > 0
+                                  ? styles.cropTimelineDelay
+                                  : styles.cropTimelineAhead,
+                              ]}
+                            >
+                              {dateDifferenceText}
+                            </Text>
+                          ) : null}
+                          {yieldDifferenceText ? (
+                            <Text
+                              style={[
+                                styles.cropTimelineDeltaText,
+                                item.yieldDifference !== null && Math.abs(item.yieldDifference) < 0.1
+                                  ? styles.cropTimelineYieldEven
+                                  : item.yieldDifference !== null && item.yieldDifference > 0
+                                  ? styles.cropTimelineYieldGain
+                                  : styles.cropTimelineYieldDrop,
+                              ]}
+                            >
+                              {yieldDifferenceText}
+                            </Text>
+                          ) : null}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={styles.cropTimelineEmptyState}>
+                  <Ionicons name="analytics-outline" size={40} color="#9E9E9E" />
+                  <Text style={styles.cropTimelineEmptyTitle}>No comparisons yet</Text>
+                  <Text style={styles.cropTimelineEmptySubtitle}>
+                    Submit both planting and harvest reports to unlock crop averages.
+                  </Text>
+                </View>
+              )}
+            </View>
+
             {/* Summary Cards - Outside Global Trends */}
             {globalHarvestAnalytics && (
               <View style={styles.highlightsContainer}>
@@ -4540,6 +4830,172 @@ export default function AdminPage() {
         </ScrollView>
       )}
 
+      {activeNav === 'harvest-records' && showAllHarvestEntries && (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.contentContainer}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => {
+                  setShowAllHarvestEntries(false);
+                }}
+              >
+                <Ionicons name="arrow-back" size={24} color={GREEN} />
+              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>All Harvest Entries</Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <Text style={styles.sectionDescription}>
+              Every harvest report submitted by farmers across Lopez
+            </Text>
+
+            <View style={styles.sortContainer}>
+              <Text style={styles.sortLabel}>Sort by</Text>
+              <View style={styles.sortButtonsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.sortChip,
+                    harvestSortOption === 'expectedDesc' && styles.sortChipActive,
+                  ]}
+                  onPress={() => setHarvestSortOption('expectedDesc')}
+                >
+                  <Text
+                    style={[
+                      styles.sortChipText,
+                      harvestSortOption === 'expectedDesc' && styles.sortChipTextActive,
+                    ]}
+                  >
+                    Expected duration ↓
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.sortChip,
+                    harvestSortOption === 'expectedAsc' && styles.sortChipActive,
+                  ]}
+                  onPress={() => setHarvestSortOption('expectedAsc')}
+                >
+                  <Text
+                    style={[
+                      styles.sortChipText,
+                      harvestSortOption === 'expectedAsc' && styles.sortChipTextActive,
+                    ]}
+                  >
+                    Expected duration ↑
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.sortChip,
+                    harvestSortOption === 'actualDesc' && styles.sortChipActive,
+                  ]}
+                  onPress={() => setHarvestSortOption('actualDesc')}
+                >
+                  <Text
+                    style={[
+                      styles.sortChipText,
+                      harvestSortOption === 'actualDesc' && styles.sortChipTextActive,
+                    ]}
+                  >
+                    Actual duration ↓
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.sortChip,
+                    harvestSortOption === 'actualAsc' && styles.sortChipActive,
+                  ]}
+                  onPress={() => setHarvestSortOption('actualAsc')}
+                >
+                  <Text
+                    style={[
+                      styles.sortChipText,
+                      harvestSortOption === 'actualAsc' && styles.sortChipTextActive,
+                    ]}
+                  >
+                    Actual duration ↑
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {sortedHarvestEntries.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="basket-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyText}>No harvest entries available</Text>
+              </View>
+            ) : (
+              <View style={styles.allEntriesList}>
+                {sortedHarvestEntries.map((record: any) => (
+                  <TouchableOpacity
+                    key={record.id}
+                    style={styles.allEntryCard}
+                    onPress={() => openReportDetail(record)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.allEntryHeader}>
+                      <View>
+                        <Text style={styles.allEntryCrop}>{record.crop || 'Unknown Crop'}</Text>
+                        <Text style={styles.cropTagalogName}> / {getCropTagalogName(record.crop)}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#999" />
+                    </View>
+
+                    <Text style={styles.allEntryFarmer}>
+                      {record.farmerName || 'Unknown Farmer'} • {record.farmerEmail || 'unknown@email.com'}
+                    </Text>
+
+                    <View style={styles.allEntryDurationRow}>
+                      <View style={styles.allEntryDurationColumn}>
+                        <Text style={styles.allEntryLabel}>Expected duration</Text>
+                        <Text style={styles.allEntryValue}>
+                          {formatDurationValue(record.expectedDurationDays)}
+                        </Text>
+                      </View>
+                      <View style={styles.allEntryDurationColumn}>
+                        <Text style={styles.allEntryLabel}>Actual duration</Text>
+                        <Text style={styles.allEntryValue}>
+                          {formatDurationValue(record.actualDurationDays, 'Not harvested yet')}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.allEntryDurationRow}>
+                      <View style={styles.allEntryDurationColumn}>
+                        <Text style={styles.allEntryLabel}>Expected yield / plant</Text>
+                        <Text style={styles.allEntryValue}>
+                          {formatYieldPerPlantValue(record.expectedYieldPerPlant)}
+                        </Text>
+                      </View>
+                      <View style={styles.allEntryDurationColumn}>
+                        <Text style={styles.allEntryLabel}>Actual yield / plant</Text>
+                        <Text style={styles.allEntryValue}>
+                          {formatYieldPerPlantValue(record.actualYieldPerPlant, 'Not harvested yet')}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.allEntryStatsText}>
+                      Expected yield: {record.expectedYield ?? 0} kg • Actual:{' '}
+                      {record.actualHarvest ?? record.harvestWeight ?? 0} kg
+                    </Text>
+
+                    <Text style={styles.allEntryDate}>
+                      Submitted: {record.submittedAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      )}
+
       {/* All Harvest Records View - Grouped by User */}
       {activeNav === 'harvest-records' && showUserReports && !selectedUserAccount && (
         <ScrollView 
@@ -4560,7 +5016,7 @@ export default function AdminPage() {
                       </View>
                       
             <Text style={styles.sectionDescription}>
-              All harvest reports grouped by farmer
+              All harvest reports from all farmers
             </Text>
 
             {loadingRecords ? (
@@ -4574,6 +5030,28 @@ export default function AdminPage() {
               </View>
             ) : (
               <View style={styles.messagesList}>
+                <TouchableOpacity
+                  style={[styles.messageCard, styles.viewAllMessageCard]}
+                  onPress={() => {
+                    setShowAllHarvestEntries(true);
+                    setShowUserReports(false);
+                    setSelectedUserAccount(null);
+                  }}
+                >
+                  <View style={styles.messageHeader}>
+                    <View style={styles.userInfo}>
+                      <View style={[styles.messageUserAvatar, styles.viewAllAvatar]}>
+                        <Ionicons name="layers" size={18} color={GREEN} />
+                      </View>
+                      <View style={styles.userDetails}>
+                        <Text style={styles.userName}>View All Records</Text>
+                        <Text style={styles.viewAllSubtitle}>See every harvest report across all farmers</Text>
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={GREEN} />
+                  </View>
+                </TouchableOpacity>
+
                 {groupedHarvestRecords.map((userGroup, index) => (
                   <TouchableOpacity 
                     key={userGroup.userId} 
@@ -4676,9 +5154,37 @@ export default function AdminPage() {
                     <View style={styles.reportDetailsContainer}>
                               <Ionicons name="basket" size={16} color="#666" />
                       <Text style={styles.reportDetails}>
-                        Expected: {report.expectedHarvest} kg • Actual: {report.actualHarvest} kg
+                        Expected: {report.expectedYield} kg • Actual: {report.actualHarvest || report.harvestWeight || 0} kg
                               </Text>
                     </View>
+
+                    {(report.expectedDurationDays || report.actualDurationDays) && (
+                      <View style={styles.reportDetailsContainer}>
+                        <Ionicons name="time" size={16} color="#666" />
+                        <View style={styles.reportDurationContent}>
+                          <Text style={styles.reportDetails}>
+                            Expected duration: {formatDurationValue(report.expectedDurationDays)}
+                          </Text>
+                          <Text style={styles.reportDetails}>
+                            Actual duration: {formatDurationValue(report.actualDurationDays, 'Not harvested yet')}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {(report.expectedYieldPerPlant || report.actualYieldPerPlant) && (
+                      <View style={styles.reportDetailsContainer}>
+                        <Ionicons name="speedometer" size={16} color="#666" />
+                        <View style={styles.reportDurationContent}>
+                          <Text style={styles.reportDetails}>
+                            Expected yield / plant: {formatYieldPerPlantValue(report.expectedYieldPerPlant)}
+                          </Text>
+                          <Text style={styles.reportDetails}>
+                            Actual yield / plant: {formatYieldPerPlantValue(report.actualYieldPerPlant, 'Not harvested yet')}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
                     
                     {/* Show decline reason if harvest was lower than expected */}
                     {report.declineReason && (
@@ -4898,11 +5404,41 @@ export default function AdminPage() {
                       <Text style={styles.detailValue}>{selectedReport.expectedHarvest} kg</Text>
                     </View>
                   )}
+                  {(selectedReport.expectedDurationDays || selectedReport.actualDurationDays) && (
+                    <View style={styles.detailDurationInfo}>
+                      <Ionicons name="time" size={20} color={GREEN} />
+                      <View style={styles.detailDurationText}>
+                        <Text style={styles.detailLabel}>Expected duration:</Text>
+                        <Text style={styles.detailValue}>
+                          {formatDurationValue(selectedReport.expectedDurationDays)}
+                        </Text>
+                        <Text style={styles.detailLabel}>Actual duration:</Text>
+                        <Text style={styles.detailValue}>
+                          {formatDurationValue(selectedReport.actualDurationDays, 'Not harvested yet')}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                   {selectedReport.actualHarvest && (
                     <View style={styles.detailRow}>
                       <Ionicons name="basket" size={20} color={GREEN} />
                       <Text style={styles.detailLabel}>Actual Harvest:</Text>
                       <Text style={styles.detailValue}>{selectedReport.actualHarvest} kg</Text>
+                    </View>
+                  )}
+                  {(selectedReport.expectedYieldPerPlant || selectedReport.actualYieldPerPlant) && (
+                    <View style={styles.detailDurationInfo}>
+                      <Ionicons name="speedometer" size={20} color={GREEN} />
+                      <View style={styles.detailDurationText}>
+                        <Text style={styles.detailLabel}>Expected yield / plant:</Text>
+                        <Text style={styles.detailValue}>
+                          {formatYieldPerPlantValue(selectedReport.expectedYieldPerPlant)}
+                        </Text>
+                        <Text style={styles.detailLabel}>Actual yield / plant:</Text>
+                        <Text style={styles.detailValue}>
+                          {formatYieldPerPlantValue(selectedReport.actualYieldPerPlant, 'Not harvested yet')}
+                        </Text>
+                      </View>
                     </View>
                   )}
                   {selectedReport.declineReason && (
@@ -7550,6 +8086,11 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     flex: 1,
   },
+  reportDurationContent: {
+    flex: 1,
+    marginLeft: 6,
+    gap: 2,
+  },
   recordDate: {
     fontSize: 12,
     color: '#999',
@@ -7574,6 +8115,191 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 20,
     lineHeight: 20,
+  },
+  sortContainer: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  sortLabel: {
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  sortButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sortChip: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#fff',
+  },
+  sortChipActive: {
+    backgroundColor: '#E8F5E8',
+    borderColor: GREEN,
+  },
+  sortChipText: {
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '500',
+  },
+  sortChipTextActive: {
+    color: GREEN,
+  },
+  cropTimelineCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E0F2E9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  cropTimelineTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  cropTimelineSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  cropTimelineItem: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  cropTimelineItemLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+  cropTimelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cropTimelineName: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  cropTimelineIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  cropTimelineCrop: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  cropTimelineTagalog: {
+    fontSize: 13,
+    color: '#777',
+    marginLeft: 6,
+  },
+  cropTimelineSamples: {
+    fontSize: 12,
+    color: '#777',
+    fontWeight: '500',
+  },
+  cropTimelineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cropTimelineLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2E7D32',
+    width: 80,
+  },
+  cropTimelineValues: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cropTimelineStatGroup: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  cropTimelineStatGroupRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  cropTimelineStatLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginBottom: 2,
+  },
+  cropTimelineValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  cropTimelinePerPlant: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 2,
+  },
+  cropTimelineDeltaRow: {
+    marginTop: 10,
+  },
+  cropTimelineDeltaText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  cropTimelineOnTime: {
+    color: '#2E7D32',
+  },
+  cropTimelineDelay: {
+    color: '#C62828',
+  },
+  cropTimelineAhead: {
+    color: '#1B5E20',
+  },
+  cropTimelineYieldEven: {
+    color: '#2E7D32',
+  },
+  cropTimelineYieldGain: {
+    color: '#1B5E20',
+  },
+  cropTimelineYieldDrop: {
+    color: '#C62828',
+  },
+  cropTimelineEmptyState: {
+    paddingVertical: 28,
+    alignItems: 'center',
+  },
+  cropTimelineEmptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 12,
+  },
+  cropTimelineEmptySubtitle: {
+    fontSize: 13,
+    color: '#888',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
   },
   viewRecordsButton: {
     backgroundColor: '#fff',
@@ -7608,6 +8334,51 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
     textAlign: 'center',
+  },
+  secondaryActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E8F5E8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  secondaryActionTextContainer: {
+    flex: 1,
+    marginHorizontal: 12,
+  },
+  secondaryActionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  secondaryActionSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
+  },
+  viewAllMessageCard: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+  },
+  viewAllAvatar: {
+    backgroundColor: '#E8F5E8',
+    borderColor: '#C8E6C9',
+  },
+  viewAllSubtitle: {
+    fontSize: 12,
+    color: '#2E7D32',
+    marginTop: 2,
   },
   globalTrendsCard: {
     backgroundColor: '#fff',
@@ -7752,6 +8523,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    flexWrap: 'nowrap',
+    minWidth: 120,
   },
   horizontalBarLabel: {
     fontSize: 14,
@@ -7992,11 +8765,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
     marginLeft: 6,
+    flexShrink: 0,
   },
   cropTagalogName: {
     fontSize: 12,
     color: '#666',
     marginLeft: 2,
+    flexShrink: 0,
   },
   horizontalBarValue: {
     position: 'absolute',
@@ -8032,6 +8807,67 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  allEntriesList: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    gap: 12,
+  },
+  allEntryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E8F5E8',
+  },
+  allEntryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  allEntryCrop: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: GREEN,
+  },
+  allEntryFarmer: {
+    fontSize: 13,
+    color: '#555',
+    marginTop: 4,
+  },
+  allEntryDurationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    gap: 12,
+  },
+  allEntryDurationColumn: {
+    flex: 1,
+  },
+  allEntryLabel: {
+    fontSize: 11,
+    color: '#777',
+    marginBottom: 2,
+  },
+  allEntryValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  allEntryStatsText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: '#555',
+  },
+  allEntryDate: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#999',
   },
   farmersList: {
     gap: 12,
@@ -8636,6 +9472,16 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
     flex: 1,
+  },
+  detailDurationInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+    gap: 8,
+  },
+  detailDurationText: {
+    flex: 1,
+    gap: 2,
   },
   detailDeclineReason: {
     fontSize: 14,
@@ -9466,11 +10312,20 @@ const styles = StyleSheet.create({
   searchPageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 16,
     backgroundColor: '#fff',
+  },
+  searchPageBackButton: {
+    position: 'absolute',
+    left: 20,
+    top: 0,
+    bottom: 0,
+    marginRight: 0,
+    padding: 8,
+    justifyContent: 'center',
   },
   searchPageTitle: {
     fontSize: 24,
@@ -9657,6 +10512,7 @@ const styles = StyleSheet.create({
     color: GREEN,
     marginLeft: 8,
     fontWeight: '500',
+    textAlign: 'center',
   },
   adminCategoryScrollView: {
     maxHeight: 50,

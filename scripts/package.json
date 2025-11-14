@@ -1,0 +1,29 @@
+{
+  "name": "local-pdf-api",
+  "version": "1.0.0",
+  "description": "Local PDF processing API server",
+  "main": "start-local-pdf-api.js",
+  "scripts": {
+    "start": "node start-local-pdf-api.js",
+    "dev": "nodemon start-local-pdf-api.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+

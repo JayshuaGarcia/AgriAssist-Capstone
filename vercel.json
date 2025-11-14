@@ -4,12 +4,20 @@
     {
       "src": "api/check-pdfs.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "api/send-email.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/check-pdfs",
       "dest": "/api/check-pdfs"
+    },
+    {
+      "src": "/api/send-email",
+      "dest": "/api/send-email"
     }
   ],
   "env": {

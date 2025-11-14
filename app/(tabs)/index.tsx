@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Updates from 'expo-updates';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -11,7 +12,6 @@ import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
 import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../../constants/CommodityData';
 import { useNavigationBar } from '../../hooks/useNavigationBar';
 import { db } from '../../lib/firebase';
-import { realDAPriceService } from '../../lib/realDAPriceService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -219,6 +219,67 @@ export default function HomeScreen() {
   const { user, profile, logout } = useAuth();
   const { announcements, loading: announcementsLoading, error: announcementsError, loadAnnouncements } = useAnnouncements();
   const { showNotification } = useNotification();
+  
+  // EAS Updates functionality
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  
+  useEffect(() => {
+    async function checkForUpdates() {
+      try {
+        console.log('🔍 Checking for updates...');
+        console.log('🔍 __DEV__:', __DEV__);
+        console.log('🔍 Updates.isEnabled:', Updates.isEnabled);
+        
+        if (!__DEV__ && Updates.isEnabled) {
+          const update = await Updates.checkForUpdateAsync();
+          console.log('🔍 Update check result:', update);
+          
+          if (update.isAvailable) {
+            console.log('🔄 Update available, downloading...');
+            await Updates.fetchUpdateAsync();
+            console.log('✅ Update downloaded, restarting app...');
+            await Updates.reloadAsync();
+          } else {
+            console.log('✅ App is up to date');
+          }
+        } else {
+          console.log('❌ Updates not enabled or in development mode');
+        }
+      } catch (error) {
+        console.log('❌ Error checking for updates:', error);
+      }
+    }
+    
+    checkForUpdates();
+  }, []);
+
+  const handleManualUpdate = async () => {
+    setIsCheckingUpdates(true);
+    try {
+      if (!__DEV__) {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          Alert.alert('Update Available', 'Downloading update...', [{ text: 'OK' }]);
+          await Updates.fetchUpdateAsync();
+          Alert.alert('Update Downloaded', 'Restarting app to apply update...', [
+            { 
+              text: 'Restart Now', 
+              onPress: async () => await Updates.reloadAsync() 
+            }
+          ]);
+        } else {
+          Alert.alert('No Updates', 'Your app is already up to date!');
+        }
+      } else {
+        Alert.alert('Development Mode', 'Updates are not available in development mode.');
+      }
+    } catch (error) {
+      console.log('❌ Error checking for updates:', error);
+      Alert.alert('Update Error', 'Failed to check for updates. Please try again.');
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
   
   // Configure navigation bar to be hidden (same as admin)
   useNavigationBar('hidden');
@@ -1169,16 +1230,13 @@ export default function HomeScreen() {
     setPriceError(null);
 
     try {
-      console.log('🌐 REAL DA DATA: Fetching FRESH data from DA Philippines...');
-      console.log('🚫 NO OFFLINE DATA - ALWAYS FRESH FROM DA WEBSITE');
+      console.log('⚠️ Price service removed - using local CSV data instead');
       
-      // Get current prices from real DA service
-      const currentPrices = await realDAPriceService.getCurrentPrices(COMMODITY_DATA);
-      console.log(`✅ Fetched ${currentPrices.length} real prices from DA website`);
-      
-      // Get forecasts
-      const forecasts = await realDAPriceService.getPriceForecasts(COMMODITY_DATA);
-      console.log(`✅ Fetched ${forecasts.length} forecasts`);
+      // Price service removed - using CSV-based price monitoring instead
+      // Price data is now loaded via csvPriceService in PriceMonitoringList component
+      const currentPrices: any[] = [];
+      const forecasts: any[] = [];
+      console.log('⚠️ Price fetching disabled - using local CSV data via PriceMonitoringList');
       
       // Update commodities with real DA data
       const updatedCommodities = COMMODITY_DATA.map(commodity => {
@@ -2327,7 +2385,16 @@ export default function HomeScreen() {
             <View style={styles.settingsSection}>
               <Text style={styles.settingsTitle}>Settings & Preferences</Text>
               
-
+              <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/profile-information')}>
+                <View style={styles.settingIconContainer}>
+                  <Ionicons name="document-text" size={24} color={GREEN} />
+                </View>
+                <View style={styles.settingContent}>
+                  <Text style={styles.settingLabel}>Profile Information</Text>
+                  <Text style={styles.settingDescription}>View your farmer registration details</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
 
               <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/privacy')}>
                 <View style={styles.settingIconContainer}>
@@ -2339,6 +2406,7 @@ export default function HomeScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
               </TouchableOpacity>
+
 
               <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/language')}>
                 <View style={styles.settingIconContainer}>

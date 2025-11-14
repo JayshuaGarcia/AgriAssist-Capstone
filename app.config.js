@@ -2,7 +2,7 @@ export default {
   expo: {
     name: "AgriAssist",
     slug: "agriassist",
-    version: "1.0.1",
+    version: "1.0.3",
     orientation: "portrait",
     icon: "./assets/images/Iconlogo.png",
     main: "expo-router/entry",
@@ -40,8 +40,10 @@ export default {
       ]
     ],
     updates: {
-      enabled: false,
-      fallbackToCacheTimeout: 0
+      url: "https://u.expo.dev/3a3b8e5f-c66b-49dc-8f6a-457a9ecd23e0"
+    },
+    runtimeVersion: {
+      policy: "appVersion"
     },
     extra: {
       eas: {

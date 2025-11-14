@@ -19,6 +19,107 @@ interface FeatureButton {
   icon: string;
 }
 
+const createInitialFormData = () => ({
+  demographics: {
+    age: '',
+    gender: '',
+    maritalStatus: '',
+    dependents: '',
+    education: '',
+    monthlyIncome: '',
+    isSubmitted: false
+  },
+  farmingProfile: {
+    yearsFarming: '',
+    farmCommodity: [] as string[],
+    livestock: [] as string[],
+    landOwnership: '',
+    farmSize: '',
+    farmingMethods: [] as string[],
+    otherCommodity: '',
+    otherLivestock: '',
+    otherFarmSize: '',
+    isSubmitted: false
+  },
+  economicFinancial: {
+    incomeSources: '',
+    farmingFinances: '',
+    farmingIncomePercentage: '',
+    governmentAssistance: '',
+    ngoAssistance: '',
+    industryAssistance: '',
+    otherIncome: '',
+    otherFinances: '',
+    isSubmitted: false
+  },
+  technologyInnovation: {
+    farmingEquipment: [] as string[],
+    newTechniques: '',
+    modernPractices: '',
+    agriculturalInfo: [] as string[],
+    otherEquipment: '',
+    otherInfo: '',
+    isSubmitted: false
+  },
+  supportResources: {
+    farmersAssociation: '',
+    governmentPrograms: '',
+    governmentSupport: [] as string[],
+    ngoSupport: [] as string[],
+    industrySupport: [] as string[],
+    extensionServices: '',
+    otherGovSupport: '',
+    otherNgoSupport: '',
+    otherIndustrySupport: '',
+    isSubmitted: false
+  },
+  addressesHousehold: {
+    residentialAddress: '',
+    farmAddress: '',
+    householdSize: '',
+    adultsInHousehold: '',
+    childrenInHousehold: '',
+    educationAttainment: '',
+    maritalStatus: '',
+    isSubmitted: false
+  },
+  homeAssets: {
+    electricity: '',
+    television: '',
+    refrigerator: '',
+    comfortRoom: '',
+    houseType: '',
+    monthlyRent: '',
+    houseOwnership: '',
+    incomeType: '',
+    monthlyExpenses: '',
+    farmingType: '',
+    isSubmitted: false
+  },
+  farmingDemographics: {
+    farmSizeSqm: '',
+    landOwnership: '',
+    tenantEarnings: '',
+    rentalAmount: '',
+    cropsCultivated: [] as string[],
+    livestockRaised: [] as string[],
+    farmingExperience: '',
+    isSubmitted: false
+  },
+  incomeMarketing: {
+    farmingPrimaryIncome: '',
+    annualFarmIncome: '',
+    incomeChange: '',
+    salesChannels: [] as string[],
+    otherIncomeSources: '',
+    monthlyIncome: '',
+    monthlyExpensesAmount: '',
+    isSubmitted: false
+  }
+});
+
+type FormDataState = ReturnType<typeof createInitialFormData>;
+
 export default function FarmersScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('home');
@@ -28,109 +129,12 @@ export default function FarmersScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   
   // Form state management
-  const [formData, setFormData] = useState({
-    demographics: {
-      age: '',
-      gender: '',
-      maritalStatus: '',
-      dependents: '',
-      education: '',
-      monthlyIncome: '',
-      isSubmitted: false
-    },
-    farmingProfile: {
-      yearsFarming: '',
-      farmCommodity: [] as string[],
-      livestock: [] as string[],
-      landOwnership: '',
-      farmSize: '',
-      farmingMethods: [] as string[],
-      otherCommodity: '',
-      otherLivestock: '',
-      otherFarmSize: '',
-      isSubmitted: false
-    },
-    economicFinancial: {
-      incomeSources: '',
-      farmingFinances: '',
-      farmingIncomePercentage: '',
-      governmentAssistance: '',
-      ngoAssistance: '',
-      industryAssistance: '',
-      otherIncome: '',
-      otherFinances: '',
-      isSubmitted: false
-    },
-    technologyInnovation: {
-      farmingEquipment: [] as string[],
-      newTechniques: '',
-      modernPractices: '',
-      agriculturalInfo: [] as string[],
-      otherEquipment: '',
-      otherInfo: '',
-      isSubmitted: false
-    },
-    supportResources: {
-      farmersAssociation: '',
-      governmentPrograms: '',
-      governmentSupport: [] as string[],
-      ngoSupport: [] as string[],
-      industrySupport: [] as string[],
-      extensionServices: '',
-      otherGovSupport: '',
-      otherNgoSupport: '',
-      otherIndustrySupport: '',
-      isSubmitted: false
-    },
-    addressesHousehold: {
-      residentialAddress: '',
-      farmAddress: '',
-      householdSize: '',
-      adultsInHousehold: '',
-      childrenInHousehold: '',
-      educationAttainment: '',
-      maritalStatus: '',
-      isSubmitted: false
-    },
-    homeAssets: {
-      electricity: '',
-      television: '',
-      refrigerator: '',
-      comfortRoom: '',
-      houseType: '',
-      monthlyRent: '',
-      houseOwnership: '',
-      incomeType: '',
-      monthlyExpenses: '',
-      farmingType: '',
-      isSubmitted: false
-    },
-    farmingDemographics: {
-      farmSizeSqm: '',
-      landOwnership: '',
-      tenantEarnings: '',
-      rentalAmount: '',
-      cropsCultivated: [] as string[],
-      livestockRaised: [] as string[],
-      farmingExperience: '',
-      isSubmitted: false
-    },
-    incomeMarketing: {
-      farmingPrimaryIncome: '',
-      annualFarmIncome: '',
-      incomeChange: '',
-      salesChannels: [] as string[],
-      otherIncomeSources: '',
-      monthlyIncome: '',
-      monthlyExpensesAmount: '',
-      isSubmitted: false
-    }
-  });
+  const [formData, setFormData] = useState<FormDataState>(() => createInitialFormData());
 
   const [editingForm, setEditingForm] = useState<string | null>(null);
 
   // Save form data to AsyncStorage (user-specific)
-  const saveFormDataToStorage = async (data: typeof formData) => {
+  const saveFormDataToStorage = async (data: FormDataState) => {
     if (!user?.uid) {
       console.log('❌ No user UID available, cannot save form data');
       return;
@@ -167,8 +171,219 @@ export default function FarmersScreen() {
     }
   };
 
+  const resetFormSection = (sectionId: keyof FormDataState) => {
+    setFormData(prev => {
+      const defaults = createInitialFormData();
+      const updated = {
+        ...prev,
+        [sectionId]: defaults[sectionId]
+      };
+      saveFormDataToStorage(updated);
+      return updated;
+    });
+  };
+
+  const hasSectionInput = (sectionId: keyof FormDataState) => {
+    const defaults = createInitialFormData();
+    return JSON.stringify(formData[sectionId]) !== JSON.stringify(defaults[sectionId]);
+  };
+
+  const isNonEmptyString = (value?: string | null) =>
+    typeof value === 'string' && value.trim().length > 0;
+
+  const hasSelection = (list?: string[]) => Array.isArray(list) && list.length > 0;
+
+  const validateFormSection = (formId: keyof FormDataState): { valid: boolean; message?: string } => {
+    const fail = (message: string) => ({ valid: false, message });
+
+    switch (formId) {
+      case 'demographics': {
+        const data = formData.demographics;
+        if (!isNonEmptyString(data.age)) return fail('Please enter your age.');
+        const ageNumber = Number(data.age);
+        if (!Number.isFinite(ageNumber) || ageNumber <= 0) return fail('Please enter a valid age.');
+        if (!isNonEmptyString(data.gender)) return fail('Please select your gender.');
+        if (!isNonEmptyString(data.maritalStatus)) return fail('Please select your marital status.');
+        if (!isNonEmptyString(data.dependents)) return fail('Please select the number of dependents.');
+        if (!isNonEmptyString(data.education)) return fail('Please select your highest education level.');
+        if (!isNonEmptyString(data.monthlyIncome)) return fail('Please select your household income level.');
+        return { valid: true };
+      }
+      case 'farmingProfile': {
+        const data = formData.farmingProfile;
+        if (!isNonEmptyString(data.yearsFarming)) return fail('Please select your number of years in farming.');
+        if (!hasSelection(data.farmCommodity) && !isNonEmptyString(data.otherCommodity)) {
+          return fail('Please select at least one farm commodity or specify other.');
+        }
+        if (!hasSelection(data.livestock) && !isNonEmptyString(data.otherLivestock)) {
+          return fail('Please select at least one livestock type or specify other.');
+        }
+        if (!isNonEmptyString(data.landOwnership)) return fail('Please select your land ownership status.');
+        if (!isNonEmptyString(data.farmSize) && !isNonEmptyString(data.otherFarmSize)) {
+          return fail('Please choose your farm size or specify other.');
+        }
+        if (!hasSelection(data.farmingMethods)) {
+          return fail('Please select at least one farming method.');
+        }
+        return { valid: true };
+      }
+      case 'economicFinancial': {
+        const data = formData.economicFinancial;
+        if (!isNonEmptyString(data.incomeSources) && !isNonEmptyString(data.otherIncome)) {
+          return fail('Please select your main income source or specify other.');
+        }
+        if (!isNonEmptyString(data.farmingFinances) && !isNonEmptyString(data.otherFinances)) {
+          return fail('Please select your source of farming finances or specify other.');
+        }
+        if (!isNonEmptyString(data.farmingIncomePercentage)) {
+          return fail('Please select the percentage of income generated from farming.');
+        }
+        if (!isNonEmptyString(data.governmentAssistance)) {
+          return fail('Please indicate if you received government assistance.');
+        }
+        if (!isNonEmptyString(data.ngoAssistance)) {
+          return fail('Please indicate if you received NGO assistance.');
+        }
+        if (!isNonEmptyString(data.industryAssistance)) {
+          return fail('Please indicate if you received industry assistance.');
+        }
+        return { valid: true };
+      }
+      case 'technologyInnovation': {
+        const data = formData.technologyInnovation;
+        if (!hasSelection(data.farmingEquipment) && !isNonEmptyString(data.otherEquipment)) {
+          return fail('Please select at least one farming equipment or specify other.');
+        }
+        if (!isNonEmptyString(data.newTechniques)) {
+          return fail('Please indicate if you have adopted new farming techniques.');
+        }
+        if (!isNonEmptyString(data.modernPractices)) {
+          return fail('Please indicate your awareness of modern agricultural practices.');
+        }
+        if (!hasSelection(data.agriculturalInfo) && !isNonEmptyString(data.otherInfo)) {
+          return fail('Please select at least one source of agricultural information or specify other.');
+        }
+        return { valid: true };
+      }
+      case 'supportResources': {
+        const data = formData.supportResources;
+        if (!isNonEmptyString(data.farmersAssociation)) {
+          return fail('Please indicate your farmers association membership.');
+        }
+        if (!isNonEmptyString(data.governmentPrograms)) {
+          return fail('Please indicate whether you participated in government or NGO programs.');
+        }
+        const needsGovernmentDetails = data.governmentPrograms === 'Yes';
+        if (needsGovernmentDetails && !hasSelection(data.governmentSupport) && !isNonEmptyString(data.otherGovSupport)) {
+          return fail('Please select the type of government support received or specify other (enter "None" if not applicable).');
+        }
+        if (!hasSelection(data.ngoSupport) && !isNonEmptyString(data.otherNgoSupport)) {
+          return fail('Please select the type of NGO support received or specify other (enter "None" if not applicable).');
+        }
+        if (!hasSelection(data.industrySupport) && !isNonEmptyString(data.otherIndustrySupport)) {
+          return fail('Please select the type of industry support received or specify other (enter "None" if not applicable).');
+        }
+        if (!isNonEmptyString(data.extensionServices)) {
+          return fail('Please indicate how often you receive extension services.');
+        }
+        return { valid: true };
+      }
+      case 'addressesHousehold': {
+        const data = formData.addressesHousehold;
+        if (!isNonEmptyString(data.residentialAddress)) {
+          return fail('Please enter your residential address.');
+        }
+        if (!isNonEmptyString(data.farmAddress)) {
+          return fail('Please enter your farm address.');
+        }
+        if (!isNonEmptyString(data.householdSize)) {
+          return fail('Please select your household size.');
+        }
+        if (!isNonEmptyString(data.adultsInHousehold)) {
+          return fail('Please select the number of adults in your household.');
+        }
+        if (!isNonEmptyString(data.childrenInHousehold)) {
+          return fail('Please select the number of children in your household.');
+        }
+        if (!isNonEmptyString(data.educationAttainment)) {
+          return fail('Please select your household\'s education attainment.');
+        }
+        if (!isNonEmptyString(data.maritalStatus)) {
+          return fail('Please select your marital status.');
+        }
+        return { valid: true };
+      }
+      case 'homeAssets': {
+        const data = formData.homeAssets;
+        if (!isNonEmptyString(data.electricity)) return fail('Please indicate if you have electricity.');
+        if (!isNonEmptyString(data.television)) return fail('Please indicate if you have a television.');
+        if (!isNonEmptyString(data.refrigerator)) return fail('Please indicate if you have a refrigerator.');
+        if (!isNonEmptyString(data.comfortRoom)) return fail('Please indicate if you have a comfort room.');
+        if (!isNonEmptyString(data.houseType)) return fail('Please select your house type.');
+        if (!isNonEmptyString(data.monthlyRent)) return fail('Please select your monthly rent range.');
+        if (!isNonEmptyString(data.houseOwnership)) return fail('Please select your house ownership status.');
+        if (!isNonEmptyString(data.incomeType)) return fail('Please select your income type.');
+        if (!isNonEmptyString(data.monthlyExpenses)) return fail('Please select your monthly expenses range.');
+        if (!isNonEmptyString(data.farmingType)) return fail('Please select your farming type.');
+        return { valid: true };
+      }
+      case 'farmingDemographics': {
+        const data = formData.farmingDemographics;
+        if (!isNonEmptyString(data.farmSizeSqm)) {
+          return fail('Please enter your farm size in square meters.');
+        }
+        if (!isNonEmptyString(data.landOwnership)) {
+          return fail('Please select your land ownership status.');
+        }
+        if (data.landOwnership === 'Tenant' && !isNonEmptyString(data.tenantEarnings)) {
+          return fail('Please describe how you earn as a tenant.');
+        }
+        if (data.landOwnership === 'Rental' && !isNonEmptyString(data.rentalAmount)) {
+          return fail('Please specify the rental amount you pay monthly.');
+        }
+        if (!hasSelection(data.cropsCultivated)) {
+          return fail('Please select at least one crop you cultivate.');
+        }
+        if (!hasSelection(data.livestockRaised)) {
+          return fail('Please select at least one type of livestock you raise.');
+        }
+        if (!isNonEmptyString(data.farmingExperience)) {
+          return fail('Please select your years of farming experience.');
+        }
+        return { valid: true };
+      }
+      case 'incomeMarketing': {
+        const data = formData.incomeMarketing;
+        if (!isNonEmptyString(data.farmingPrimaryIncome)) {
+          return fail('Please indicate if farming is your primary income source.');
+        }
+        if (!isNonEmptyString(data.annualFarmIncome)) {
+          return fail('Please select your average annual farm income.');
+        }
+        if (!isNonEmptyString(data.incomeChange)) {
+          return fail('Please indicate how your farm income has changed.');
+        }
+        if (!hasSelection(data.salesChannels)) {
+          return fail('Please select at least one sales channel.');
+        }
+        if (!isNonEmptyString(data.otherIncomeSources)) {
+          return fail('Please select your other source of income.');
+        }
+        if (!isNonEmptyString(data.monthlyIncome)) {
+          return fail('Please select your monthly income range.');
+        }
+        if (!isNonEmptyString(data.monthlyExpensesAmount)) {
+          return fail('Please select your monthly expenses range.');
+        }
+        return { valid: true };
+      }
+      default:
+        return { valid: true };
+    }
+  };
+
   // Helper function to update form data and save to AsyncStorage
-  const updateFormData = async (updater: (prev: typeof formData) => typeof formData) => {
+  const updateFormData = async (updater: (prev: FormDataState) => FormDataState) => {
     const newFormData = updater(formData);
     setFormData(newFormData);
     await saveFormDataToStorage(newFormData);
@@ -184,104 +399,7 @@ export default function FarmersScreen() {
     try {
       const userKey = `farmerFormData_${user.uid}`;
       await AsyncStorage.removeItem(userKey);
-      setFormData({
-        demographics: {
-          age: '',
-          gender: '',
-          maritalStatus: '',
-          dependents: '',
-          education: '',
-          monthlyIncome: '',
-          isSubmitted: false
-        },
-        farmingProfile: {
-          yearsFarming: '',
-          farmCommodity: [],
-          livestock: [],
-          landOwnership: '',
-          farmSize: '',
-          farmingMethods: [],
-          otherCommodity: '',
-          otherLivestock: '',
-          otherFarmSize: '',
-          isSubmitted: false
-        },
-        economicFinancial: {
-          incomeSources: '',
-          farmingFinances: '',
-          farmingIncomePercentage: '',
-          governmentAssistance: '',
-          ngoAssistance: '',
-          industryAssistance: '',
-          otherIncome: '',
-          otherFinances: '',
-          isSubmitted: false
-        },
-        technologyInnovation: {
-          farmingEquipment: [],
-          newTechniques: '',
-          modernPractices: '',
-          agriculturalInfo: [],
-          otherEquipment: '',
-          otherInfo: '',
-          isSubmitted: false
-        },
-        supportResources: {
-          farmersAssociation: '',
-          governmentPrograms: '',
-          governmentSupport: [],
-          ngoSupport: [],
-          industrySupport: [],
-          extensionServices: '',
-          otherGovSupport: '',
-          otherNgoSupport: '',
-          otherIndustrySupport: '',
-          isSubmitted: false
-        },
-        addressesHousehold: {
-          residentialAddress: '',
-          farmAddress: '',
-          householdSize: '',
-          adultsInHousehold: '',
-          childrenInHousehold: '',
-          educationAttainment: '',
-          maritalStatus: '',
-          isSubmitted: false
-        },
-        homeAssets: {
-          electricity: '',
-          television: '',
-          refrigerator: '',
-          comfortRoom: '',
-          houseType: '',
-          monthlyRent: '',
-          houseOwnership: '',
-          incomeType: '',
-          monthlyExpenses: '',
-          farmingType: '',
-          isSubmitted: false
-        },
-        farmingDemographics: {
-          farmSizeSqm: '',
-          landOwnership: '',
-          tenantEarnings: '',
-          rentalAmount: '',
-          cropsCultivated: [],
-          livestockRaised: [],
-          farmingExperience: '',
-          isSubmitted: false
-        },
-        incomeMarketing: {
-          farmingPrimaryIncome: '',
-          annualFarmIncome: '',
-          incomeChange: '',
-          salesChannels: [],
-          otherIncomeSources: '',
-          monthlyIncome: '',
-          monthlyExpensesAmount: '',
-          isSubmitted: false
-        }
-      });
+      setFormData(createInitialFormData());
       console.log(`✅ Form data cleared for user: ${user.uid}`);
     } catch (error) {
       console.error('❌ Error clearing form data:', error);
@@ -374,6 +492,10 @@ export default function FarmersScreen() {
   }, [formData]);
 
   const handleFeaturePress = (feature: FeatureButton) => {
+    const sectionId = feature.id as keyof FormDataState;
+    if (!isFormSubmitted(feature.id) && hasSectionInput(sectionId)) {
+      resetFormSection(sectionId);
+    }
     setSelectedFeature(feature);
     setEditingForm(null); // Reset editing state when opening new form
     setModalVisible(true);
@@ -399,12 +521,21 @@ export default function FarmersScreen() {
       return;
     }
 
+    const typedFormId = formId as keyof FormDataState;
+    const validationResult = validateFormSection(typedFormId);
+    if (!validationResult.valid) {
+      Alert.alert('Incomplete Form', validationResult.message || 'Please complete all required fields before submitting.');
+      return;
+    }
+
+    const sectionSnapshot = { ...(formData[typedFormId] as any) };
+
     try {
       // Update local state and save to AsyncStorage
       await updateFormData(prev => ({
         ...prev,
-        [formId]: {
-          ...prev[formId as keyof typeof prev],
+        [typedFormId]: {
+          ...prev[typedFormId],
           isSubmitted: true
         }
       }));
@@ -430,12 +561,12 @@ export default function FarmersScreen() {
       console.log('Trying addDoc approach...');
       const farmersCollection = collection(db, 'farmers');
       const formDataToSave = {
-        ...formData[formId as keyof typeof formData],
+        ...sectionSnapshot,
         isSubmitted: true,
         submittedAt: serverTimestamp(),
         userId: user.uid,
         userEmail: user.email,
-        userName: profile.name,
+        userName: profile?.name ?? '',
         formId: formId
       };
 
@@ -508,8 +639,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Demographic Information</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Age:</Text>
           <TextInput 
@@ -722,8 +851,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Farming Profile</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Number of Years in Farming:</Text>
           <View style={styles.radioGroup}>
@@ -787,7 +914,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.farmCommodity.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -841,7 +968,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.livestock.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -909,7 +1036,7 @@ export default function FarmersScreen() {
                   if (!isSubmitted || isEditing) {
                     setFormData(prev => ({
                       ...prev,
-                      farmingProfile: { ...prev.farmingProfile, farmSize: option }
+                      farmingProfile: { ...prev.farmingProfile, farmSize: option, otherFarmSize: '' }
                     }));
                   }
                 }}
@@ -929,7 +1056,11 @@ export default function FarmersScreen() {
             value={data.otherFarmSize}
             onChangeText={(value) => setFormData(prev => ({
               ...prev,
-              farmingProfile: { ...prev.farmingProfile, otherFarmSize: value }
+              farmingProfile: { 
+                ...prev.farmingProfile, 
+                otherFarmSize: value,
+                farmSize: value ? '' : prev.farmingProfile.farmSize
+              }
             }))}
             editable={!isSubmitted || isEditing}
           />
@@ -967,7 +1098,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.farmingMethods.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -1015,8 +1146,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Economic and Financial Information</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Main Sources of Income:</Text>
           <View style={styles.radioGroup}>
@@ -1032,7 +1161,7 @@ export default function FarmersScreen() {
                   if (!isSubmitted || isEditing) {
                     setFormData(prev => ({
                       ...prev,
-                      economicFinancial: { ...prev.economicFinancial, incomeSources: option }
+                      economicFinancial: { ...prev.economicFinancial, incomeSources: option, otherIncome: '' }
                     }));
                   }
                 }}
@@ -1052,7 +1181,11 @@ export default function FarmersScreen() {
             value={data.otherIncome}
             onChangeText={(value) => setFormData(prev => ({
               ...prev,
-              economicFinancial: { ...prev.economicFinancial, otherIncome: value }
+              economicFinancial: { 
+                ...prev.economicFinancial, 
+                otherIncome: value,
+                incomeSources: value ? '' : prev.economicFinancial.incomeSources
+              }
             }))}
             editable={!isSubmitted || isEditing}
           />
@@ -1073,7 +1206,7 @@ export default function FarmersScreen() {
                   if (!isSubmitted || isEditing) {
                     setFormData(prev => ({
                       ...prev,
-                      economicFinancial: { ...prev.economicFinancial, farmingFinances: option }
+                      economicFinancial: { ...prev.economicFinancial, farmingFinances: option, otherFinances: '' }
                     }));
                   }
                 }}
@@ -1093,7 +1226,11 @@ export default function FarmersScreen() {
             value={data.otherFinances}
             onChangeText={(value) => setFormData(prev => ({
               ...prev,
-              economicFinancial: { ...prev.economicFinancial, otherFinances: value }
+              economicFinancial: { 
+                ...prev.economicFinancial, 
+                otherFinances: value,
+                farmingFinances: value ? '' : prev.economicFinancial.farmingFinances
+              }
             }))}
             editable={!isSubmitted || isEditing}
           />
@@ -1259,8 +1396,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Technology and Innovation</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Farming Equipment or Technologies Used:</Text>
           <View style={styles.checkboxGroup}>
@@ -1293,7 +1428,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.farmingEquipment.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -1409,7 +1544,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.agriculturalInfo.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -1467,8 +1602,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Support and Resources</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>With membership in Any Farmers' Associations or Cooperatives?</Text>
           <View style={styles.radioGroup}>
@@ -1563,7 +1696,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.governmentSupport.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -1617,7 +1750,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.ngoSupport.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -1671,7 +1804,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.industrySupport.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -1760,8 +1893,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Addresses and Household</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Residential address:</Text>
           <TextInput 
@@ -1985,8 +2116,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Home and Assets</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Do you have:</Text>
           <View style={styles.subGroup}>
@@ -2336,8 +2465,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Farming-Specific Demographics</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Farm Size (sq.m.):</Text>
           <TextInput 
@@ -2445,7 +2572,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.cropsCultivated.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -2489,7 +2616,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.livestockRaised.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -2568,8 +2695,6 @@ export default function FarmersScreen() {
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Income and Marketing</Text>
-        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Primary Income Source:</Text>
           <Text style={styles.subLabel}>Is farming your primary source of income?</Text>
@@ -2697,7 +2822,7 @@ export default function FarmersScreen() {
                   isSubmitted && !isEditing && styles.readOnlyCheckbox
                 ]}>
                   {data.salesChannels.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={WHITE} />
+                    <Ionicons name="checkmark" size={16} color={GREEN} />
                   )}
                 </View>
                 <Text style={[
@@ -3081,7 +3206,7 @@ const styles = StyleSheet.create({
   featureButton: {
     backgroundColor: WHITE,
     borderWidth: 2,
-    borderColor: GREEN,
+    borderColor: '#9ec6b2',
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 20,
@@ -3122,9 +3247,10 @@ const styles = StyleSheet.create({
   },
   modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
@@ -3132,22 +3258,18 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: GREEN,
-    flex: 1,
+    textAlign: 'center',
   },
   closeButton: {
+    position: 'absolute',
+    right: 20,
+    top: '50%',
+    marginTop: -20,
     padding: 8,
   },
   formScroll: {
     flex: 1,
     padding: 20,
-  },
-  formTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: GREEN,
-    marginBottom: 30,
-    textAlign: 'center',
-    letterSpacing: 0.5,
   },
   inputGroup: {
     marginBottom: 28,
@@ -3210,12 +3332,12 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderWidth: 2,
-    borderColor: GREEN,
+    borderColor: '#9ec6b2',
     borderRadius: 6,
     marginRight: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: GREEN,
+    backgroundColor: '#fff',
   },
   checkboxText: {
     fontSize: 16,
@@ -3401,7 +3523,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   checkboxSelected: {
-    backgroundColor: GREEN,
+    backgroundColor: '#f1fbf6',
     borderColor: GREEN,
   },
   readOnlyCheckbox: {

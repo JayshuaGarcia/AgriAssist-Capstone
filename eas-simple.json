@@ -3,7 +3,21 @@
     "apk": {
       "android": {
         "buildType": "apk"
+      },
+      "distribution": "internal"
+    },
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
       }
+    },
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal"
     }
   }
 }

@@ -1,0 +1,45 @@
+item,display_name,model,mape,path
+Banana _Lakatan_,Banana (Lakatan),seasonal_trend,21.850598972675925,data\forecast\Banana _Lakatan_\forecast.csv
+Banana _Latundan_,Banana (Latundan),seasonal_trend,5.895401449391156,data\forecast\Banana _Latundan_\forecast.csv
+Banana _Saba_,Banana (Saba),seasonal_trend,1.591334893152583,data\forecast\Banana _Saba_\forecast.csv
+Bell Pepper _Green_,Bell Pepper (Green),seasonal_trend,12.04990061080848,data\forecast\Bell Pepper _Green_\forecast.csv
+Bell Pepper _Red_,Bell Pepper (Red),seasonal_trend,13.453573324272977,data\forecast\Bell Pepper _Red_\forecast.csv
+Bittergourd _Ampalaya_,Bittergourd (Ampalaya),seasonal_trend,11.93650251637701,data\forecast\Bittergourd _Ampalaya_\forecast.csv
+Calamansi,Calamansi,seasonal_trend,14.18285426609058,data\forecast\Calamansi\forecast.csv
+Chicken Egg_Brown_ M_,"Chicken Egg(Brown, M) ",seasonal_trend,5.950857610748076,data\forecast\Chicken Egg_Brown_ M_\forecast.csv
+Chicken Egg_Brown_ XL_,"Chicken Egg(Brown, XL)",seasonal_trend,16.103435179382807,data\forecast\Chicken Egg_Brown_ XL_\forecast.csv
+Chicken Egg_Brown_L_,"Chicken Egg(Brown,L)",seasonal_trend,6.334752814845264,data\forecast\Chicken Egg_Brown_L_\forecast.csv
+Chicken Egg_White_ XL_,"Chicken Egg(White, XL)",seasonal_trend,0.42141715401116275,data\forecast\Chicken Egg_White_ XL_\forecast.csv
+Chicken Egg_White_J_,"Chicken Egg(White,J)",seasonal_trend,1.909900820300294,data\forecast\Chicken Egg_White_J_\forecast.csv
+Chicken Egg_White_L_,"Chicken Egg(White,L)",seasonal_trend,1.4623907845090898,data\forecast\Chicken Egg_White_L_\forecast.csv
+Chicken Egg_White_M_,"Chicken Egg(White,M)",seasonal_trend,6.368986322562212,data\forecast\Chicken Egg_White_M_\forecast.csv
+Chicken Egg_White_P_,"Chicken Egg(White,P)",seasonal_trend,2.161075776238178,data\forecast\Chicken Egg_White_P_\forecast.csv
+Chicken Egg_White_S_,"Chicken Egg(White,S)",seasonal_trend,1.8606567330684984,data\forecast\Chicken Egg_White_S_\forecast.csv
+Chicken Egg_White_XS_,"Chicken Egg(White,XS)",seasonal_trend,3.1671190715306996,data\forecast\Chicken Egg_White_XS_\forecast.csv
+Chilli _Labuyo_,Chilli (Labuyo),seasonal_trend,47.206945887315264,data\forecast\Chilli _Labuyo_\forecast.csv
+Eggplant _Talong_,Eggplant (Talong),seasonal_trend,16.98447622902402,data\forecast\Eggplant _Talong_\forecast.csv
+Frozen Kasim,Frozen Kasim,seasonal_trend,0.24871935634416323,data\forecast\Frozen Kasim\forecast.csv
+Frozen Liempo,Frozen Liempo,seasonal_trend,0.34403014485395644,data\forecast\Frozen Liempo\forecast.csv
+Ginger,Ginger,seasonal_trend,12.284141856251127,data\forecast\Ginger\forecast.csv
+Imported Garlic,Imported Garlic,seasonal_trend,8.686173791639568,data\forecast\Imported Garlic\forecast.csv
+Imported Premium,Imported Premium,seasonal_trend,3.703935215473196,data\forecast\Imported Premium\forecast.csv
+Imported Regular milled,Imported Regular milled,seasonal_trend,7.84130898220771,data\forecast\Imported Regular milled\forecast.csv
+Imported Special,Imported Special,seasonal_trend,2.88752054592943,data\forecast\Imported Special\forecast.csv
+Imported Well milled,Imported Well milled,seasonal_trend,1.764573159820547,data\forecast\Imported Well milled\forecast.csv
+Lettuce _Green Ice_,Lettuce (Green Ice),seasonal_trend,9.260257537381165,data\forecast\Lettuce _Green Ice_\forecast.csv
+Lettuce _Iceberg_,Lettuce (Iceberg),seasonal_trend,10.407347579251763,data\forecast\Lettuce _Iceberg_\forecast.csv
+Lettuce _Romaine_,Lettuce (Romaine),seasonal_trend,14.257968189580126,data\forecast\Lettuce _Romaine_\forecast.csv
+Local Garlic,Local Garlic ,seasonal_trend,12.114881198554196,data\forecast\Local Garlic\forecast.csv
+Local Premium,Local Premium,seasonal_trend,2.7669536373745935,data\forecast\Local Premium\forecast.csv
+Local Red Onion,Local Red Onion,seasonal_trend,12.488931397187988,data\forecast\Local Red Onion\forecast.csv
+Local Regular milled,Local Regular milled,seasonal_trend,4.30752854653256,data\forecast\Local Regular milled\forecast.csv
+Local Special,Local Special,seasonal_trend,2.1298954845848037,data\forecast\Local Special\forecast.csv
+Local Well milled,Local Well milled,seasonal_trend,0.8798945124593255,data\forecast\Local Well milled\forecast.csv
+Papaya,Papaya,seasonal_trend,7.964068365352212,data\forecast\Papaya\forecast.csv
+Pechay _Native_,Pechay (Native),seasonal_trend,17.2329818306927,data\forecast\Pechay _Native_\forecast.csv
+Pork Ham Belly_Liempo_,Pork Ham Belly(Liempo),seasonal_trend,7.252437087244296,data\forecast\Pork Ham Belly_Liempo_\forecast.csv
+Pork Ham_Kasim_,Pork Ham(Kasim),seasonal_trend,7.040961095515116,data\forecast\Pork Ham_Kasim_\forecast.csv
+Squash,Squash,seasonal_trend,22.394431740515163,data\forecast\Squash\forecast.csv
+String Beans _Sitao_,String Beans (Sitao),seasonal_trend,11.639988181859731,data\forecast\String Beans _Sitao_\forecast.csv
+Tomato,Tomato,seasonal_trend,17.992760155738463,data\forecast\Tomato\forecast.csv
+Whole Chicken,Whole Chicken,seasonal_trend,9.750522816341743,data\forecast\Whole Chicken\forecast.csv

@@ -11,7 +11,6 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { useLatestPrices } from '../hooks/useLatestPrices';
 import { useMLPredictions, usePriceHistory } from '../hooks/useMLPredictions';
 import { useOfflineMLForecasts } from '../hooks/useOfflineMLForecasts';
 import { MLPrediction } from '../services/firebaseMLService';
@@ -107,8 +106,8 @@ export default function CommodityAnalytics() {
   const [isUpdatingFromML, setIsUpdatingFromML] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  // Get latest prices for header display
-  const { latestPrices } = useLatestPrices();
+  // Latest prices hook removed - using CSV-based price monitoring instead
+  const latestPrices: any[] = [];
 
   // Create content sections for FlatList
   const contentSections = [

@@ -25,13 +25,13 @@ export default function ForgotPasswordScreen() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
-  const { forgotPassword, resetPasswordWithCode, verifyPasswordResetCode, loading: authLoading } = useAuth();
+  const { forgotPassword, loading: authLoading } = useAuth();
   
   // Hide the Android navigation bar
   useNavigationBar();
   const router = useRouter();
 
-  const handleSendCode = async () => {
+  const handleSendResetEmail = async () => {
     if (!email) {
       setError('Please enter your email address');
       return;
@@ -43,8 +43,7 @@ export default function ForgotPasswordScreen() {
 
     try {
       await forgotPassword(email);
-      setSuccess('Verification code sent to your email!');
-      setStep('code');
+      setSuccess('Password reset email sent. Please check your inbox (and spam).');
     } catch (error: any) {
       setError(error.message);
     } finally {
@@ -52,74 +51,7 @@ export default function ForgotPasswordScreen() {
     }
   };
 
-  const handleVerifyCode = async () => {
-    if (!code) {
-      setError('Please enter the verification code');
-      return;
-    }
-
-    if (code.length !== 6) {
-      setError('Verification code must be 6 digits');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      // Verify the code without resetting the password yet
-      await verifyPasswordResetCode(email, code);
-      setSuccess('Code verified! Please enter your new password.');
-      setStep('password');
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetPassword = async () => {
-    if (!newPassword || !confirmPassword) {
-      setError('Please fill in all password fields');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      await resetPasswordWithCode(email, code, newPassword);
-      setSuccess('Password reset successfully! You can now login with your new password.');
-      
-      // Show success alert and navigate back to login
-      Alert.alert(
-        'Password Reset Successful',
-        'Your password has been reset successfully. You can now login with your new password.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/login')
-          }
-        ]
-      );
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Firebase email link flow: handled via email. Nothing else needed in-app.
 
   const handleResendCode = async () => {
     setLoading(true);
@@ -128,7 +60,7 @@ export default function ForgotPasswordScreen() {
 
     try {
       await forgotPassword(email);
-      setSuccess('New verification code sent to your email!');
+      setSuccess('Password reset email resent. Please check your inbox (and spam).');
     } catch (error: any) {
       setError(error.message);
     } finally {
@@ -140,7 +72,7 @@ export default function ForgotPasswordScreen() {
     <>
       <Text style={styles.stepTitle}>Enter Your Email</Text>
       <Text style={styles.stepDescription}>
-        Enter the email address associated with your account. We'll send you a verification code.
+        Enter the email address associated with your account. We'll send you a password reset email.
       </Text>
       
       <TextInput
@@ -162,147 +94,21 @@ export default function ForgotPasswordScreen() {
         cursorColor={email ? "#16543a" : "transparent"}
       />
 
-      <TouchableOpacity 
-        style={[styles.button, (loading || authLoading) && styles.buttonDisabled]} 
-        onPress={handleSendCode} 
-        activeOpacity={0.85}
-        disabled={loading || authLoading}
-      >
-        <Text style={styles.buttonText}>
-          {loading || authLoading ? 'Sending...' : 'Send Verification Code'}
-        </Text>
-      </TouchableOpacity>
-    </>
-  );
-
-  const renderCodeStep = () => (
-    <>
-      <Text style={styles.stepTitle}>Enter Verification Code</Text>
-      <Text style={styles.stepDescription}>
-        We've sent a 6-digit verification code to {email}. Please enter it below. The code will expire in 30 minutes.
-      </Text>
-      
-      <TextInput
-        style={[styles.input, { 
-          textAlign: 'center', 
-          paddingLeft: 24, 
-          paddingRight: 24,
-          includeFontPadding: false,
-          textAlignVertical: 'center'
-        }]}
-        placeholder="000000"
-        placeholderTextColor={GREEN}
-        value={code}
-        onChangeText={setCode}
-        keyboardType="numeric"
-        maxLength={6}
-        autoFocus
-        selectionColor="#16543a"
-        cursorColor={code ? "#16543a" : "transparent"}
-      />
-
-      <TouchableOpacity 
-        style={[styles.button, (loading || authLoading) && styles.buttonDisabled]} 
-        onPress={handleVerifyCode} 
-        activeOpacity={0.85}
-        disabled={loading || authLoading}
-      >
-        <Text style={styles.buttonText}>
-          {loading || authLoading ? 'Verifying...' : 'Verify Code'}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.resendButton}
-        onPress={handleResendCode}
-        disabled={loading || authLoading}
-      >
-        <Text style={styles.resendButtonText}>Resend Code</Text>
-      </TouchableOpacity>
-    </>
-  );
-
-  const renderPasswordStep = () => (
-    <>
-      <Text style={styles.stepTitle}>Set New Password</Text>
-      <Text style={styles.stepDescription}>
-        Enter your new password. Make sure it's at least 6 characters long.
-      </Text>
-      
-      <View style={{width: '100%'}}>
-        <TextInput
-          style={[styles.input, styles.passwordInput, { 
-            textAlign: 'center', 
-            paddingLeft: 24, 
-            paddingRight: 48,
-            includeFontPadding: false,
-            textAlignVertical: 'center'
-          }]}
-          placeholder="New Password"
-          placeholderTextColor={GREEN}
-          value={newPassword}
-          onChangeText={setNewPassword}
-          secureTextEntry={!showNewPassword}
-          autoFocus
-          selectionColor="#16543a"
-          cursorColor={newPassword ? "#16543a" : "transparent"}
-        />
-        <TouchableOpacity
-          style={styles.eyeIcon}
-          onPress={() => setShowNewPassword(!showNewPassword)}
-        >
-          <Ionicons
-            name={showNewPassword ? 'eye-off' : 'eye'}
-            size={24}
-            color={GREEN}
-          />
-        </TouchableOpacity>
-      </View>
-
-      <View style={{width: '100%'}}>
-        <TextInput
-          style={[styles.input, styles.passwordInput, { 
-            textAlign: 'center', 
-            paddingLeft: 24, 
-            paddingRight: 48,
-            includeFontPadding: false,
-            textAlignVertical: 'center'
-          }]}
-          placeholder="Confirm New Password"
-          placeholderTextColor={GREEN}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry={!showConfirmPassword}
-          selectionColor="#16543a"
-          cursorColor={confirmPassword ? "#16543a" : "transparent"}
-        />
-        <TouchableOpacity
-          style={styles.eyeIcon}
-          onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-        >
-          <Ionicons
-            name={showConfirmPassword ? 'eye-off' : 'eye'}
-            size={24}
-            color={GREEN}
-          />
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity 
-        style={[styles.button, (loading || authLoading) && styles.buttonDisabled]} 
-        onPress={handleResetPassword} 
-        activeOpacity={0.85}
-        disabled={loading || authLoading}
-      >
-        <Text style={styles.buttonText}>
-          {loading || authLoading ? 'Resetting...' : 'Reset Password'}
-        </Text>
-      </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.button, (loading || authLoading) && styles.buttonDisabled]} 
+              onPress={handleSendResetEmail} 
+              activeOpacity={0.85}
+              disabled={loading || authLoading}
+            >
+              <Text style={styles.buttonText}>
+                {loading || authLoading ? 'Sending...' : 'Send Reset Email'}
+              </Text>
+            </TouchableOpacity>
     </>
   );
 
   const getStepIndicator = () => {
-    const steps = ['Email', 'Code', 'Password'];
+    const steps = ['Email'];
     const currentStepIndex = steps.findIndex(s => s.toLowerCase() === step);
     
     return (
@@ -357,8 +163,6 @@ export default function ForgotPasswordScreen() {
           ) : null}
 
           {step === 'email' && renderEmailStep()}
-          {step === 'code' && renderCodeStep()}
-          {step === 'password' && renderPasswordStep()}
 
           <TouchableOpacity 
             style={styles.backButton}

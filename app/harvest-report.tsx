@@ -1,13 +1,196 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
 import { db } from '../lib/firebase';
 
 const GREEN = '#16543a';
+
+type CropTimelineStats = {
+  crop: string;
+  averageExpectedDurationDays: number | null;
+  averageActualDurationDays: number | null;
+  expectedSampleSize: number;
+  actualSampleSize: number;
+  totalReportCount: number;
+  dateDifferenceDays: number | null;
+  averageExpectedYieldPerPlant: number | null;
+  averageActualYieldPerPlant: number | null;
+  expectedYieldPerPlantSampleSize: number;
+  actualYieldPerPlantSampleSize: number;
+  yieldDifference: number | null;
+};
+
+const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+const coerceNumber = (value: any): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/,/g, '').trim();
+    if (cleaned.length === 0) {
+      return null;
+    }
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (typeof value === 'object') {
+    if (typeof value.toNumber === 'function') {
+      const num = value.toNumber();
+      return Number.isFinite(num) ? num : null;
+    }
+  }
+  return null;
+};
+
+const firstValidNumber = (values: any[]): number | null => {
+  for (const value of values) {
+    const parsed = coerceNumber(value);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const toTimestamp = (value: any): number | null => {
+  if (!value && value !== 0) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.getTime();
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+  }
+  if (typeof value === 'object') {
+    if (typeof value.toDate === 'function') {
+      const date = value.toDate();
+      return Number.isNaN(date.getTime()) ? null : date.getTime();
+    }
+    if ('seconds' in value && typeof value.seconds === 'number') {
+      const milliseconds = value.seconds * 1000 + (value.nanoseconds || 0) / 1_000_000;
+      return milliseconds;
+    }
+  }
+  return null;
+};
+
+const extractDateFromFields = (record: any, fields: string[]): number | null => {
+  for (const field of fields) {
+    if (field in record) {
+      const timestamp = toTimestamp(record[field]);
+      if (timestamp !== null) {
+        return timestamp;
+      }
+    }
+  }
+  return null;
+};
+
+const extractExpectedHarvestDateMs = (report: any): number | null => {
+  return extractDateFromFields(report, [
+    'expectedHarvestDate',
+    'expectedDate',
+    'expectedHarvestTime',
+    'expectedHarvestSchedule',
+  ]);
+};
+
+const extractActualHarvestDateMs = (report: any): number | null => {
+  return extractDateFromFields(report, [
+    'actualHarvestDate',
+    'harvestDate',
+    'dateHarvested',
+    'actualDate',
+    'completedAt',
+  ]);
+};
+
+const extractExpectedYieldKg = (report: any): number | null => {
+  return firstValidNumber([
+    report.expectedYield,
+    report.expectedHarvest,
+    report.expectedWeight,
+    report.expectedHarvestKg,
+  ]);
+};
+
+const extractActualHarvestKg = (report: any): number | null => {
+  const candidates = [
+    report.actualHarvestAmount,
+    report.actualHarvest,
+    report.harvestWeight,
+    report.actualYield,
+    report.amount,
+    report.totalHarvest,
+  ]
+    .map(coerceNumber)
+    .filter(value => value !== null) as number[];
+
+  const positive = candidates.find(value => value > 0);
+  if (positive !== undefined) {
+    return positive;
+  }
+  if (candidates.length > 0) {
+    return candidates[0];
+  }
+  return null;
+};
+
+const extractPlantCount = (report: any): number | null => {
+  return coerceNumber(
+    report?.plantCount ??
+      report?.plantNumber ??
+      report?.numberOfPlants ??
+      report?.plants ??
+      report?.plantingCount
+  );
+};
+
+const average = (values: number[]): number | null => {
+  if (values.length === 0) {
+    return null;
+  }
+  const sum = values.reduce((acc, value) => acc + value, 0);
+  return sum / values.length;
+};
+
+const formatDateForDisplay = (timestamp: number | null): string => {
+  if (timestamp === null) {
+    return 'N/A';
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return 'N/A';
+  }
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const isReportHarvested = (report: any): boolean => {
+  if (!report) return false;
+  if (report.isHarvested === true) return true;
+  const status = typeof report.status === 'string' ? report.status.toLowerCase() : '';
+  if (status === 'harvested' || status === 'completed') return true;
+  if (report.harvestDate || report.actualHarvestDate) return true;
+  const harvest = extractActualHarvestKg(report);
+  return harvest !== null && harvest > 0;
+};
 
 // Function to get crop icon
 const getCropIcon = (cropName: string) => {
@@ -135,6 +318,12 @@ const getCropTagalogName = (cropName: string) => {
   return cropTagalogNames[cropName] || cropName; // Return original name if no Tagalog translation
 };
 
+const getCropColor = (crop: string) => {
+  const colors = ['#4CAF50', '#66BB6A', '#81C784', '#A5D6A7', '#C8E6C9', '#E8F5E8'];
+  const index = crop.length % colors.length;
+  return colors[index];
+};
+
 export default function HarvestReportScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -146,7 +335,7 @@ export default function HarvestReportScreen() {
     totalHarvested: 0,
     totalReports: 0,
     mostHarvestedCrop: '',
-    harvestDistribution: [] as { crop: string; count: number; totalHarvest: number; percentage: number }[]
+    harvestDistribution: [] as { crop: string; count: number; totalHarvest: number; percentage: number }[],
   });
 
   // Global analytics data
@@ -154,7 +343,8 @@ export default function HarvestReportScreen() {
     totalHarvested: 0,
     totalUsers: 0,
     mostPopularCrop: '',
-    harvestDistribution: [] as { crop: string; count: number; userCount: number; totalHarvest: number; percentage: number; color: string }[]
+    harvestDistribution: [] as { crop: string; count: number; userCount: number; totalHarvest: number; percentage: number; color: string }[],
+    cropTimeline: [] as CropTimelineStats[],
   });
 
   // Date picker for global trends
@@ -191,6 +381,237 @@ export default function HarvestReportScreen() {
     }, [selectedMonth])
   );
 
+  const enrichHarvestReports = async (reports: any[]) => {
+    return Promise.all(
+      reports.map(async (report: any) => {
+        const mergedReport: any = { ...report };
+
+        if (mergedReport.plantingReportId) {
+          try {
+            const plantingDoc = await getDoc(doc(db, 'plantingReports', mergedReport.plantingReportId));
+            if (plantingDoc.exists()) {
+              const plantingData = plantingDoc.data();
+              if (!mergedReport.expectedHarvestDate) {
+                let plantingExpectedDate =
+                  extractDateFromFields(plantingData, [
+                    'expectedHarvestDate',
+                    'expectedDate',
+                    'expectedHarvestTime',
+                  ]);
+
+                if (plantingExpectedDate === null || plantingExpectedDate === undefined) {
+                  plantingExpectedDate = plantingData.expectedHarvestDate || plantingData.expectedDate;
+                }
+
+                if (plantingExpectedDate !== undefined && plantingExpectedDate !== null) {
+                  const expectedTimestamp = toTimestamp(plantingExpectedDate);
+                  if (expectedTimestamp !== null) {
+                    mergedReport.expectedHarvestDate = new Date(expectedTimestamp).toISOString();
+                  } else {
+                    mergedReport.expectedHarvestDate = plantingExpectedDate;
+                  }
+                }
+              }
+
+              if (mergedReport.expectedYield === undefined || mergedReport.expectedYield === null) {
+                const expectedFromPlanting = extractExpectedYieldKg(plantingData);
+                if (expectedFromPlanting !== null) {
+                  mergedReport.expectedYield = expectedFromPlanting;
+                }
+              }
+
+              if (mergedReport.expectedHarvest === undefined && plantingData.expectedHarvest !== undefined) {
+                mergedReport.expectedHarvest = plantingData.expectedHarvest;
+              }
+
+              if (mergedReport.expectedWeight === undefined && plantingData.expectedWeight !== undefined) {
+                mergedReport.expectedWeight = plantingData.expectedWeight;
+              }
+            }
+          } catch (fetchError) {
+            console.warn('⚠️ Failed to enrich harvest report with planting data:', fetchError);
+          }
+        }
+
+        const expectedFromReport = extractExpectedYieldKg(mergedReport);
+        if (expectedFromReport !== null) {
+          mergedReport.expectedYield = expectedFromReport;
+        }
+
+        const actualHarvestAmount = extractActualHarvestKg(mergedReport);
+        if (actualHarvestAmount !== null) {
+          mergedReport.actualHarvestAmount = actualHarvestAmount;
+        }
+
+        if (!mergedReport.actualHarvestDate) {
+          const actualDateMs = extractActualHarvestDateMs(mergedReport);
+          if (actualDateMs !== null) {
+            mergedReport.actualHarvestDate = new Date(actualDateMs).toISOString();
+          }
+        }
+
+        return mergedReport;
+      })
+    );
+  };
+
+  const buildCropTimeline = (plantingReports: any[], harvestedReports: any[]): CropTimelineStats[] => {
+    if (plantingReports.length === 0) {
+      return [];
+    }
+
+    const expectedMap = new Map<
+      string,
+      {
+        expectedDurations: number[];
+        expectedYieldPerPlant: number[];
+      }
+    >();
+
+    const actualMap = new Map<
+      string,
+      {
+        actualDurations: number[];
+        actualYieldPerPlant: number[];
+      }
+    >();
+    const totalCounts = new Map<string, number>();
+
+    const ensureExpectedEntry = (crop: string) => {
+      if (!expectedMap.has(crop)) {
+        expectedMap.set(crop, {
+          expectedDurations: [],
+          expectedYieldPerPlant: [],
+        });
+      }
+      return expectedMap.get(crop)!;
+    };
+
+    const ensureActualEntry = (crop: string) => {
+      if (!actualMap.has(crop)) {
+        actualMap.set(crop, {
+          actualDurations: [],
+          actualYieldPerPlant: [],
+        });
+      }
+      return actualMap.get(crop)!;
+    };
+
+    plantingReports.forEach(report => {
+      const crop = report.crop || 'Unspecified Crop';
+      const expectedEntry = ensureExpectedEntry(crop);
+      totalCounts.set(crop, (totalCounts.get(crop) || 0) + 1);
+
+      const expectedDateMs = extractExpectedHarvestDateMs(report);
+      const plantingDateMs = toTimestamp(report.plantingDate || report.plantedDate);
+      if (expectedDateMs !== null && plantingDateMs !== null) {
+        const durationDays = (expectedDateMs - plantingDateMs) / ONE_DAY_IN_MS;
+        if (Number.isFinite(durationDays)) {
+          expectedEntry.expectedDurations.push(durationDays);
+        }
+      }
+
+      const expectedYield = extractExpectedYieldKg(report);
+      if (expectedYield !== null) {
+        const plantCount = extractPlantCount(report);
+        if (plantCount && plantCount > 0) {
+          expectedEntry.expectedYieldPerPlant.push(expectedYield / plantCount);
+        }
+      }
+    });
+
+    harvestedReports.forEach(report => {
+      const crop = report.crop || 'Unspecified Crop';
+      const actualEntry = ensureActualEntry(crop);
+
+      const actualDateMs = extractActualHarvestDateMs(report);
+      const plantingDateMs = toTimestamp(report.plantingDate || report.plantedDate);
+      if (actualDateMs !== null && plantingDateMs !== null) {
+        const durationDays = (actualDateMs - plantingDateMs) / ONE_DAY_IN_MS;
+        if (Number.isFinite(durationDays)) {
+          actualEntry.actualDurations.push(durationDays);
+        }
+      }
+
+      const actualYield = extractActualHarvestKg(report);
+      if (actualYield !== null) {
+        const plantCount = extractPlantCount(report);
+        if (plantCount && plantCount > 0) {
+          actualEntry.actualYieldPerPlant.push(actualYield / plantCount);
+        }
+      }
+
+    });
+
+    const crops = new Set<string>([
+      ...Array.from(expectedMap.keys()),
+      ...Array.from(actualMap.keys()),
+    ]);
+
+    return Array.from(crops)
+      .map(crop => {
+        const expectedEntry = expectedMap.get(crop);
+        const actualEntry = actualMap.get(crop);
+
+        if (!expectedEntry || expectedEntry.expectedDurations.length === 0) {
+          return null;
+        }
+
+        const avgExpectedDuration = average(expectedEntry.expectedDurations);
+        const avgActualDuration = actualEntry ? average(actualEntry.actualDurations) : null;
+        const avgExpectedYieldPerPlant = average(expectedEntry.expectedYieldPerPlant);
+        const avgActualYieldPerPlant = actualEntry ? average(actualEntry.actualYieldPerPlant) : null;
+
+        const dateDifferenceDays =
+          avgExpectedDuration !== null && avgActualDuration !== null
+            ? avgActualDuration - avgExpectedDuration
+            : null;
+        const yieldDifference =
+          avgExpectedYieldPerPlant !== null && avgActualYieldPerPlant !== null
+            ? avgActualYieldPerPlant - avgExpectedYieldPerPlant
+            : null;
+
+        const expectedSampleSize = expectedEntry.expectedDurations.length;
+
+        const actualSampleSize = actualEntry ? actualEntry.actualDurations.length : 0;
+
+        const expectedYieldPerPlantSampleSize = expectedEntry.expectedYieldPerPlant.length;
+        const actualYieldPerPlantSampleSize = actualEntry
+          ? actualEntry.actualYieldPerPlant.length
+          : 0;
+
+        return {
+          crop,
+          averageExpectedDurationDays: avgExpectedDuration,
+          averageActualDurationDays: avgActualDuration,
+          expectedSampleSize,
+          actualSampleSize,
+          totalReportCount: totalCounts.get(crop) || 0,
+          dateDifferenceDays,
+          averageExpectedYieldPerPlant: avgExpectedYieldPerPlant,
+          averageActualYieldPerPlant: avgActualYieldPerPlant,
+          expectedYieldPerPlantSampleSize,
+          actualYieldPerPlantSampleSize,
+          yieldDifference,
+        } as CropTimelineStats;
+      })
+      .filter((item): item is CropTimelineStats => item !== null)
+      .filter(item => item.expectedSampleSize > 0)
+      .sort((a, b) => {
+        const aScore =
+          (a.actualSampleSize || 0) +
+          (a.expectedSampleSize || 0) +
+          (a.expectedYieldPerPlantSampleSize || 0) +
+          (a.actualYieldPerPlantSampleSize || 0);
+        const bScore =
+          (b.actualSampleSize || 0) +
+          (b.expectedSampleSize || 0) +
+          (b.expectedYieldPerPlantSampleSize || 0) +
+          (b.actualYieldPerPlantSampleSize || 0);
+        return bScore - aScore;
+      });
+  };
+
   const loadHarvestAnalytics = async () => {
     if (!user?.uid) return;
     
@@ -210,15 +631,23 @@ export default function HarvestReportScreen() {
         getDocs(harvestQueryOld)
       ]);
       const harvestReports = [
-        ...snapNew.docs.map(d => ({ id: d.id, ...d.data() })),
-        ...snapOld.docs.map(d => ({ id: d.id, ...d.data() })),
+        ...snapNew.docs.map(d => {
+          const data = d.data();
+          return { ...data, id: d.id };
+        }),
+        ...snapOld.docs.map(d => {
+          const data = d.data();
+          return { ...data, id: d.id };
+        }),
       ].filter((r, idx, arr) => idx === arr.findIndex(x => x.id === r.id));
+
+      const enrichedReports = await enrichHarvestReports(harvestReports);
 
       // Debug: Log harvest analytics data
       console.log('📊 Harvest analytics for user:', user.email);
       console.log('📊 Current user object:', { uid: user.uid, email: user.email, displayName: user.displayName });
-      console.log('📊 Harvest reports found for analytics:', harvestReports.length);
-      harvestReports.forEach((report, index) => {
+      console.log('📊 Harvest reports found for analytics:', enrichedReports.length);
+      enrichedReports.forEach((report, index) => {
         console.log(`📊 Harvest report ${index + 1} for analytics:`, {
           id: report.id,
           farmerEmail: report.farmerEmail,
@@ -230,10 +659,10 @@ export default function HarvestReportScreen() {
       });
       
       // Debug: Log which reports are being counted as harvested (both formats)
-      const harvestedReports = harvestReports.filter(report => 
+      const harvestedReports = enrichedReports.filter(report => 
         report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed'
       );
-      const pendingReports = harvestReports.filter(report => 
+      const pendingReports = enrichedReports.filter(report => 
         !(report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed')
       );
       
@@ -242,25 +671,23 @@ export default function HarvestReportScreen() {
       
       // Calculate total harvested weight for debugging (both formats)
       const totalHarvestedWeight = harvestedReports.reduce((sum, report) => {
-        const fromNew = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-        const fromOld = typeof report.amount === 'number' ? report.amount : parseFloat(report.amount) || 0;
-        const harvest = fromNew || fromOld;
+        const harvest = extractActualHarvestKg(report) || 0;
         return sum + harvest;
       }, 0);
       
       console.log('📊 Total harvested weight calculated:', totalHarvestedWeight, 'kg');
       
       harvestedReports.forEach(report => {
-        const harvestAmount = report.amount || 0;
+        const harvestAmount = extractActualHarvestKg(report) || 0;
         console.log(`📊 Harvested report: ${report.crop} - ${harvestAmount}kg (status: ${report.status})`);
       });
       pendingReports.forEach(report => {
-        const harvestAmount = report.amount || 0;
+        const harvestAmount = extractActualHarvestKg(report) || 0;
         console.log(`📊 Pending report: ${report.crop} - ${harvestAmount}kg (status: ${report.status}) - not counted`);
       });
       
       // Calculate analytics
-      calculateHarvestAnalytics(harvestReports);
+      calculateHarvestAnalytics(enrichedReports);
       
       // Animate the analytics
       Animated.parallel([
@@ -277,7 +704,7 @@ export default function HarvestReportScreen() {
         }),
       ]).start();
 
-      console.log('✅ Loaded harvest analytics:', harvestReports.length);
+      console.log('✅ Loaded harvest analytics:', enrichedReports.length);
     } catch (error) {
       console.error('Error loading harvest analytics:', error);
     } finally {
@@ -286,96 +713,108 @@ export default function HarvestReportScreen() {
   };
 
   const calculateHarvestAnalytics = (reports: any[]) => {
-    if (reports.length === 0) {
+    const harvestedReports = reports.filter(isReportHarvested);
+
+    if (harvestedReports.length === 0) {
       setAnalyticsData({
         totalHarvested: 0,
         totalReports: 0,
         mostHarvestedCrop: '',
-        harvestDistribution: []
+        harvestDistribution: [],
       });
       return;
     }
 
-    // Calculate total harvested (count both formats)
-    const totalHarvested = reports.reduce((sum, report) => {
-      const isHarvested = report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed';
-      if (!isHarvested) return sum;
-      const fromNew = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-      const fromOld = typeof report.amount === 'number' ? report.amount : parseFloat(report.amount) || 0;
-      return sum + (fromNew || fromOld);
-    }, 0);
+    const cropHarvestMap = new Map<string, { count: number; totalHarvest: number }>();
+    let totalHarvested = 0;
 
-    // Calculate harvest distribution by crop (count both formats)
-    const cropHarvestMap = new Map();
-    reports.forEach(report => {
-      const isHarvested = report.isHarvested === true || report.harvestDate || report.status === 'harvested' || report.status === 'completed';
-      if (!isHarvested) return;
-      const crop = report.crop;
-      const fromNew = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-      const fromOld = typeof report.amount === 'number' ? report.amount : parseFloat(report.amount) || 0;
-      const harvestAmount = fromNew || fromOld;
+    harvestedReports.forEach(report => {
+      const actualHarvestKg = extractActualHarvestKg(report);
+      const harvestAmount = actualHarvestKg ?? 0;
+      totalHarvested += harvestAmount;
+
+      const crop = report.crop || 'Unspecified Crop';
       if (cropHarvestMap.has(crop)) {
-        const existing = cropHarvestMap.get(crop);
+        const existing = cropHarvestMap.get(crop)!;
         cropHarvestMap.set(crop, {
           count: existing.count + 1,
-          totalHarvest: existing.totalHarvest + harvestAmount
+          totalHarvest: existing.totalHarvest + harvestAmount,
         });
       } else {
         cropHarvestMap.set(crop, {
           count: 1,
-          totalHarvest: harvestAmount
+          totalHarvest: harvestAmount,
         });
       }
     });
 
-    // Convert to array and calculate percentages
-    const harvestDistribution = Array.from(cropHarvestMap.entries()).map(([crop, data]) => ({
-      crop,
-      count: data.count,
-      totalHarvest: data.totalHarvest,
-      percentage: totalHarvested > 0 ? (data.totalHarvest / totalHarvested) * 100 : 0
-    })).sort((a, b) => b.totalHarvest - a.totalHarvest);
+    const harvestDistribution = Array.from(cropHarvestMap.entries())
+      .map(([crop, data]) => ({
+        crop,
+        count: data.count,
+        totalHarvest: data.totalHarvest,
+        percentage: totalHarvested > 0 ? (data.totalHarvest / totalHarvested) * 100 : 0,
+      }))
+      .sort((a, b) => b.totalHarvest - a.totalHarvest);
 
-    // Find most harvested crop
     const mostHarvestedCrop = harvestDistribution.length > 0 ? harvestDistribution[0].crop : '';
 
     setAnalyticsData({
       totalHarvested,
-      totalReports: reports.length,
+      totalReports: harvestedReports.length,
       mostHarvestedCrop,
-      harvestDistribution
+      harvestDistribution,
     });
   };
 
   const loadGlobalHarvestAnalytics = async (month: Date) => {
     setGlobalLoading(true);
     try {
-      // Get all harvest reports
       const harvestQuery = query(collection(db, 'harvestReports'));
       const harvestSnapshot = await getDocs(harvestQuery);
-      const allHarvestReports = harvestSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      // Filter by month - only show records from the selected month
-      const targetMonth = month.getMonth();
-      const targetYear = month.getFullYear();
-      
-      const filteredReports = allHarvestReports.filter(report => {
-        if (!report.harvestDate) return false;
-        
-        const reportDate = new Date(report.harvestDate);
-        const reportMonth = reportDate.getMonth();
-        const reportYear = reportDate.getFullYear();
-        
-        return reportMonth === targetMonth && reportYear === targetYear;
+      const allHarvestReports = harvestSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { ...data, id: doc.id };
       });
 
-      // Calculate global analytics
-      calculateGlobalHarvestAnalytics(filteredReports);
-      
-      console.log('✅ Loaded global harvest analytics for', month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), ':', filteredReports.length, 'records');
+      const plantingSnapshot = await getDocs(collection(db, 'plantingReports'));
+      const allPlantingReports = plantingSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { ...data, id: doc.id };
+      });
+
+      const enrichedAllReports = await enrichHarvestReports(allHarvestReports);
+      const harvestedReports = enrichedAllReports.filter(isReportHarvested);
+
+      const targetMonth = month.getMonth();
+      const targetYear = month.getFullYear();
+
+      const filteredReports = harvestedReports.filter(report => {
+        const actualDateMs = extractActualHarvestDateMs(report);
+        if (actualDateMs === null) return false;
+        const actualDate = new Date(actualDateMs);
+        return actualDate.getMonth() === targetMonth && actualDate.getFullYear() === targetYear;
+      });
+
+      const globalSummary = calculateGlobalHarvestAnalytics(filteredReports);
+      const cropTimeline = buildCropTimeline(allPlantingReports, enrichedAllReports.filter(isReportHarvested));
+
+      setGlobalAnalytics({
+        totalHarvested: globalSummary.totalHarvested,
+        totalUsers: globalSummary.totalUsers,
+        mostPopularCrop: globalSummary.mostPopularCrop,
+        harvestDistribution: globalSummary.harvestDistribution,
+        cropTimeline,
+      });
+
+      console.log(
+        '✅ Loaded global harvest analytics for',
+        month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        ':',
+        filteredReports.length,
+        'records. Global timeline crops:',
+        cropTimeline.length
+      );
     } catch (error) {
       console.error('Error loading global harvest analytics:', error);
     } finally {
@@ -385,85 +824,123 @@ export default function HarvestReportScreen() {
 
   const calculateGlobalHarvestAnalytics = (reports: any[]) => {
     if (reports.length === 0) {
-      setGlobalAnalytics({
+      return {
         totalHarvested: 0,
         totalUsers: 0,
         mostPopularCrop: '',
-        harvestDistribution: []
-      });
-      return;
+        harvestDistribution: [] as {
+          crop: string;
+          count: number;
+          userCount: number;
+          totalHarvest: number;
+          percentage: number;
+          color: string;
+        }[],
+      };
     }
 
-    // Calculate total harvested globally
-    const totalHarvested = reports.reduce((sum, report) => {
-      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-      return sum + harvest;
-    }, 0);
-
-    // Get unique users
-    const uniqueUsers = new Set(reports.map(report => report.userEmail));
-    const totalUsers = uniqueUsers.size;
-
-    // Calculate harvest distribution by crop
-    const cropHarvestMap = new Map();
-    const cropUserMap = new Map();
+    let totalHarvested = 0;
+    const uniqueUsers = new Set<string>();
+    const cropHarvestMap = new Map<
+      string,
+      { count: number; totalHarvest: number; users: Set<string> }
+    >();
 
     reports.forEach(report => {
-      const crop = report.crop;
-      const harvest = typeof report.actualHarvest === 'number' ? report.actualHarvest : parseFloat(report.actualHarvest) || 0;
-      const userEmail = report.userEmail;
-      
-      // Track harvest amounts
-      if (cropHarvestMap.has(crop)) {
-        const existing = cropHarvestMap.get(crop);
+      const crop = report.crop || 'Unspecified Crop';
+      const harvest = extractActualHarvestKg(report) || 0;
+      const userEmail = report.userEmail || report.farmerEmail || 'unknown';
+
+      totalHarvested += harvest;
+      uniqueUsers.add(userEmail);
+
+      if (!cropHarvestMap.has(crop)) {
         cropHarvestMap.set(crop, {
-          count: existing.count + 1,
-          totalHarvest: existing.totalHarvest + harvest
-        });
-      } else {
-        cropHarvestMap.set(crop, {
-          count: 1,
-          totalHarvest: harvest
+          count: 0,
+          totalHarvest: 0,
+          users: new Set<string>(),
         });
       }
 
-      // Track unique users per crop
-      if (!cropUserMap.has(crop)) {
-        cropUserMap.set(crop, new Set());
-      }
-      cropUserMap.get(crop).add(userEmail);
+      const entry = cropHarvestMap.get(crop)!;
+      entry.count += 1;
+      entry.totalHarvest += harvest;
+      entry.users.add(userEmail);
     });
 
-    // Convert to array and calculate percentages
-    const harvestDistribution = Array.from(cropHarvestMap.entries()).map(([crop, data]) => ({
-      crop,
-      count: data.count,
-      userCount: cropUserMap.get(crop)?.size || 0,
-      totalHarvest: data.totalHarvest,
-      percentage: totalHarvested > 0 ? (data.totalHarvest / totalHarvested) * 100 : 0,
-      color: getCropColor(crop)
-    })).sort((a, b) => b.totalHarvest - a.totalHarvest);
+    const harvestDistribution = Array.from(cropHarvestMap.entries())
+      .map(([crop, data]) => ({
+        crop,
+        count: data.count,
+        userCount: data.users.size,
+        totalHarvest: data.totalHarvest,
+        percentage: totalHarvested > 0 ? (data.totalHarvest / totalHarvested) * 100 : 0,
+        color: getCropColor(crop),
+      }))
+      .sort((a, b) => b.totalHarvest - a.totalHarvest);
 
-    // Find most popular crop
     const mostPopularCrop = harvestDistribution.length > 0 ? harvestDistribution[0].crop : '';
 
-    setGlobalAnalytics({
+    return {
       totalHarvested,
-      totalUsers,
+      totalUsers: uniqueUsers.size,
       mostPopularCrop,
-      harvestDistribution
-    });
-  };
-
-  const getCropColor = (crop: string) => {
-    // Use consistent green colors like planting report
-    const colors = ['#4CAF50', '#66BB6A', '#81C784', '#A5D6A7', '#C8E6C9', '#E8F5E8'];
-    const index = crop.length % colors.length;
-    return colors[index];
+      harvestDistribution,
+    };
   };
 
   const hasDataForMonth = (month: Date) => {
     return globalAnalytics.harvestDistribution.length > 0;
+  };
+
+  const formatPerPlantDisplay = (value: number | null, blankIfMissing = false) => {
+    if (value === null || Number.isNaN(value)) {
+      return blankIfMissing ? '' : 'N/A';
+    }
+    return `${value.toFixed(2)} kg/plant`;
+  };
+
+  const formatDurationLabel = (daysValue: number) => {
+    const rounded = Math.round(daysValue);
+    const months = Math.floor(rounded / 30);
+    const days = Math.max(0, rounded - months * 30);
+    const parts: string[] = [];
+    if (months > 0) {
+      parts.push(`${months} month${months === 1 ? '' : 's'}`);
+    }
+    if (days > 0 || parts.length === 0) {
+      parts.push(`${days} day${days === 1 ? '' : 's'}`);
+    }
+    return parts.join(' ');
+  };
+
+  const formatDurationDays = (value: number | null, blankIfMissing = false) => {
+    if (value === null || Number.isNaN(value)) {
+      return blankIfMissing ? '' : 'N/A';
+    }
+    return formatDurationLabel(value);
+  };
+
+  const formatDateDifference = (value: number | null) => {
+    if (value === null) {
+      return '';
+    }
+    if (Math.abs(value) < 1) {
+      return 'On schedule';
+    }
+    const durationText = formatDurationLabel(Math.abs(value));
+    return value > 0 ? `${durationText} later than expected` : `${durationText} earlier than expected`;
+  };
+
+  const formatYieldDifference = (value: number | null) => {
+    if (value === null) {
+      return '';
+    }
+    if (Math.abs(value) < 0.1) {
+      return 'Yield on target';
+    }
+    const formatted = `${value > 0 ? '+' : ''}${value.toFixed(2)} kg/plant`;
+    return value > 0 ? `${formatted} above expected` : `${formatted} below expected`;
   };
 
   return (
@@ -556,7 +1033,7 @@ export default function HarvestReportScreen() {
             {/* Global Trends Section */}
             <View style={styles.globalTrendsCard}>
               <View style={styles.globalTrendsHeader}>
-                <Text style={styles.globalTrendsTitle}>🌍 Global Harvest Trends</Text>
+                <Text style={styles.globalTrendsTitle}>🌍 Lopez Harvest Trends</Text>
               </View>
 
               {/* Loading State */}
@@ -569,7 +1046,7 @@ export default function HarvestReportScreen() {
                 <>
                   {/* Horizontal Bar Chart with Rankings */}
                   <View style={styles.barChartContainer}>
-                    <Text style={styles.barChartTitle}>Global Harvest Distribution</Text>
+                    <Text style={styles.barChartTitle}>Lopez Harvest Distribution</Text>
                     
                     {/* Month Navigation */}
                     <View style={styles.monthNavigationContainer}>
@@ -790,6 +1267,119 @@ export default function HarvestReportScreen() {
                     </View>
                   </View>
                 </>
+              )}
+            </View>
+
+            {/* Crop Timeline Analysis */}
+            <View style={styles.cropTimelineCard}>
+              <Text style={styles.cropTimelineTitle}>📈 Expected and Actual Harvest</Text>
+              <Text style={styles.cropTimelineSubtitle}>
+                Compare planned harvest timelines and yields for each crop
+              </Text>
+
+              {globalAnalytics.cropTimeline.length > 0 ? (
+                globalAnalytics.cropTimeline.map((item, index) => {
+                  const dateDifferenceText = formatDateDifference(item.dateDifferenceDays);
+                  const yieldDifferenceText = formatYieldDifference(item.yieldDifference);
+
+                  return (
+                    <View
+                      key={item.crop}
+                      style={[
+                        styles.cropTimelineItem,
+                        index === globalAnalytics.cropTimeline.length - 1 && styles.cropTimelineItemLast,
+                      ]}
+                    >
+                      <View style={styles.cropTimelineHeader}>
+                        <View style={styles.cropTimelineName}>
+                          <Text style={styles.cropTimelineIcon}>{getCropIcon(item.crop)}</Text>
+                          <Text style={styles.cropTimelineCrop}>{item.crop}</Text>
+                          <Text style={styles.cropTimelineTagalog}> / {getCropTagalogName(item.crop)}</Text>
+                        </View>
+                        <Text style={styles.cropTimelineSamples}>
+                          {item.totalReportCount} reports
+                        </Text>
+                      </View>
+
+                      <View style={styles.cropTimelineRow}>
+                        <Text style={styles.cropTimelineLabel}>Expected</Text>
+                        <View style={styles.cropTimelineValues}>
+                          <View style={styles.cropTimelineStatGroup}>
+                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
+                            <Text style={styles.cropTimelineValue}>
+                              {formatDurationDays(item.averageExpectedDurationDays)}
+                            </Text>
+                          </View>
+                          <View style={styles.cropTimelineStatGroupRight}>
+                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
+                            <Text style={styles.cropTimelinePerPlant}>
+                              {formatPerPlantDisplay(item.averageExpectedYieldPerPlant)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={styles.cropTimelineRow}>
+                        <Text style={styles.cropTimelineLabel}>Actual</Text>
+                        <View style={styles.cropTimelineValues}>
+                          <View style={styles.cropTimelineStatGroup}>
+                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
+                            <Text style={styles.cropTimelineValue}>
+                              {formatDurationDays(item.averageActualDurationDays, true)}
+                            </Text>
+                          </View>
+                          <View style={styles.cropTimelineStatGroupRight}>
+                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
+                            <Text style={styles.cropTimelinePerPlant}>
+                              {formatPerPlantDisplay(item.averageActualYieldPerPlant, true)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {(dateDifferenceText || yieldDifferenceText) && (
+                        <View style={styles.cropTimelineDeltaRow}>
+                          {dateDifferenceText ? (
+                            <Text
+                              style={[
+                                styles.cropTimelineDeltaText,
+                                item.dateDifferenceDays !== null && Math.abs(item.dateDifferenceDays) < 1
+                                  ? styles.cropTimelineOnTime
+                                  : item.dateDifferenceDays !== null && item.dateDifferenceDays > 0
+                                  ? styles.cropTimelineDelay
+                                  : styles.cropTimelineAhead,
+                              ]}
+                            >
+                              {dateDifferenceText}
+                            </Text>
+                          ) : null}
+                          {yieldDifferenceText ? (
+                            <Text
+                              style={[
+                                styles.cropTimelineDeltaText,
+                                item.yieldDifference !== null && Math.abs(item.yieldDifference) < 0.1
+                                  ? styles.cropTimelineYieldEven
+                                  : item.yieldDifference !== null && item.yieldDifference > 0
+                                  ? styles.cropTimelineYieldGain
+                                  : styles.cropTimelineYieldDrop,
+                              ]}
+                            >
+                              {yieldDifferenceText}
+                            </Text>
+                          ) : null}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={styles.cropTimelineEmptyState}>
+                  <Ionicons name="analytics-outline" size={40} color="#9E9E9E" />
+                  <Text style={styles.cropTimelineEmptyTitle}>No comparisons yet</Text>
+                  <Text style={styles.cropTimelineEmptySubtitle}>
+                    Submit both planting and harvest reports to unlock crop averages.
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -1227,6 +1817,160 @@ const styles = StyleSheet.create({
     color: GREEN,
     marginBottom: 16,
     textAlign: 'center',
+  },
+  cropTimelineCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E0F2E9',
+  },
+  cropTimelineTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  cropTimelineSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  cropTimelineItem: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  cropTimelineItemLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+  cropTimelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cropTimelineName: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  cropTimelineIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  cropTimelineCrop: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  cropTimelineTagalog: {
+    fontSize: 13,
+    color: '#777',
+    marginLeft: 6,
+  },
+  cropTimelineSamples: {
+    fontSize: 12,
+    color: '#777',
+    fontWeight: '500',
+  },
+  cropTimelineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cropTimelineLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2E7D32',
+    width: 80,
+  },
+  cropTimelineValues: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cropTimelineStatGroup: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  cropTimelineStatGroupRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  cropTimelineStatLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginBottom: 2,
+  },
+  cropTimelineValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  cropTimelineSecondary: {
+    fontSize: 13,
+    color: '#555',
+  },
+  cropTimelinePerPlant: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 2,
+  },
+  cropTimelineDeltaRow: {
+    marginTop: 10,
+  },
+  cropTimelineDeltaText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  cropTimelineOnTime: {
+    color: '#2E7D32',
+  },
+  cropTimelineDelay: {
+    color: '#C62828',
+  },
+  cropTimelineAhead: {
+    color: '#1B5E20',
+  },
+  cropTimelineYieldEven: {
+    color: '#2E7D32',
+  },
+  cropTimelineYieldGain: {
+    color: '#1B5E20',
+  },
+  cropTimelineYieldDrop: {
+    color: '#C62828',
+  },
+  cropTimelineEmptyState: {
+    paddingVertical: 28,
+    alignItems: 'center',
+  },
+  cropTimelineEmptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 12,
+  },
+  cropTimelineEmptySubtitle: {
+    fontSize: 13,
+    color: '#888',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
   },
   noDataContainer: {
     padding: 40,

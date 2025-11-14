@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  Alert,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import {
+    Dimensions,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import { forecastingService, ForecastResult } from '../services/forecastingService';
 
 const { width } = Dimensions.get('window');
@@ -23,6 +22,17 @@ interface PriceData {
   unit: string;
   region: string;
   date: string;
+}
+
+interface WeeklyForecast {
+  weekStart: string;
+  weekEnd: string;
+  startPrice: number;
+  endPrice: number;
+  startTrend: 'up' | 'down' | 'stable';
+  endTrend: 'up' | 'down' | 'stable';
+  startConfidence: number;
+  endConfidence: number;
 }
 
 // Use ForecastResult from the service
@@ -111,9 +121,9 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
     });
   };
 
-  const generateWeeklyForecasts = () => {
+  const generateWeeklyForecasts = (): WeeklyForecast[] => {
     const today = new Date();
-    const weeklyForecasts = [];
+    const weeklyForecasts: WeeklyForecast[] = [];
     
     // Generate next 3 weeks
     for (let week = 0; week < 3; week++) {
@@ -142,8 +152,8 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
     return weeklyForecasts;
   };
 
-  const generateCalendarWeeks = () => {
-    const weeks = [];
+  const generateCalendarWeeks = (): (string | null)[][] => {
+    const weeks: (string | null)[][] = [];
     const today = new Date();
     
     // Get the first day of the current month
@@ -157,7 +167,7 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
     
     // Generate 6 weeks to cover the entire month
     for (let week = 0; week < 6; week++) {
-      const weekDates = [];
+      const weekDates: (string | null)[] = [];
       
       for (let day = 0; day < 7; day++) {
         const currentDate = new Date(startDate);
@@ -208,9 +218,11 @@ export const ForecastingCalendar: React.FC<ForecastingCalendarProps> = ({
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#fff" />
+            <Ionicons name="arrow-back" size={24} color={GREEN} />
           </TouchableOpacity>
-          <Text style={styles.title}>Price Forecast</Text>
+          <View style={styles.headerContent}>
+            <Text style={styles.title}>Price Forecast</Text>
+          </View>
           <View style={styles.placeholder} />
         </View>
 
@@ -365,24 +377,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
   },
   header: {
-    backgroundColor: GREEN,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingVertical: 15,
     paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 20,
+    marginBottom: 5,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
   closeButton: {
     padding: 8,
+    marginRight: 12,
+  },
+  headerContent: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: 'rgba(76, 175, 80, 0.03)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginHorizontal: 8,
   },
   title: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
+    color: GREEN,
+    textAlign: 'center',
   },
   placeholder: {
-    width: 40,
+    width: 24,
   },
   commodityInfo: {
     backgroundColor: '#fff',

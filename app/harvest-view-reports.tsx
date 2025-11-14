@@ -74,6 +74,49 @@ const getCropIcon = (cropName: string) => {
   return cropIcons[cropName] || '🌱'; // Default plant icon
 };
 
+const coerceNumber = (value: any): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.replace(/,/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const extractActualHarvestValue = (report: any): number | null => {
+  const candidates = [
+    report?.actualHarvest,
+    report?.actualHarvestAmount,
+    report?.harvestWeight,
+    report?.actualYield,
+    report?.amount,
+  ]
+    .map(coerceNumber)
+    .filter(value => value !== null) as number[];
+
+  const positive = candidates.find(value => value > 0);
+  if (positive !== undefined) {
+    return positive;
+  }
+  if (candidates.length > 0) {
+    return candidates[0];
+  }
+  return null;
+};
+
+const isReportHarvestedLocal = (report: any): boolean => {
+  if (!report) return false;
+  if (report.isHarvested === true) return true;
+  const status = typeof report.status === 'string' ? report.status.toLowerCase() : '';
+  if (status === 'harvested' || status === 'completed') return true;
+  if (report.harvestDate || report.actualHarvestDate) return true;
+  const harvest = extractActualHarvestValue(report);
+  return harvest !== null && harvest > 0;
+};
+
 export default function HarvestViewReportsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -87,6 +130,7 @@ export default function HarvestViewReportsScreen() {
   const [harvestDate, setHarvestDate] = useState('');
   const [harvestWeight, setHarvestWeight] = useState('');
   const [submittingHarvest, setSubmittingHarvest] = useState(false);
+  const [isEditingHarvest, setIsEditingHarvest] = useState(false);
   
   // Date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -110,10 +154,10 @@ export default function HarvestViewReportsScreen() {
           );
       
       const harvestSnapshot = await getDocs(harvestQuery);
-      const harvestReports = harvestSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const harvestReports = harvestSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { ...data, id: doc.id };
+      });
       
       console.log('📋 Raw harvest reports found:', harvestReports.length);
       if (harvestReports.length === 0) {
@@ -223,7 +267,7 @@ export default function HarvestViewReportsScreen() {
                     console.log('✅ Planting report data values:', plantingData);
                 
                 // Merge planting report data with harvest report
-                return {
+                const mergedReport = {
                   ...harvestReport,
                   // Expected harvest information from planting report
                   expectedHarvestDate: plantingData.expectedHarvestDate || plantingData.expectedDate,
@@ -240,6 +284,7 @@ export default function HarvestViewReportsScreen() {
                   areaType: plantingData.areaType,
                   status: plantingData.status
                 };
+                return { ...mergedReport, id: harvestReport.id };
               } else {
                 console.log('⚠️ Planting report not found for ID:', harvestReport.plantingReportId);
                 return harvestReport;
@@ -250,7 +295,7 @@ export default function HarvestViewReportsScreen() {
             }
           } else {
             console.log('⚠️ No plantingReportId found for harvest report:', harvestReport.id);
-            return harvestReport;
+            return { ...harvestReport, id: harvestReport.id };
           }
         })
       );
@@ -262,7 +307,12 @@ export default function HarvestViewReportsScreen() {
         return dateB.getTime() - dateA.getTime();
       });
       
-      setHarvestReports(reportsWithPlantingData);
+      const normalizedReports = reportsWithPlantingData.map(report => ({
+        ...report,
+        id: report.id,
+      }));
+
+      setHarvestReports(normalizedReports);
       console.log('✅ Loaded harvest reports with planting data:', reportsWithPlantingData.length);
       console.log('🔄 State updated - harvestReports should now have', reportsWithPlantingData.length, 'reports');
       
@@ -288,7 +338,8 @@ export default function HarvestViewReportsScreen() {
     }
   };
 
-  const deleteHarvestReport = async (reportId: string, cropName: string) => {
+  const deleteHarvestReport = async (report: any) => {
+    const cropName = report.crop || 'this crop';
     Alert.alert(
       'Delete Harvest Report',
       `Are you sure you want to delete the harvest report for ${cropName}?`,
@@ -299,12 +350,43 @@ export default function HarvestViewReportsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDoc(doc(db, 'harvestReports', reportId));
-              setHarvestReports(prev => prev.filter(report => report.id !== reportId));
-              Alert.alert('Success', 'Harvest report deleted successfully');
+              const reportRef = doc(db, 'harvestReports', report.id);
+              await updateDoc(reportRef, {
+                harvestDate: '',
+                harvestWeight: 0,
+                actualHarvest: 0,
+                actualHarvestAmount: 0,
+                actualYield: 0,
+                actualHarvestDate: '',
+                amount: 0,
+                isHarvested: false,
+                status: 'pending',
+                updatedAt: new Date().toISOString(),
+              });
+
+              setHarvestReports(prev =>
+                prev.map(r =>
+                  r.id === report.id
+                    ? {
+                        ...r,
+                        harvestDate: '',
+                        harvestWeight: 0,
+                        actualHarvest: 0,
+                        actualHarvestAmount: 0,
+                        actualYield: 0,
+                      actualHarvestDate: '',
+                        amount: 0,
+                        isHarvested: false,
+                        status: 'pending',
+                      }
+                    : r
+                )
+              );
+
+              Alert.alert('Success', 'Harvest record cleared. You can record a new harvest when ready.');
             } catch (error) {
               console.error('Error deleting harvest report:', error);
-              Alert.alert('Error', 'Failed to delete harvest report');
+              Alert.alert('Error', 'Failed to clear harvest record');
             }
           }
         }
@@ -314,9 +396,13 @@ export default function HarvestViewReportsScreen() {
 
   const openRecordHarvestModal = (report: any) => {
     setSelectedReport(report);
-    setHarvestDate('');
-    setHarvestWeight('');
-    setSelectedDate(new Date());
+    const existingWeight = extractActualHarvestValue(report) || 0;
+    const existingDate = report?.harvestDate ? new Date(report.harvestDate) : new Date();
+
+    setHarvestDate(report?.harvestDate || '');
+    setHarvestWeight(existingWeight > 0 ? existingWeight.toString() : '');
+    setSelectedDate(existingDate);
+    setIsEditingHarvest(isReportHarvestedLocal(report));
     setShowRecordHarvestModal(true);
   };
 
@@ -326,6 +412,7 @@ export default function HarvestViewReportsScreen() {
     setHarvestDate('');
     setHarvestWeight('');
     setShowDatePicker(false);
+    setIsEditingHarvest(false);
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
@@ -364,6 +451,10 @@ export default function HarvestViewReportsScreen() {
         status: 'harvested',
         amount: parseFloat(harvestWeight),
         amountType: 'kg',
+        actualHarvest: parseFloat(harvestWeight),
+        actualHarvestAmount: parseFloat(harvestWeight),
+        actualYield: parseFloat(harvestWeight),
+        actualHarvestDate: harvestDate,
         updatedAt: new Date().toISOString()
       });
 
@@ -377,12 +468,16 @@ export default function HarvestViewReportsScreen() {
               isHarvested: true,
               status: 'harvested',
               amount: parseFloat(harvestWeight),
-              amountType: 'kg'
+              amountType: 'kg',
+              actualHarvest: parseFloat(harvestWeight),
+              actualHarvestAmount: parseFloat(harvestWeight),
+              actualYield: parseFloat(harvestWeight),
+              actualHarvestDate: harvestDate
             }
           : report
       ));
 
-      Alert.alert('Success', 'Harvest recorded successfully!');
+      Alert.alert('Success', isEditingHarvest ? 'Harvest updated successfully!' : 'Harvest recorded successfully!');
       closeRecordHarvestModal();
     } catch (error) {
       console.error('Error recording harvest:', error);
@@ -611,7 +706,7 @@ export default function HarvestViewReportsScreen() {
                       <View style={[styles.harvestedBadge, { backgroundColor: '#E8F5E8' }]}>
                         <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
                         <Text style={styles.harvestedText}>
-                          Harvested: {report.actualHarvest || report.amount || report.harvestWeight || 0} kg on {formatDate(report.harvestDate)}
+                          Harvested: {extractActualHarvestValue(report) || 0} kg on {formatDate(report.harvestDate)}
                         </Text>
                       </View>
                     </View>
@@ -637,13 +732,7 @@ export default function HarvestViewReportsScreen() {
                       <>
                         <TouchableOpacity 
                           style={styles.editButton}
-                          onPress={() => {
-                            // Navigate to edit harvest report
-                            router.push({
-                              pathname: '/harvest-report',
-                              params: { editId: report.id }
-                            });
-                          }}
+                          onPress={() => openRecordHarvestModal(report)}
                         >
                           <Ionicons name="pencil" size={16} color={GREEN} />
                           <Text style={styles.editButtonText}>EDIT</Text>
@@ -651,7 +740,7 @@ export default function HarvestViewReportsScreen() {
                         
                         <TouchableOpacity 
                           style={styles.deleteButton}
-                          onPress={() => deleteHarvestReport(report.id, report.crop)}
+                          onPress={() => deleteHarvestReport(report)}
                         >
                           <Ionicons name="trash" size={16} color="#F44336" />
                           <Text style={styles.deleteButtonText}>DELETE</Text>
@@ -691,7 +780,7 @@ export default function HarvestViewReportsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Record Harvest</Text>
+            <Text style={styles.modalTitle}>{isEditingHarvest ? 'Update Harvest' : 'Record Harvest'}</Text>
             {selectedReport && (
               <View style={styles.modalCropContainer}>
                 <Text style={styles.modalCropEmoji}>{getCropIcon(selectedReport.crop)}</Text>
@@ -743,7 +832,11 @@ export default function HarvestViewReportsScreen() {
                   <Ionicons name="checkmark" size={16} color="#fff" />
                 )}
                 <Text style={styles.submitButtonText}>
-                  {submittingHarvest ? 'SUBMITTING...' : 'SUBMIT'}
+                  {submittingHarvest
+                    ? 'SAVING...'
+                    : isEditingHarvest
+                    ? 'UPDATE'
+                    : 'SUBMIT'}
                 </Text>
               </TouchableOpacity>
             </View>

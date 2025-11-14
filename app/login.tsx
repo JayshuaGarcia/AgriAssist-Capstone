@@ -16,38 +16,49 @@ export default function LoginScreen() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
-  const { login, forgotPassword, loading: authLoading } = useAuth();
+  const { login, forgotPassword, loading } = useAuth();
+  
+  // Debug logging
+  console.log('Login screen - loading state:', loading);
   
   // Hide the Android navigation bar
   useNavigationBar();
   const router = useRouter();
 
   const handleLogin = async () => {
-    if (!email || !password) {
+    console.log('handleLogin called');
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
       setError('Please fill in all fields');
       return;
     }
 
-    setLoading(true);
+    // Normalize inputs in state to avoid accidental whitespace re-entry
+    if (trimmedEmail !== email) setEmail(trimmedEmail);
+    if (trimmedPassword !== password) setPassword(trimmedPassword);
+
     setError('');
 
     try {
+      console.log('Attempting login with:', trimmedEmail, '********');
       // Check for admin credentials
-      if ((email === 'AAadmin' || email === 'agriassistme@gmail.com') && password === 'AAadmin') {
+      if ((trimmedEmail === 'AAadmin' || trimmedEmail === 'agriassistme@gmail.com') && trimmedPassword === 'AAadmin') {
+        console.log('Admin login detected');
         // Call login to set admin user state - AuthContext will handle navigation
-        await login(email, password, 'admin');
+        await login(trimmedEmail, trimmedPassword, 'admin');
         return;
       }
 
+      console.log('Regular user login');
       // For regular users, go to farmer form
-      await login(email, password, 'Farmer');
+      await login(trimmedEmail, trimmedPassword, 'Farmer');
       router.replace('/farmers'); // Always go to farmer fill up form after login
     } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
+      console.log('Login error:', error);
+      setError(error?.message || 'Something went wrong while logging in.');
     }
   };
 
@@ -128,13 +139,13 @@ export default function LoginScreen() {
           ) : null}
           
           <TouchableOpacity 
-            style={[styles.button, (loading || authLoading) && styles.buttonDisabled]} 
+            style={[styles.button, loading && styles.buttonDisabled]} 
             onPress={handleLogin} 
             activeOpacity={0.85}
-            disabled={loading || authLoading}
+            disabled={loading}
           >
             <Text style={styles.buttonText}>
-              {loading || authLoading ? 'Logging In...' : 'Log In'}
+              {loading ? 'Logging In...' : 'Log In'}
             </Text>
           </TouchableOpacity>
           

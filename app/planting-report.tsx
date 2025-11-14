@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, Animated, RefreshControl, ScrollView, StyleSh
 import { useAuth } from '../components/AuthContext';
 import { formatDateToISO, getTodayDate } from '../lib/dateUtils';
 import { db } from '../lib/firebase';
+import { createUnifiedPlantingData } from '../types/UnifiedReportFormat';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -286,11 +287,11 @@ export default function PlantingReportScreen() {
     });
   };
 
-  // Load global analytics from all users
+  // Load global analytics (all users data)
   const loadGlobalAnalytics = async (selectedMonth?: Date) => {
     setGlobalLoading(true);
     try {
-      // Get all planting reports
+      // Get all planting reports from all users for global trends
       const allReportsQuery = query(collection(db, 'plantingReports'));
       const allReportsSnapshot = await getDocs(allReportsQuery);
       let allReports = allReportsSnapshot.docs.map(doc => ({
@@ -409,53 +410,31 @@ export default function PlantingReportScreen() {
         where('farmerEmail', '==', user.email)
       );
       const plantingSnapshot = await getDocs(plantingQuery);
-      const reports = plantingSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const reports = plantingSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+        };
+      });
       
       console.log('📋 Raw planting reports found:', reports.length);
       
-      // If no reports found by email, try by userId as fallback
-      if (reports.length === 0 && user.uid) {
-        console.log('🔄 No reports found by email, trying userId:', user.uid);
-        const plantingQueryByUid = query(
-          collection(db, 'plantingReports'),
-          where('userId', '==', user.uid)
-        );
-        const plantingSnapshotByUid = await getDocs(plantingQueryByUid);
-        const reportsByUid = plantingSnapshotByUid.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        console.log('📋 Planting reports found by userId:', reportsByUid.length);
-        setPlantingReports(reportsByUid);
-        calculateAnalytics(reportsByUid);
+      // Set reports (no fallback to userId to prevent cross-user data access)
+      setPlantingReports(reports);
+      calculateAnalytics(reports);
+      
+      // Debug: Log the actual reports data
+      if (reports.length > 0) {
+        console.log('📋 Sample planting report data:', reports[0]);
+        console.log('📋 All planting report IDs:', reports.map(r => r.id));
       } else {
-        setPlantingReports(reports);
-        calculateAnalytics(reports);
+        console.log('⚠️ No planting reports found for user:', user.email);
       }
       
-      // Debug: Also try to see ALL planting reports in database (for debugging)
-      console.log('🔍 DEBUG: Checking all planting reports in database...');
-      const allPlantingQuery = query(collection(db, 'plantingReports'));
-      const allPlantingSnapshot = await getDocs(allPlantingQuery);
-      const allPlantingReports = allPlantingSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      console.log('🔍 DEBUG: Total planting reports in database:', allPlantingReports.length);
-      allPlantingReports.forEach((report, index) => {
-        console.log(`🔍 DEBUG: Planting report ${index + 1}:`, {
-          id: report.id,
-          farmerEmail: report.farmerEmail,
-          userId: report.userId,
-          crop: report.crop
-        });
-      });
-      
       // Auto-create missing harvest reports for existing planting reports
-      await createMissingHarvestReports(allPlantingReports);
+      // Disabled to prevent duplicate harvest report creation
+      // await createMissingHarvestReports(allPlantingReports);
       
       console.log('✅ Loaded planting reports:', reports.length);
       
@@ -558,25 +537,16 @@ export default function PlantingReportScreen() {
         if (existingHarvestSnapshot.empty) {
           console.log('🔧 Creating missing harvest report for planting report:', plantingReport.id);
           
-          // Create harvest report from planting report data with all planting information
+          // Create harvest report from planting report data using unified format
           const harvestReportData = {
+            ...plantingReport,
             plantingReportId: plantingReport.id,
-            userEmail: plantingReport.farmerEmail,
-            userName: plantingReport.farmerName,
-            userBarangay: '', // Not available in planting report
-            crop: plantingReport.crop,
-            // Copy all planting data to harvest report
-            plantingDate: plantingReport.plantingDate,
-            expectedHarvestDate: plantingReport.expectedHarvestDate,
-            area: plantingReport.areaPlanted,
-            areaType: plantingReport.areaType,
-            plantCount: plantingReport.plantCount,
-            expectedYield: plantingReport.expectedHarvest,
-            // Harvest-specific data
-            actualHarvest: 0, // Will be updated when user records actual harvest
+            status: 'pending',
+            actualHarvest: 0,
+            harvestWeight: 0,
             isHarvested: false,
-            harvestDate: null,
-            harvestWeight: null,
+            amount: 0,
+            amountType: 'kg',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           };
@@ -610,25 +580,16 @@ export default function PlantingReportScreen() {
         return;
       }
       
-      // Create harvest report from planting report data with all planting information
+      // Create harvest report from planting report data using unified format
       const harvestReportData = {
+        ...plantingReport,
         plantingReportId: plantingReport.id,
-        userEmail: user?.email,
-        userName: user?.displayName || profile?.name || 'User',
-        userBarangay: profile?.barangay || '',
-        crop: plantingReport.crop,
-        // Copy all planting data to harvest report
-        plantingDate: plantingReport.plantingDate,
-        expectedHarvestDate: plantingReport.expectedHarvestDate,
-        area: plantingReport.areaPlanted,
-        areaType: plantingReport.areaType,
-        plantCount: plantingReport.plantCount,
-        expectedYield: plantingReport.expectedHarvest,
-        // Harvest-specific data
-        actualHarvest: 0, // Will be updated when user records actual harvest
+        status: 'pending',
+        actualHarvest: 0,
+        harvestWeight: 0,
         isHarvested: false,
-        harvestDate: null,
-        harvestWeight: null,
+        amount: 0,
+        amountType: 'kg',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
@@ -685,25 +646,26 @@ export default function PlantingReportScreen() {
     
     try {
       const plantingDateObj = new Date(plantingDate);
-      const plantingData = {
-        userId: user.uid,
-        farmerName: profile.name,
-        farmerEmail: user.email,
+      const plantingData = createUnifiedPlantingData({
+        userId: user.email || '', // Use email as unique identifier instead of mock UID
+        farmerName: profile.name || '',
+        farmerEmail: user.email || '',
+        userBarangay: profile.barangay || '',
         crop: selectedCrop,
+        variety: '', // Not available in current form
         plantingDate: plantingDate,
-        expectedHarvestDate: expectedHarvestDate,
-        plantCount: plantCount,
-        expectedHarvest: parseFloat(expectedHarvest),
-        areaPlanted: parseFloat(amount),
+        plantCount: parseInt(plantCount) || 0,
+        areaPlanted: parseFloat(amount) || 0,
         areaType: amountType,
-        status: 'pending',
+        soilType: '', // Not available in current form
+        irrigation: '', // Not available in current form
+        fertilizer: '', // Not available in current form
+        notes: '', // Not available in current form
+        expectedHarvestDate: expectedHarvestDate,
+        expectedYield: parseFloat(expectedHarvest) || 0,
         submittedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
-        // Add month/year for filtering based on selected planting date
-        plantingMonth: plantingDateObj.getMonth() + 1, // 1-12
-        plantingYear: plantingDateObj.getFullYear(),
-        monthYear: `${plantingDateObj.getFullYear()}-${String(plantingDateObj.getMonth() + 1).padStart(2, '0')}`, // YYYY-MM format
-      };
+      });
 
       if (isEditMode && editingReport) {
         // Update existing planting report
@@ -718,63 +680,52 @@ export default function PlantingReportScreen() {
           const linkedSnap = await getDocs(linkedHarvestQuery);
           if (!linkedSnap.empty) {
             const hr = linkedSnap.docs[0];
-            await updateDoc(doc(db, 'harvestReports', hr.id), {
-              crop: selectedCrop,
-              expectedHarvestDate: expectedHarvestDate,
-              area: parseFloat(amount),
-              areaType: amountType,
-              plantCount: plantCount,
-              expectedYield: parseFloat(expectedHarvest),
-              farmerEmail: user.email,
-              farmerName: profile.name,
+            // Update harvest report with unified format
+            const updatedHarvestData = {
+              ...plantingData,
+              plantingReportId: editingReport.id,
               updatedAt: new Date().toISOString()
-            });
+            };
+            await updateDoc(doc(db, 'harvestReports', hr.id), updatedHarvestData);
           }
         } catch (e) {
           console.warn('Failed to sync linked harvest report on edit:', e);
         }
-      Alert.alert(
-        'Success!',
+        Alert.alert(
+          'Success!',
           'Planting report updated successfully.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              clearForm();
-              setCurrentView('main');
-              loadPlantingReports();
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                clearForm();
+                setCurrentView('main');
+                await loadPlantingReports();
+                // Also reload global analytics to reflect changes
+                await loadGlobalAnalytics();
+              }
             }
-          }
-        ]
-      );
+          ]
+        );
       } else {
         // Create new planting report
         const plantingDocRef = await addDoc(collection(db, 'plantingReports'), plantingData);
         console.log('✅ Planting report created with ID:', plantingDocRef.id);
         
-        // Automatically create corresponding harvest report (old-format) and link it
-        const oldFormatHarvest = {
+        // Create corresponding harvest report using unified format
+        const harvestData = {
+          ...plantingData,
           plantingReportId: plantingDocRef.id,
-          farmerEmail: user.email,
-          farmerName: profile.name,
-          crop: selectedCrop,
-          // Old-format status/amount fields
           status: 'pending',
+          actualHarvest: 0,
+          harvestWeight: 0,
+          isHarvested: false,
           amount: 0,
           amountType: 'kg',
-          // Carry planting context for views (not required by old format but safe)
-          plantingDate: plantingDate,
-          expectedHarvestDate: expectedHarvestDate,
-          area: parseFloat(amount),
-          areaType: amountType,
-          plantCount: plantCount,
-          expectedYield: parseFloat(expectedHarvest),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
         };
 
-        const harvestDocRef = await addDoc(collection(db, 'harvestReports'), oldFormatHarvest);
-        console.log('✅ Linked old-format harvest report created with ID:', harvestDocRef.id);
+        const harvestDocRef = await addDoc(collection(db, 'harvestReports'), harvestData);
+        console.log('✅ Linked unified harvest report created with ID:', harvestDocRef.id);
         
         Alert.alert(
           'Success!',
@@ -782,10 +733,12 @@ export default function PlantingReportScreen() {
           [
             {
               text: 'OK',
-              onPress: () => {
+              onPress: async () => {
                 clearForm();
                 setCurrentView('main');
-                loadPlantingReports();
+                await loadPlantingReports();
+                // Also reload global analytics to reflect changes
+                await loadGlobalAnalytics();
               }
             }
           ]
@@ -928,7 +881,7 @@ export default function PlantingReportScreen() {
                   {/* Global Trends Section */}
                   <View style={styles.globalTrendsCard}>
                     <View style={styles.globalTrendsHeader}>
-                      <Text style={styles.globalTrendsTitle}>🌍 Global Planting Trends</Text>
+                      <Text style={styles.globalTrendsTitle}>🌍 Lopez Planting Trends</Text>
                     </View>
 
                     {/* Loading State */}
@@ -941,7 +894,7 @@ export default function PlantingReportScreen() {
                       <>
                         {/* Horizontal Bar Chart with Rankings */}
                         <View style={styles.barChartContainer}>
-                          <Text style={styles.barChartTitle}>Global Crop Distribution</Text>
+                          <Text style={styles.barChartTitle}>Lopez Crop Distribution</Text>
                           
                           {/* Month Navigation */}
                           <View style={styles.monthNavigationContainer}>
@@ -1433,7 +1386,7 @@ export default function PlantingReportScreen() {
                         </View>
                         <View style={styles.reportMainInfo}>
                           <View style={styles.cropNameRow}>
-                          <Text style={styles.reportCrop}>{report.crop}</Text>
+                          <Text style={styles.reportCrop} numberOfLines={1}>{report.crop}</Text>
                             <View style={[styles.statusBadge, 
                               report.status === 'approved' ? styles.approvedBadge : 
                               report.status === 'rejected' ? styles.rejectedBadge : 
@@ -2009,6 +1962,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 4,
+    flexWrap: 'nowrap',
   },
   reportCrop: {
     fontSize: 20,

@@ -14,42 +14,46 @@ const RECT_RADIUS = 32;
 
 export default function SignupScreen() {
   const router = useRouter();
-  const { signup, loading: authLoading } = useAuth();
+  const { signup, loading } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSignup = async () => {
-    if (!name || !email || !password || !confirmPassword) {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    const sanitizedPassword = password;
+    const sanitizedConfirmPassword = confirmPassword;
+
+    if (!trimmedName || !trimmedEmail || !sanitizedPassword || !sanitizedConfirmPassword) {
       setError('Please fill in all fields');
       return;
     }
 
-    if (password.length < 6) {
+    if (sanitizedPassword.length < 6) {
       setError('Password must be at least 6 characters');
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (sanitizedPassword !== sanitizedConfirmPassword) {
       setError('Passwords do not match');
       return;
     }
 
-    setLoading(true);
+    if (trimmedName !== name) setName(trimmedName);
+    if (trimmedEmail !== email) setEmail(trimmedEmail);
+
     setError('');
 
     try {
-      await signup(email, password, name, 'Farmer', '');
+      await signup(trimmedEmail, sanitizedPassword, trimmedName, 'Farmer', '');
       router.replace('/farmers'); // Always go to farmer fill up form after signup
     } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
+      setError(error?.message || 'Something went wrong while creating your account.');
     }
   };
 
@@ -167,13 +171,13 @@ export default function SignupScreen() {
           ) : null}
           
           <TouchableOpacity 
-            style={[styles.button, (loading || authLoading) && styles.buttonDisabled]} 
+            style={[styles.button, loading && styles.buttonDisabled]} 
             onPress={handleSignup} 
             activeOpacity={0.85}
-            disabled={loading || authLoading}
+            disabled={loading}
           >
             <Text style={styles.buttonText}>
-              {loading || authLoading ? 'Creating Account...' : 'Sign Up'}
+              {loading ? 'Creating Account...' : 'Sign Up'}
             </Text>
           </TouchableOpacity>
           <View style={styles.loginContainer}>

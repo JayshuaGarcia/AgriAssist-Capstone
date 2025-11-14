@@ -57,7 +57,7 @@ export default function RootLayout() {
                 <Stack.Screen name="language" options={{ headerShown: false }} />
                 <Stack.Screen name="admin" options={{ headerShown: false }} />
                 <Stack.Screen name="admin-chat" options={{ headerShown: false }} />
-                <Stack.Screen name="admin-pdf-data" options={{ headerShown: false }} />
+                <Stack.Screen name="admin-data-management" options={{ headerShown: false }} />
                 <Stack.Screen name="user-chat" options={{ headerShown: false }} />
                 <Stack.Screen name="feature-placeholder" options={{ headerShown: false }} />
                 <Stack.Screen name="planting-report" options={{ headerShown: false }} />
@@ -65,6 +65,7 @@ export default function RootLayout() {
                 <Stack.Screen name="harvest-view-reports" options={{ headerShown: false }} />
                 <Stack.Screen name="commodity-analytics" options={{ headerShown: false }} />
                 <Stack.Screen name="ml-predictions" options={{ headerShown: false }} />
+                <Stack.Screen name="profile-information" options={{ headerShown: false }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
               <StatusBar style="auto" />

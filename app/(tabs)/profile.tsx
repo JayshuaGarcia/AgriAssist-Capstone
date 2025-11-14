@@ -76,6 +76,11 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-information')}>
+          <MaterialCommunityIcons name="file-document-outline" size={24} color={GREEN} />
+          <Text style={styles.menuText}>Profile Information</Text>
+          <Ionicons name="chevron-forward" size={20} color="#ccc" />
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem} onPress={() => router.push('./profile-privacy')}>
           <MaterialCommunityIcons name="shield-check-outline" size={24} color={GREEN} />
