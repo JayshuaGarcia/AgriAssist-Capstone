@@ -61,15 +61,19 @@ const CATEGORY_MAP: Record<string, string> = {
   'Imported Garlic': 'Vegetables',
   'Local Red Onion': 'Vegetables',
   'Chicken Egg_White_M_': 'Poultry',
+  'Chicken Egg_White_ M_': 'Poultry', // With space
   'Chicken Egg_White_L_': 'Poultry',
   'Chicken Egg_White_XL_': 'Poultry',
+  'Chicken Egg_White_ XL_': 'Poultry', // With space
   'Chicken Egg_White_J_': 'Poultry',
   'Chicken Egg_White_P_': 'Poultry',
   'Chicken Egg_White_S_': 'Poultry',
   'Chicken Egg_White_XS_': 'Poultry',
   'Chicken Egg_Brown_M_': 'Poultry',
+  'Chicken Egg_Brown_ M_': 'Poultry', // With space
   'Chicken Egg_Brown_L_': 'Poultry',
   'Chicken Egg_Brown_XL_': 'Poultry',
+  'Chicken Egg_Brown_ XL_': 'Poultry', // With space
   'Whole Chicken': 'Poultry',
   'Pork Ham_Kasim_': 'Meat',
   'Pork Ham Belly_Liempo_': 'Meat',
@@ -78,7 +82,24 @@ const CATEGORY_MAP: Record<string, string> = {
 };
 
 function getCategory(commodityName: string): string {
-  return CATEGORY_MAP[commodityName] || 'Other';
+  // First try exact match
+  if (CATEGORY_MAP[commodityName]) {
+    return CATEGORY_MAP[commodityName];
+  }
+  
+  // Try normalized version (remove extra spaces)
+  const normalized = commodityName.replace(/\s+/g, ' ').trim();
+  if (CATEGORY_MAP[normalized]) {
+    return CATEGORY_MAP[normalized];
+  }
+  
+  // Check if it's a chicken egg or poultry item
+  const lowerName = commodityName.toLowerCase();
+  if (lowerName.includes('chicken') || lowerName.includes('egg') || lowerName.includes('duck') || lowerName.includes('poultry') || lowerName.includes('turkey') || lowerName.includes('quail')) {
+    return 'Poultry';
+  }
+  
+  return 'Other';
 }
 
 function sanitizeDisplayName(folderName: string): string {
@@ -94,7 +115,55 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
     // Load JSON data (pre-converted from CSV)
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore - Dynamic require
-    const cleanedData = require('../data/prices/json/cleaned.json');
+    let cleanedData = require('../data/prices/json/cleaned.json');
+    
+    // Check for uploaded price updates in AsyncStorage
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const lastUpdateDate = await AsyncStorage.getItem('last_price_update_date');
+      if (lastUpdateDate) {
+        const priceUpdatesKey = 'price_updates_' + lastUpdateDate;
+        const priceUpdatesJson = await AsyncStorage.getItem(priceUpdatesKey);
+        if (priceUpdatesJson) {
+          const priceUpdates = JSON.parse(priceUpdatesJson);
+          
+          // Apply updates to cleanedData
+          Object.keys(priceUpdates).forEach(commodityName => {
+            const matchingKey = Object.keys(cleanedData).find(key => {
+              const normalized = key.replace(/_/g, ' ').toLowerCase();
+              const searchNormalized = commodityName.toLowerCase();
+              return normalized.includes(searchNormalized) || searchNormalized.includes(normalized);
+            });
+
+            if (matchingKey && cleanedData[matchingKey]) {
+              const update = priceUpdates[commodityName];
+              if (!cleanedData[matchingKey]['2025']) {
+                cleanedData[matchingKey]['2025'] = [];
+              }
+              
+              // Add or update the price entry
+              const existingIndex = cleanedData[matchingKey]['2025'].findIndex(
+                (item: any) => item.date === update.date
+              );
+              
+              const priceEntry = { date: update.date, price: update.price };
+              
+              if (existingIndex >= 0) {
+                cleanedData[matchingKey]['2025'][existingIndex] = priceEntry;
+              } else {
+                cleanedData[matchingKey]['2025'].push(priceEntry);
+                cleanedData[matchingKey]['2025'].sort((a: any, b: any) => 
+                  a.date.localeCompare(b.date)
+                );
+              }
+            }
+          });
+        }
+      }
+    } catch (storageError) {
+      // Ignore storage errors, use original data
+      console.log('No price updates in storage, using original data');
+    }
     
     if (!cleanedData || !cleanedData[commodityFolder]) {
       return null;
@@ -105,13 +174,17 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
     // Get all years data
     const years = Object.keys(commodityData).filter(year => 
       Array.isArray(commodityData[year]) && commodityData[year].length > 0
-    ).sort();
+    );
     
     if (years.length === 0) return null;
 
-    // Get 2025 data (latest year), fallback to most recent year
-    let latestYear = years.find(year => year === '2025') || years[years.length - 1];
+    // Prioritize 2025 data (latest year), fallback to most recent year
+    // Sort years numerically (descending) to get the latest year
+    const sortedYears = years.sort((a, b) => parseInt(b) - parseInt(a));
+    let latestYear = sortedYears.find(year => year === '2025') || sortedYears[0];
     let yearData = commodityData[latestYear];
+    
+    // console.log(`📊 Loading ${commodityFolder}: Using year ${latestYear} (available: ${sortedYears.join(', ')})`);
     
     if (!yearData || !Array.isArray(yearData) || yearData.length === 0) {
       return null;
@@ -167,7 +240,7 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
     
     // Combine historical and forecast years
     const allAvailableYears = new Set([...years, ...Array.from(forecastYears)]);
-    const sortedYears = Array.from(allAvailableYears).sort((a, b) => parseInt(b) - parseInt(a));
+    const allSortedYears = Array.from(allAvailableYears).sort((a, b) => parseInt(b) - parseInt(a));
 
     return {
       name: commodityFolder,
@@ -178,7 +251,7 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
       historicalData: records, // Latest year data
       historicalDataByYear, // All years data
       forecastData, // Forecast data (seasonal historical + trend method)
-      availableYears: sortedYears, // Most recent first, includes forecast years (2026, etc.)
+      availableYears: allSortedYears, // Most recent first, includes forecast years (2026, etc.)
       trend,
       changePercent: Math.round(changePercent * 100) / 100,
     };

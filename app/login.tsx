@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
 import { useNavigationBar } from '../hooks/useNavigationBar';
@@ -11,14 +12,52 @@ const INPUT_GREEN = '#74bfa3';
 const RECT_HEIGHT = 80;
 const RECT_RADIUS = 32;
 const BUTTON_RADIUS = 32;
+const REMEMBER_ME_KEY = '@agriassist/rememberMe';
+const REMEMBERED_EMAIL_KEY = '@agriassist/rememberedEmail';
+const REMEMBERED_PASSWORD_KEY = '@agriassist/rememberedPassword';
 
 export default function LoginScreen() {
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [error, setError] = React.useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState('');
   const { login, forgotPassword, loading } = useAuth();
   
+  // Load remembered credentials on mount
+  useEffect(() => {
+    let isMounted = true;
+    const loadRemembered = async () => {
+      try {
+        const [remember, storedEmail, storedPassword] = await Promise.all([
+          AsyncStorage.getItem(REMEMBER_ME_KEY),
+          AsyncStorage.getItem(REMEMBERED_EMAIL_KEY),
+          AsyncStorage.getItem(REMEMBERED_PASSWORD_KEY),
+        ]);
+
+        if (!isMounted) return;
+
+        if (remember === 'true') {
+          setRememberMe(true);
+          if (storedEmail) {
+            setEmail(storedEmail);
+          }
+          if (storedPassword) {
+            setPassword(storedPassword);
+          }
+        }
+      } catch (e) {
+        console.log('Failed to load remembered login info', e);
+      }
+    };
+
+    loadRemembered();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Debug logging
   console.log('Login screen - loading state:', loading);
   
@@ -53,9 +92,53 @@ export default function LoginScreen() {
       }
 
       console.log('Regular user login');
-      // For regular users, go to farmer form
       await login(trimmedEmail, trimmedPassword, 'Farmer');
-      router.replace('/farmers'); // Always go to farmer fill up form after login
+
+      // Handle Remember Me preference and credentials
+      try {
+        if (rememberMe) {
+          await AsyncStorage.setItem(REMEMBER_ME_KEY, 'true');
+          await AsyncStorage.setItem(REMEMBERED_EMAIL_KEY, trimmedEmail);
+          await AsyncStorage.setItem(REMEMBERED_PASSWORD_KEY, trimmedPassword);
+        } else {
+          await AsyncStorage.removeItem(REMEMBER_ME_KEY);
+          await AsyncStorage.removeItem(REMEMBERED_EMAIL_KEY);
+          await AsyncStorage.removeItem(REMEMBERED_PASSWORD_KEY);
+        }
+      } catch (storageErr) {
+        console.log('Error saving remember-me preference:', storageErr);
+      }
+
+      // After login, check if user already accepted terms
+      try {
+        const emailKey = trimmedEmail.toLowerCase();
+        const termsKey = `termsAccepted_${emailKey}`;
+        const formsKey = `farmerFormsCompleted_${emailKey}`;
+
+        const [accepted, formsCompleted] = await Promise.all([
+          AsyncStorage.getItem(termsKey),
+          AsyncStorage.getItem(formsKey),
+        ]);
+
+        if (accepted === 'true') {
+          // If forms are already completed, go straight to main tabs (home)
+          if (formsCompleted === 'true') {
+            router.replace('/(tabs)');
+          } else {
+            // Terms accepted but forms not finished yet → go to farmer form
+            router.replace('/farmers');
+          }
+        } else {
+          // Show terms and conditions first
+          router.replace(
+            `/terms-and-conditions?email=${encodeURIComponent(emailKey)}`
+          );
+        }
+      } catch (storageError) {
+        console.log('Error checking terms/forms completion:', storageError);
+        // If anything goes wrong, still allow user to proceed to farmer form
+        router.replace('/farmers');
+      }
     } catch (error: any) {
       console.log('Login error:', error);
       setError(error?.message || 'Something went wrong while logging in.');
@@ -74,6 +157,7 @@ export default function LoginScreen() {
     >
       {/* Top green rounded rectangle */}
       <View style={styles.topGreen} />
+
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.container}>
           <Image source={require('../assets/images/Logo.png')} style={styles.logoImg} resizeMode="contain" />
@@ -102,12 +186,12 @@ export default function LoginScreen() {
             <TextInput
               style={[styles.input, styles.passwordInput, { 
                 textAlign: 'center', 
-                paddingLeft: 24, 
+                paddingLeft: 48, 
                 paddingRight: 48,
                 includeFontPadding: false,
                 textAlignVertical: 'center'
               }]}
-              placeholder="      Password"
+              placeholder="Password"
               placeholderTextColor={GREEN}
               value={password}
               onChangeText={setPassword}
@@ -126,6 +210,21 @@ export default function LoginScreen() {
               />
             </TouchableOpacity>
           </View>
+          
+          {/* Remember Me */}
+          <TouchableOpacity
+            style={styles.rememberMeContainer}
+            onPress={() => setRememberMe(!rememberMe)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={rememberMe ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={GREEN}
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.rememberMeText}>Remember me</Text>
+          </TouchableOpacity>
           
           <TouchableOpacity
             style={styles.forgotPasswordLink}
@@ -156,13 +255,21 @@ export default function LoginScreen() {
               <Text style={styles.signupLink}>Sign Up Here.</Text>
             </TouchableOpacity>
           </View>
-          
 
+          {/* PUP Branding at the bottom of the screen content */}
+          <View style={styles.pupBrandingContainer}>
+            <Image
+              source={require('../assets/images/PUP LOGO.png')}
+              style={styles.pupLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.pupBrandingText}>
+              This project is made by BSIT 4 PUP Lopez Students
+            </Text>
+          </View>
         </View>
       </ScrollView>
-      
 
-      
       {/* Bottom green rounded rectangle */}
       <View style={styles.bottomGreen} />
     </KeyboardAvoidingView>
@@ -172,6 +279,18 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
+  },
+  rememberMeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    marginLeft: 8,
+  },
+  rememberMeText: {
+    color: GREEN,
+    fontSize: 14,
+    fontWeight: '500',
   },
   container: {
     flex: 1,
@@ -187,6 +306,23 @@ const styles = StyleSheet.create({
     height: 120,
     marginBottom: 10,
     marginTop: 16,
+  },
+  pupBrandingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  pupLogo: {
+    width: 20,
+    height: 20,
+    marginRight: 6,
+  },
+  pupBrandingText: {
+    fontSize: 12,
+    color: GREEN,
+    textAlign: 'center',
   },
   header: {
     fontSize: 32,
@@ -224,8 +360,6 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   passwordInput: {
-    paddingLeft: 22,
-    paddingRight: 48, // extra space for eye icon
     textAlign: 'center',
   },
   eyeIcon: {

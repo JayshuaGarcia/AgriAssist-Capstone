@@ -66,6 +66,7 @@ export default function RootLayout() {
                 <Stack.Screen name="commodity-analytics" options={{ headerShown: false }} />
                 <Stack.Screen name="ml-predictions" options={{ headerShown: false }} />
                 <Stack.Screen name="profile-information" options={{ headerShown: false }} />
+                <Stack.Screen name="terms-and-conditions" options={{ headerShown: false }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
               <StatusBar style="auto" />

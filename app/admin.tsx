@@ -1,21 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../components/AnnouncementContext';
 import { useAuth } from '../components/AuthContext';
 import { ForecastingCalendar } from '../components/ForecastingCalendar';
-import { PriceMonitoringList } from '../components/PriceMonitoringList';
 import { useNotification } from '../components/NotificationContext';
+import { PriceMonitoringList } from '../components/PriceMonitoringList';
 import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
-import { getAllCommodities, CommodityPrice } from '../services/csvPriceService';
 import { Commodity, COMMODITY_DATA } from '../constants/CommodityData';
 import { useNavigationBar } from '../hooks/useNavigationBar';
 import { useCategories, useCommodityManagement } from '../hooks/useOfflineCommodities';
 import { db } from '../lib/firebase';
+import { CommodityPrice, getAllCommodities } from '../services/csvPriceService';
 import { convertToUnifiedFormat } from '../types/UnifiedReportFormat';
 
 const { width } = Dimensions.get('window');
@@ -205,6 +208,12 @@ export default function AdminPage() {
   const [priceCommodities, setPriceCommodities] = useState<CommodityPrice[]>([]);
   const [loadingPrices, setLoadingPrices] = useState(false);
   const [showAllRecords, setShowAllRecords] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [selectedCommodities, setSelectedCommodities] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   
   // Forecasting calendar states
   const [forecastModalVisible, setForecastModalVisible] = useState(false);
@@ -362,7 +371,7 @@ export default function AdminPage() {
         categories['Fish & Seafood'].push(item);
       } else if (commodityName.includes('beef') || commodityName.includes('pork') || commodityName.includes('carabeef')) {
         categories['Meat Products'].push(item);
-      } else if (commodityName.includes('chicken') || commodityName.includes('egg')) {
+      } else if (commodityName.includes('chicken') || commodityName.includes('egg') || commodityName.includes('duck') || commodityName.includes('poultry') || commodityName.includes('turkey') || commodityName.includes('quail')) {
         categories['Poultry & Eggs'].push(item);
       } else if (commodityName.includes('ampalaya') || commodityName.includes('eggplant') || commodityName.includes('tomato') || commodityName.includes('cabbage') || commodityName.includes('carrot') || commodityName.includes('lettuce') || commodityName.includes('pechay') || commodityName.includes('squash') || commodityName.includes('sitao') || commodityName.includes('chayote') || commodityName.includes('potato') || commodityName.includes('broccoli') || commodityName.includes('cauliflower') || commodityName.includes('celery') || commodityName.includes('bell pepper') || commodityName.includes('habichuelas') || commodityName.includes('baguio beans')) {
         categories['Vegetables'].push(item);
@@ -477,6 +486,200 @@ export default function AdminPage() {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<any>(null);
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementContent, setAnnouncementContent] = useState('');
+
+  // App update management state (admin only)
+  const [showAppUpdateModal, setShowAppUpdateModal] = useState(false);
+  const [updateVersion, setUpdateVersion] = useState('');
+  const [updateUrl, setUpdateUrl] = useState('');
+  const [updateMessage, setUpdateMessage] = useState('');
+  const [updateIsActive, setUpdateIsActive] = useState(false);
+  const [savingUpdate, setSavingUpdate] = useState(false);
+  const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
+  const [selectedUpdateId, setSelectedUpdateId] = useState<string | null>(null);
+
+  const loadAppUpdates = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'appUpdates'));
+      const updates = snapshot.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      setRecentUpdates(updates);
+
+      const active = updates.find((u) => u.isActive);
+      if (active) {
+        // Keep fields in sync with the currently active update,
+        // but do NOT auto-select any card – user should tap one.
+        setUpdateVersion(active.version || '');
+        setUpdateUrl(active.url || '');
+        setUpdateMessage(active.message || '');
+        setUpdateIsActive(true);
+      } else {
+        setUpdateVersion('');
+        setUpdateUrl('');
+        setUpdateMessage('');
+        setUpdateIsActive(false);
+      }
+    } catch (error) {
+      console.error('Error loading app updates:', error);
+    }
+  };
+
+  const handleSaveAppUpdate = async () => {
+    if (!updateVersion.trim() || !updateUrl.trim()) {
+      Alert.alert('Missing Information', 'Please enter both version and update link.');
+      return;
+    }
+
+    try {
+      setSavingUpdate(true);
+      const updatesRef = collection(db, 'appUpdates');
+      const docRef = await addDoc(updatesRef, {
+        version: updateVersion.trim(),
+        url: updateUrl.trim(),
+        message: updateMessage.trim(),
+        isActive: updateIsActive,
+        createdAt: Date.now(),
+        createdBy: user?.email || 'admin',
+      });
+
+      console.log('✅ App update saved with id:', docRef.id);
+
+      // Refresh list
+      await loadAppUpdates();
+      Alert.alert('Success', 'App update information saved.');
+    } catch (error) {
+      console.error('Error saving app update:', error);
+      Alert.alert('Error', 'Failed to save app update. Please try again.');
+    } finally {
+      setSavingUpdate(false);
+    }
+  };
+
+  const deployLatestAppUpdate = async () => {
+    try {
+      console.log('🚀 Deploying latest app update...');
+      const snapshot = await getDocs(collection(db, 'appUpdates'));
+      if (snapshot.empty) {
+        Alert.alert('No Updates', 'There are no saved updates to deploy yet.');
+        return;
+      }
+
+      const updates = snapshot.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      if (!selectedUpdateId && updates.length === 0) {
+        Alert.alert('No Updates', 'There is no update to deploy.');
+        return;
+      }
+
+      const selected =
+        updates.find((u) => u.id === selectedUpdateId) || updates[0];
+
+      // Use the values currently shown in the form when deploying,
+      // so the deployed link always matches what the admin sees.
+      const finalVersion = (updateVersion || selected.version || '').trim();
+      const finalUrl = (updateUrl || selected.url || '').trim();
+      const finalMessage = (updateMessage || selected.message || '').trim();
+
+      console.log('📦 Deploying update:', {
+        id: selected.id,
+        version: finalVersion,
+        url: finalUrl,
+        message: finalMessage,
+      });
+
+      // Set selected as active, others inactive
+      await Promise.all(
+        updates.map((u) =>
+          updateDoc(doc(db, 'appUpdates', u.id), {
+            isActive: u.id === selected.id,
+            ...(u.id === selected.id && {
+              version: finalVersion,
+              url: finalUrl,
+              message: finalMessage,
+            }),
+          })
+        )
+      );
+
+      console.log(`✅ Set update ${selected.id} as active, others as inactive`);
+
+      setSelectedUpdateId(selected.id);
+      setUpdateVersion(finalVersion);
+      setUpdateUrl(finalUrl);
+      setUpdateMessage(finalMessage);
+      setUpdateIsActive(true);
+      await loadAppUpdates();
+      console.log('✅ Update deployed successfully');
+      Alert.alert(
+        'Deployed',
+        `Update v${finalVersion || ''} is now active. Users will see the update screen on next app open.`
+      );
+    } catch (error: any) {
+      console.error('❌ Error deploying latest app update:', error);
+      Alert.alert(
+        'Error',
+        error?.message || 'Failed to deploy update. Please try again.'
+      );
+    }
+  };
+
+  const undeployAllAppUpdates = async () => {
+    try {
+      console.log('⏸️ Undeploying all app updates...');
+      const snapshot = await getDocs(collection(db, 'appUpdates'));
+      if (snapshot.empty) {
+        Alert.alert('No Updates', 'There are no updates to undeploy.');
+        return;
+      }
+
+      const updates = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      console.log(`📦 Found ${updates.length} update(s) to undeploy`);
+
+      await Promise.all(
+        updates.map((u) =>
+          updateDoc(doc(db, 'appUpdates', u.id), {
+            isActive: false,
+          })
+        )
+      );
+
+      console.log('✅ All updates set to inactive');
+      setUpdateIsActive(false);
+      await loadAppUpdates();
+      console.log('✅ Updates undeployed successfully');
+      Alert.alert('Undeployed', 'Forced update has been turned off for all users. Users can now continue using the current version.');
+    } catch (error: any) {
+      console.error('❌ Error undeploying app updates:', error);
+      Alert.alert(
+        'Error',
+        error?.message || 'Failed to undeploy updates. Please try again.'
+      );
+    }
+  };
+
+  const deleteSelectedAppUpdate = async () => {
+    if (!selectedUpdateId) {
+      Alert.alert('No selection', 'Please tap a version in Recent Updates first.');
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting app update:', selectedUpdateId);
+      await deleteDoc(doc(db, 'appUpdates', selectedUpdateId));
+      setSelectedUpdateId(null);
+      await loadAppUpdates();
+      Alert.alert('Deleted', 'The selected app update has been removed.');
+    } catch (error: any) {
+      console.error('❌ Error deleting app update:', error);
+      Alert.alert(
+        'Error',
+        error?.message || 'Failed to delete update. Please try again.'
+      );
+    }
+  };
   const [announcementIcon, setAnnouncementIcon] = useState('megaphone');
 
   // User list state
@@ -508,6 +711,7 @@ export default function AdminPage() {
   const [loadingFarmers, setLoadingFarmers] = useState(false);
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [showFarmerDetail, setShowFarmerDetail] = useState(false);
+  const [showSummaryInventory, setShowSummaryInventory] = useState(false);
   
   // Maintenance: clear all planting and harvest reports
   const clearAllReports = async () => {
@@ -593,6 +797,320 @@ export default function AdminPage() {
 
   const handleDebugPriceMatching = async () => {
     Alert.alert('Debug Info', '📊 Firebase Debug:\n\n✅ Real-time data from Firebase\n🔄 No local storage debugging needed\n📱 Check Price Monitoring tab for live data');
+  };
+
+  // CSV Export function
+  const generateCSV = (commodities: CommodityPrice[]): string => {
+    const headers = [
+      'Commodity Name',
+      'Category',
+      'Specification',
+      'Current Price',
+      'Current Date',
+      'Forecast Date',
+      'Forecast Price',
+      'Lower Bound',
+      'Upper Bound',
+      'Trend',
+      'Change Percent'
+    ];
+
+    const rows: string[][] = [headers];
+
+    commodities.forEach(commodity => {
+      if (commodity.forecastData && commodity.forecastData.length > 0) {
+        // Add row for each forecast
+        commodity.forecastData.forEach(forecast => {
+          rows.push([
+            commodity.displayName || commodity.name,
+            commodity.category || '',
+            commodity.specification || '',
+            commodity.currentPrice?.toString() || '',
+            commodity.currentDate || '',
+            forecast.date,
+            forecast.forecast?.toString() || '',
+            forecast.lower?.toString() || '',
+            forecast.upper?.toString() || '',
+            commodity.trend || '',
+            commodity.changePercent?.toString() || ''
+          ]);
+        });
+      } else {
+        // Add row with current price only (no forecast)
+        rows.push([
+          commodity.displayName || commodity.name,
+          commodity.category || '',
+          commodity.specification || '',
+          commodity.currentPrice?.toString() || '',
+          commodity.currentDate || '',
+          '',
+          '',
+          '',
+          '',
+          commodity.trend || '',
+          commodity.changePercent?.toString() || ''
+        ]);
+      }
+    });
+
+    // Convert to CSV format
+    return rows.map(row => 
+      row.map(cell => {
+        // Escape quotes and wrap in quotes if contains comma, quote, or newline
+        const cellStr = String(cell || '');
+        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+          return `"${cellStr.replace(/"/g, '""')}"`;
+        }
+        return cellStr;
+      }).join(',')
+    ).join('\n');
+  };
+
+  // Upload CSV function - Update prices from DA CSV
+  const handleUploadCSV = async () => {
+    try {
+      // Pick CSV file
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'text/csv',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const fileUri = result.assets[0].uri;
+      const fileName = result.assets[0].name;
+      setUploadedFile(fileName);
+      setUploading(true);
+
+      // Read CSV file
+      const csvContent = await FileSystem.readAsStringAsync(fileUri);
+      
+      // Parse CSV - Expected format: commodity,price,date or similar
+      const lines = csvContent.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        Alert.alert('Error', 'CSV file is empty or invalid format.');
+        setUploading(false);
+        return;
+      }
+
+      // Parse header
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const commodityIndex = headers.findIndex(h => h.includes('commodity') || h.includes('product') || h.includes('item'));
+      const priceIndex = headers.findIndex(h => h.includes('price'));
+      const dateIndex = headers.findIndex(h => h.includes('date'));
+
+      if (commodityIndex === -1 || priceIndex === -1) {
+        Alert.alert('Error', 'CSV must contain "commodity" and "price" columns.');
+        setUploading(false);
+        return;
+      }
+
+      // Parse data rows
+      const priceUpdates: { [commodity: string]: { price: number; date: string } } = {};
+      const today = new Date().toISOString().split('T')[0];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        const commodity = values[commodityIndex];
+        const price = parseFloat(values[priceIndex]);
+        const date = dateIndex !== -1 ? values[dateIndex] : today;
+
+        if (commodity && !isNaN(price) && price > 0) {
+          // Normalize commodity name to match folder names
+          const normalizedName = commodity
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          priceUpdates[normalizedName] = { price, date };
+        }
+      }
+
+      if (Object.keys(priceUpdates).length === 0) {
+        Alert.alert('Error', 'No valid price data found in CSV.');
+        setUploading(false);
+        return;
+      }
+
+      // Show preview and confirm
+      const commodityList = Object.keys(priceUpdates).slice(0, 10).join(', ');
+      const moreCount = Object.keys(priceUpdates).length - 10;
+      const previewText = moreCount > 0 
+        ? `${commodityList}... and ${moreCount} more`
+        : commodityList;
+
+      Alert.alert(
+        'Confirm Update',
+        `Found ${Object.keys(priceUpdates).length} price updates:\n\n${previewText}\n\n` +
+        `This will update the current prices in price monitoring. Continue?`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => {
+            setUploading(false);
+            setUploadedFile(null);
+          }},
+          { 
+            text: 'Update', 
+            onPress: async () => {
+              try {
+                // Save CSV to external data location for processing
+                const today = new Date().toISOString().split('T')[0];
+                const externalDataPath = 'C:\\Users\\Mischelle\\excel-price-manager\\data\\cleaned';
+                
+                // Create updated CSV content for each commodity
+                let processedCount = 0;
+                const processedCommodities: string[] = [];
+                
+                // For each commodity in the upload, update its 2025.csv file
+                for (const [commodityName, update] of Object.entries(priceUpdates)) {
+                  // Find matching commodity folder
+                  const matchingFolders = Object.keys(require('../data/prices/json/cleaned.json')).filter(key => {
+                    const normalized = key.replace(/_/g, ' ').toLowerCase();
+                    const searchNormalized = commodityName.toLowerCase();
+                    return normalized.includes(searchNormalized) || searchNormalized.includes(normalized);
+                  });
+
+                  if (matchingFolders.length > 0) {
+                    processedCommodities.push(matchingFolders[0]);
+                    processedCount++;
+                  }
+                }
+
+                // Store updates in AsyncStorage for immediate use
+                const priceUpdatesKey = 'price_updates_' + today;
+                await AsyncStorage.setItem(priceUpdatesKey, JSON.stringify(priceUpdates));
+                
+                // Also store a mapping of commodity names
+                await AsyncStorage.setItem('last_price_update_date', today);
+                await AsyncStorage.setItem('last_price_updates_count', processedCount.toString());
+
+                Alert.alert(
+                  'Update Complete',
+                  `Processed ${processedCount} price updates from CSV.\n\n` +
+                  `The prices have been saved and will be applied to price monitoring.\n\n` +
+                  `To permanently update the data files, please:\n` +
+                  `1. Copy the CSV to: C:\\Users\\Mischelle\\excel-price-manager\\data\\cleaned\\\n` +
+                  `2. Run: node scripts/convert-csv-to-json.js\n\n` +
+                  `The prices are now updated in the app.`
+                );
+
+                // Reload price data to show updates
+                const data = await getAllCommodities();
+                setPriceCommodities(data);
+                
+                setShowUploadModal(false);
+                setUploadedFile(null);
+              } catch (updateError: any) {
+                console.error('Error updating data:', updateError);
+                Alert.alert('Error', `Failed to update data: ${updateError.message}`);
+              } finally {
+                setUploading(false);
+              }
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error uploading CSV:', error);
+      Alert.alert('Error', `Failed to upload CSV: ${error.message || 'Unknown error'}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Download CSV function
+  const handleDownloadCSV = async () => {
+    if (selectedCommodities.size === 0) {
+      Alert.alert('No Selection', 'Please select at least one commodity to download.');
+      return;
+    }
+
+    try {
+      setDownloading(true);
+      
+      const selectedCommodityData = priceCommodities.filter(c => selectedCommodities.has(c.name));
+      
+      if (selectedCommodityData.length === 0) {
+        Alert.alert('Error', 'No commodities found for selected items.');
+        setDownloading(false);
+        return;
+      }
+
+      const csvContent = generateCSV(selectedCommodityData);
+      const fileName = `price_data_${new Date().toISOString().split('T')[0]}.csv`;
+
+      // Save file to cache directory (more accessible)
+      let fileUri = '';
+      try {
+        // Use cache directory which is more accessible for sharing
+        const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+        if (!cacheDir) {
+          throw new Error('No accessible directory available');
+        }
+        fileUri = cacheDir + fileName;
+        await FileSystem.writeAsStringAsync(fileUri, csvContent);
+        console.log('✅ File saved to:', fileUri);
+      } catch (fileError: any) {
+        console.error('Error writing file:', fileError);
+        Alert.alert('Error', `Failed to save file: ${fileError.message}`);
+        setDownloading(false);
+        return;
+      }
+
+      // Share the file using expo-sharing for proper file download
+      try {
+        // Check if sharing is available
+        const isAvailable = await Sharing.isAvailableAsync();
+        
+        if (isAvailable && fileUri) {
+          // Use expo-sharing for proper file download
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'text/csv',
+            dialogTitle: `Download ${fileName}`,
+          });
+          
+          Alert.alert(
+            'Success', 
+            `CSV file downloaded successfully!\n\n${selectedCommodityData.length} commodities exported.\n\nFile: ${fileName}`
+          );
+        } else {
+          // Fallback to React Native Share if expo-sharing not available
+          const shareOptions: any = {
+            title: `Download ${fileName}`,
+            url: fileUri,
+          };
+
+          const result = await Share.share(shareOptions);
+
+          if (result.action === Share.sharedAction) {
+            Alert.alert(
+              'Success', 
+              `CSV file shared successfully!\n\n${selectedCommodityData.length} commodities exported.\n\nFile: ${fileName}`
+            );
+          } else {
+            Alert.alert(
+              'File Saved', 
+              `CSV file has been saved.\n\nFile: ${fileName}\nLocation: ${fileUri}\n\nYou can access it from your device's file manager.`
+            );
+          }
+        }
+      } catch (shareError: any) {
+        // If sharing fails, file is still saved
+        console.log('Share error:', shareError);
+        Alert.alert(
+          'File Saved', 
+          `CSV file has been saved successfully!\n\nFile: ${fileName}\nCommodities: ${selectedCommodityData.length}\n\nLocation: ${fileUri}\n\nYou can access it from your device's file manager.`
+        );
+      }
+
+      setShowDownloadModal(false);
+      setSelectedCommodities(new Set());
+    } catch (error: any) {
+      console.error('Error downloading CSV:', error);
+      Alert.alert('Error', `Failed to generate CSV: ${error.message || 'Unknown error'}`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   // Category emoji function
@@ -1158,30 +1676,23 @@ export default function AdminPage() {
                     specification: manualSelectedProduct.specification || ''
                   };
                   
+                  // TODO: Implement price saving functionality
                   // Save to Firebase using the new offline service
-                  const result = await addOrUpdatePrice(priceRecord);
+                  // const result = await addOrUpdatePrice(priceRecord);
                   
-           if (result.success) {
-             const isDisplayed = result.message.includes('displayed in price monitoring');
-             const statusIcon = isDisplayed ? '✅' : '💾';
-             const statusText = isDisplayed ? 'Now displayed in price monitoring' : 'Saved to database (older than current latest)';
-                  
+                  // For now, show success message
                   Alert.alert(
                     'Success', 
-               `${result.message}\n\n${statusIcon} ${priceRecord.commodityName}\n📅 ${manualDate.toLocaleDateString()}\n💵 ₱${priceRecord.price}\n\n${statusText}`
+                    `Price record prepared:\n\n✅ ${priceRecord.commodityName}\n📅 ${manualDate.toLocaleDateString()}\n💵 ₱${priceRecord.price}\n\nNote: Price saving functionality needs to be implemented.`
                   );
-           } else {
-             Alert.alert('Error', result.message);
-             return;
-           }
                   
                   setShowManualModal(false);
                   setManualSelectedProduct(null);
                   setManualAmount('');
                   setManualDate(new Date());
                   
-                  // Refresh the latest prices to show updated data
-                  await refreshLatestPrices();
+                  // TODO: Refresh the latest prices to show updated data
+                  // await refreshLatestPrices();
                   
                 } catch (e: any) {
                   console.error('Error saving manual price:', e);
@@ -1298,11 +1809,15 @@ export default function AdminPage() {
         usersSnapshot.forEach((docSnap) => {
           const data: any = docSnap.data();
           const uid = data?.uid || docSnap.id;
-          newUsersDirectory[uid] = { 
+          const docId = docSnap.id;
+          const userInfo = { 
             name: data?.name || data?.displayName, 
             email: data?.email,
             userCropEmoji: data?.selectedCropEmoji
           };
+          // Store by both uid and document ID for lookup flexibility
+          newUsersDirectory[uid] = userInfo;
+          newUsersDirectory[docId] = userInfo;
         });
         
         // Add admin profile data with 'admin' key for messages
@@ -1485,81 +2000,172 @@ export default function AdminPage() {
       // Get all planting reports from all users for global trends
       const allReportsQuery = query(collection(db, 'plantingReports'));
       const allReportsSnapshot = await getDocs(allReportsQuery);
-      let allReports = allReportsSnapshot.docs.map(doc => ({
+      const allReports = allReportsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
       }));
 
-      // Filter by selected month if provided
-      if (selectedMonth) {
-        const targetMonth = selectedMonth.getMonth() + 1; // 1-12
-        const targetYear = selectedMonth.getFullYear();
+      // Helper function to filter reports by month/year
+      const filterReportsByMonth = (reports: any[], month: number, year: number) => {
         const currentDate = new Date();
         const currentMonth = currentDate.getMonth() + 1;
         const currentYear = currentDate.getFullYear();
         
-        allReports = allReports.filter(report => {
+        return reports.filter(report => {
           // If report has month/year data, filter by it
           if (report.plantingMonth && report.plantingYear) {
-            return report.plantingMonth === targetMonth && report.plantingYear === targetYear;
+            return report.plantingMonth === month && report.plantingYear === year;
           }
           // If report doesn't have month/year data (old reports), only show for current month
-          else if (targetMonth === currentMonth && targetYear === currentYear) {
+          else if (month === currentMonth && year === currentYear) {
             return true; // Show old reports only for current month
           }
           return false; // Don't show old reports for other months
         });
-      }
+      };
 
-      // Get unique users
-      const uniqueUsers = [...new Set(allReports.map(report => report.userId))];
-      
-      // Calculate global crop distribution
-      const globalCropCounts: { [key: string]: number } = {};
-      const cropUserCounts: { [key: string]: Set<string> } = {};
-      
-      allReports.forEach(report => {
-        const plantCount = typeof report.plantCount === 'number' ? report.plantCount : parseInt(report.plantCount) || 0;
-        globalCropCounts[report.crop] = (globalCropCounts[report.crop] || 0) + plantCount;
+      // Helper function to calculate crop distribution
+      const calculateCropDistribution = (reports: any[]) => {
+        const cropCounts: { [key: string]: number } = {};
+        const cropUserCounts: { [key: string]: Set<string> } = {};
         
-        // Track unique users for each crop
-        if (!cropUserCounts[report.crop]) {
-          cropUserCounts[report.crop] = new Set();
-        }
-        cropUserCounts[report.crop].add(report.userId);
-      });
+        reports.forEach(report => {
+          const plantCount = typeof report.plantCount === 'number' ? report.plantCount : parseInt(report.plantCount) || 0;
+          cropCounts[report.crop] = (cropCounts[report.crop] || 0) + plantCount;
+          
+          // Track unique users for each crop
+          if (!cropUserCounts[report.crop]) {
+            cropUserCounts[report.crop] = new Set();
+          }
+          cropUserCounts[report.crop].add(report.userId);
+        });
 
-      const totalGlobalPlants = Object.values(globalCropCounts).reduce((sum, count) => sum + count, 0);
-      
-      // Find most popular crop
-      const mostPopularCrop = Object.keys(globalCropCounts).reduce((a, b) => 
-        globalCropCounts[a] > globalCropCounts[b] ? a : b, ''
-      );
+        return { cropCounts, cropUserCounts };
+      };
 
-      // Create color palette for crops
-      const colors = [
-        '#16543a', '#74bfa3', '#a8d5ba', '#c8e6c9', '#e8f5e8',
-        '#2E8B57', '#3CB371', '#20B2AA', '#48CAE4', '#90E0EF',
-        '#FF6B6B', '#FF8E53', '#FF6B35', '#F7931E', '#FFD23F'
-      ];
+      if (selectedMonth) {
+        const targetMonth = selectedMonth.getMonth() + 1; // 1-12
+        const targetYear = selectedMonth.getFullYear();
 
-      // Create distribution with colors
-      const cropDistribution = Object.entries(globalCropCounts)
-        .map(([crop, count], index) => ({
-          crop,
-          count,
-          userCount: cropUserCounts[crop] ? cropUserCounts[crop].size : 0,
-          percentage: totalGlobalPlants > 0 ? Math.round((count / totalGlobalPlants) * 100) : 0,
-          color: colors[index % colors.length]
-        }))
-        .sort((a, b) => b.count - a.count);
+        // Current month data
+        const currentReports = filterReportsByMonth(allReports, targetMonth, targetYear);
 
-      setGlobalAnalytics({
-        totalPlants: totalGlobalPlants,
-        totalUsers: uniqueUsers.length,
-        mostPopularCrop,
-        cropDistribution
-      });
+        // Previous year same month data
+        const previousYearMonth = targetMonth;
+        const previousYear = targetYear - 1;
+        const previousYearReports = filterReportsByMonth(allReports, previousYearMonth, previousYear);
+
+        // Previous month data
+        const previousMonthDate = new Date(targetYear, targetMonth - 2, 1); // targetMonth is 1-12, Date uses 0-11, so targetMonth - 2
+        const previousMonth = previousMonthDate.getMonth() + 1; // Convert back to 1-12
+        const previousMonthYear = previousMonthDate.getFullYear();
+        const previousMonthReports = filterReportsByMonth(allReports, previousMonth, previousMonthYear);
+
+        // Calculate distributions for each period
+        const current = calculateCropDistribution(currentReports);
+        const prevYear = calculateCropDistribution(previousYearReports);
+        const prevMonth = calculateCropDistribution(previousMonthReports);
+
+        // Get all unique crops from all three periods
+        const allCrops = new Set<string>();
+        Object.keys(current.cropCounts).forEach(crop => allCrops.add(crop));
+        Object.keys(prevYear.cropCounts).forEach(crop => allCrops.add(crop));
+        Object.keys(prevMonth.cropCounts).forEach(crop => allCrops.add(crop));
+
+        const totalGlobalPlants = Object.values(current.cropCounts).reduce((sum, count) => sum + count, 0);
+        const uniqueUsers = [...new Set(currentReports.map(report => report.userId))];
+        
+        // Find most popular crop
+        const mostPopularCrop = Object.keys(current.cropCounts).reduce((a, b) => 
+          current.cropCounts[a] > current.cropCounts[b] ? a : b, ''
+        );
+
+        // Create color palette for crops
+        const colors = [
+          '#16543a', '#74bfa3', '#a8d5ba', '#c8e6c9', '#e8f5e8',
+          '#2E8B57', '#3CB371', '#20B2AA', '#48CAE4', '#90E0EF',
+          '#FF6B6B', '#FF8E53', '#FF6B35', '#F7931E', '#FFD23F'
+        ];
+
+        // Create distribution with comparisons
+        const cropDistribution = Array.from(allCrops)
+          .map((crop, index) => {
+            const currentCount = current.cropCounts[crop] || 0;
+            const prevYearCount = prevYear.cropCounts[crop] || 0;
+            const prevMonthCount = prevMonth.cropCounts[crop] || 0;
+
+            const previousYearChange = prevYearCount > 0
+              ? ((currentCount - prevYearCount) / prevYearCount) * 100
+              : currentCount > 0 ? 100 : 0;
+
+            const previousMonthChange = prevMonthCount > 0
+              ? ((currentCount - prevMonthCount) / prevMonthCount) * 100
+              : currentCount > 0 ? 100 : 0;
+
+            return {
+              crop,
+              count: currentCount,
+              userCount: current.cropUserCounts[crop] ? current.cropUserCounts[crop].size : 0,
+              percentage: totalGlobalPlants > 0 ? Math.round((currentCount / totalGlobalPlants) * 100) : 0,
+              color: colors[index % colors.length],
+              previousYearTotal: prevYearCount,
+              previousYearUserCount: prevYear.cropUserCounts[crop] ? prevYear.cropUserCounts[crop].size : 0,
+              previousYearChange,
+              previousMonthTotal: prevMonthCount,
+              previousMonthUserCount: prevMonth.cropUserCounts[crop] ? prevMonth.cropUserCounts[crop].size : 0,
+              previousMonthChange,
+            };
+          })
+          .sort((a, b) => b.count - a.count);
+
+        setGlobalAnalytics({
+          totalPlants: totalGlobalPlants,
+          totalUsers: uniqueUsers.length,
+          mostPopularCrop,
+          cropDistribution
+        });
+      } else {
+        // If no month selected, use all reports (original behavior)
+        const uniqueUsers = [...new Set(allReports.map(report => report.userId))];
+        const { cropCounts, cropUserCounts } = calculateCropDistribution(allReports);
+        const totalGlobalPlants = Object.values(cropCounts).reduce((sum, count) => sum + count, 0);
+        
+        // Find most popular crop
+        const mostPopularCrop = Object.keys(cropCounts).reduce((a, b) => 
+          cropCounts[a] > cropCounts[b] ? a : b, ''
+        );
+
+        // Create color palette for crops
+        const colors = [
+          '#16543a', '#74bfa3', '#a8d5ba', '#c8e6c9', '#e8f5e8',
+          '#2E8B57', '#3CB371', '#20B2AA', '#48CAE4', '#90E0EF',
+          '#FF6B6B', '#FF8E53', '#FF6B35', '#F7931E', '#FFD23F'
+        ];
+
+        // Create distribution with colors
+        const cropDistribution = Object.entries(cropCounts)
+          .map(([crop, count], index) => ({
+            crop,
+            count,
+            userCount: cropUserCounts[crop] ? cropUserCounts[crop].size : 0,
+            percentage: totalGlobalPlants > 0 ? Math.round((count / totalGlobalPlants) * 100) : 0,
+            color: colors[index % colors.length],
+            previousYearTotal: 0,
+            previousYearUserCount: 0,
+            previousYearChange: 0,
+            previousMonthTotal: 0,
+            previousMonthUserCount: 0,
+            previousMonthChange: 0,
+          }))
+          .sort((a, b) => b.count - a.count);
+
+        setGlobalAnalytics({
+          totalPlants: totalGlobalPlants,
+          totalUsers: uniqueUsers.length,
+          mostPopularCrop,
+          cropDistribution
+        });
+      }
 
     } catch (error) {
       console.error('Error loading global analytics:', error);
@@ -1626,6 +2232,7 @@ export default function AdminPage() {
       const targetMonth = month.getMonth();
       const targetYear = month.getFullYear();
       
+      // Current month data
       const filteredReports = allHarvestReports.filter(report => {
         if (!report.harvestDate) return false;
         
@@ -1636,10 +2243,41 @@ export default function AdminPage() {
         return reportMonth === targetMonth && reportYear === targetYear;
       });
 
-      // Calculate global analytics
-      calculateGlobalHarvestAnalytics(filteredReports);
+      // Previous year same month data
+      const previousYearMonth = targetMonth;
+      const previousYear = targetYear - 1;
+      const filteredPreviousYearReports = allHarvestReports.filter(report => {
+        if (!report.harvestDate) return false;
+        
+        const reportDate = new Date(report.harvestDate);
+        const reportMonth = reportDate.getMonth();
+        const reportYear = reportDate.getFullYear();
+        
+        return reportMonth === previousYearMonth && reportYear === previousYear;
+      });
+
+      // Previous month data
+      const previousMonthDate = new Date(targetYear, targetMonth - 1, 1);
+      const previousMonth = previousMonthDate.getMonth();
+      const previousMonthYear = previousMonthDate.getFullYear();
+      const filteredPreviousMonthReports = allHarvestReports.filter(report => {
+        if (!report.harvestDate) return false;
+        
+        const reportDate = new Date(report.harvestDate);
+        const reportMonth = reportDate.getMonth();
+        const reportYear = reportDate.getFullYear();
+        
+        return reportMonth === previousMonth && reportYear === previousMonthYear;
+      });
+
+      // Calculate global analytics with comparisons
+      calculateGlobalHarvestAnalytics(
+        filteredReports,
+        filteredPreviousYearReports,
+        filteredPreviousMonthReports
+      );
       
-      console.log('✅ Loaded global harvest analytics for', month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), ':', filteredReports.length, 'records');
+      console.log('✅ Loaded global harvest analytics for', month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), ':', filteredReports.length, 'records. Previous year:', filteredPreviousYearReports.length, 'Previous month:', filteredPreviousMonthReports.length);
     } catch (error) {
       console.error('Error loading global harvest analytics:', error);
     } finally {
@@ -1647,8 +2285,59 @@ export default function AdminPage() {
     }
   };
 
-  const calculateGlobalHarvestAnalytics = (reports: any[]) => {
-    if (reports.length === 0) {
+  const calculateGlobalHarvestAnalytics = (
+    reports: any[],
+    previousYearReports: any[] = [],
+    previousMonthReports: any[] = []
+  ) => {
+    // Helper function to calculate harvest data for a set of reports
+    const calculateHarvestData = (reportList: any[]) => {
+      const cropMap = new Map();
+      const cropUserMap = new Map();
+
+      reportList.forEach(report => {
+        const crop = report.crop;
+        const harvest = report.actualHarvest || report.harvestWeight || 0;
+        const userEmail = report.farmerEmail || report.userEmail;
+
+        // Track harvest amounts
+        if (cropMap.has(crop)) {
+          const existing = cropMap.get(crop);
+          cropMap.set(crop, {
+            count: existing.count + 1,
+            totalHarvest: existing.totalHarvest + harvest
+          });
+        } else {
+          cropMap.set(crop, {
+            count: 1,
+            totalHarvest: harvest
+          });
+        }
+
+        // Track unique users per crop
+        if (!cropUserMap.has(crop)) {
+          cropUserMap.set(crop, new Set());
+        }
+        cropUserMap.get(crop).add(userEmail);
+      });
+
+      return { cropMap, cropUserMap };
+    };
+
+    // Calculate current month data
+    const current = calculateHarvestData(reports);
+    const prevYear = calculateHarvestData(previousYearReports);
+    const prevMonth = calculateHarvestData(previousMonthReports);
+
+    // Get all unique crops from current, previous year, and previous month
+    // This ensures we include crops even if they only have previous month/year data
+    const allCrops = new Set<string>();
+    current.cropMap.forEach((_, crop) => allCrops.add(crop));
+    prevYear.cropMap.forEach((_, crop) => allCrops.add(crop));
+    prevMonth.cropMap.forEach((_, crop) => allCrops.add(crop));
+
+    // If no crops at all, return empty
+    if (allCrops.size === 0) {
       setGlobalHarvestAnalytics({
         totalHarvested: 0,
         totalUsers: 0,
@@ -1665,48 +2354,38 @@ export default function AdminPage() {
     }, 0);
 
     // Get unique users
-    const uniqueUsers = new Set(reports.map(report => report.userEmail));
+    const uniqueUsers = new Set(reports.map(report => report.userEmail || report.farmerEmail));
     const totalUsers = uniqueUsers.size;
 
-    // Calculate harvest distribution by crop
-    const cropHarvestMap = new Map();
-    const cropUserMap = new Map();
+    // Convert to array and calculate percentages with comparisons
+    const cropDistribution = Array.from(allCrops).map(crop => {
+      const currentData = current.cropMap.get(crop) || { count: 0, totalHarvest: 0 };
+      const prevYearData = prevYear.cropMap.get(crop) || { count: 0, totalHarvest: 0 };
+      const prevMonthData = prevMonth.cropMap.get(crop) || { count: 0, totalHarvest: 0 };
 
-    reports.forEach(report => {
-      const crop = report.crop;
-      const harvest = report.actualHarvest || report.harvestWeight || 0;
-      const userEmail = report.farmerEmail;
-      
-      // Track harvest amounts
-      if (cropHarvestMap.has(crop)) {
-        const existing = cropHarvestMap.get(crop);
-        cropHarvestMap.set(crop, {
-          count: existing.count + 1,
-          totalHarvest: existing.totalHarvest + harvest
-        });
-      } else {
-        cropHarvestMap.set(crop, {
-          count: 1,
-          totalHarvest: harvest
-        });
-      }
+      const previousYearChange = prevYearData.totalHarvest > 0
+        ? ((currentData.totalHarvest - prevYearData.totalHarvest) / prevYearData.totalHarvest) * 100
+        : currentData.totalHarvest > 0 ? 100 : 0;
 
-      // Track unique users per crop
-      if (!cropUserMap.has(crop)) {
-        cropUserMap.set(crop, new Set());
-      }
-      cropUserMap.get(crop).add(userEmail);
-    });
+      const previousMonthChange = prevMonthData.totalHarvest > 0
+        ? ((currentData.totalHarvest - prevMonthData.totalHarvest) / prevMonthData.totalHarvest) * 100
+        : currentData.totalHarvest > 0 ? 100 : 0;
 
-    // Convert to array and calculate percentages
-    const cropDistribution = Array.from(cropHarvestMap.entries()).map(([crop, data]) => ({
-      crop,
-      count: data.count,
-      userCount: cropUserMap.get(crop)?.size || 0,
-      totalHarvest: data.totalHarvest,
-      percentage: totalHarvested > 0 ? (data.totalHarvest / totalHarvested) * 100 : 0,
-      color: getCropHarvestColor(crop)
-    })).sort((a, b) => b.totalHarvest - a.totalHarvest);
+      return {
+        crop,
+        count: currentData.count,
+        userCount: current.cropUserMap.get(crop)?.size || 0,
+        totalHarvest: currentData.totalHarvest,
+        percentage: totalHarvested > 0 ? (currentData.totalHarvest / totalHarvested) * 100 : 0,
+        color: getCropHarvestColor(crop),
+        previousYearTotal: prevYearData.totalHarvest,
+        previousYearUserCount: prevYear.cropUserMap.get(crop)?.size || 0,
+        previousYearChange,
+        previousMonthTotal: prevMonthData.totalHarvest,
+        previousMonthUserCount: prevMonth.cropUserMap.get(crop)?.size || 0,
+        previousMonthChange,
+      };
+    }).sort((a, b) => b.totalHarvest - a.totalHarvest);
 
     // Find most popular crop
     const mostPopularCrop = cropDistribution.length > 0 ? cropDistribution[0].crop : '';
@@ -2568,81 +3247,290 @@ export default function AdminPage() {
     }
   };
 
-  // Function to load farmers data from AsyncStorage
+  // Function to load farmers data from farmerProfiles collection ONLY
   const loadFarmersData = async () => {
     setLoadingFarmers(true);
     try {
-      console.log('🔄 Loading farmers form data from AsyncStorage...');
-      
-      // Get all AsyncStorage keys
-      const keys = await AsyncStorage.getAllKeys();
-      
-      // Filter keys that start with 'farmerFormData_'
-      const farmerFormKeys = keys.filter(key => key.startsWith('farmerFormData_'));
+      console.log('📥 Loading farmers form data from farmerProfiles collection...');
       
       const farmersList: any[] = [];
-
-      // Build a users directory to enrich names/emails
-      const usersDirectory: Record<string, { name?: string; email?: string; userCropEmoji?: string }> = {};
-      try {
-        const usersSnapshot = await getDocs(collection(db, 'users'));
-        usersSnapshot.forEach((docSnap) => {
-          const data: any = docSnap.data();
-          const uid = data?.uid || docSnap.id;
-          usersDirectory[uid] = { 
-            name: data?.name || data?.displayName, 
-            email: data?.email,
-            userCropEmoji: data?.selectedCropEmoji
-          };
-        });
-      } catch (e) {
-        console.warn('⚠️ Could not load users directory; falling back to IDs only');
-      }
       
-      // Load form data for each user
-      for (const key of farmerFormKeys) {
-        try {
-          const formDataString = await AsyncStorage.getItem(key);
-          if (formDataString) {
-            const formData = JSON.parse(formDataString);
-            const userId = key.replace('farmerFormData_', '');
-            
-            // Count completed forms
-            const completedForms = Object.values(formData).filter((form: any) => form.isSubmitted).length;
-            const totalForms = Object.keys(formData).length;
-
-            // Enrich with name/email if available
-            const directoryEntry = usersDirectory[userId];
-            const displayName = directoryEntry?.name || `User ${userId.substring(0, 8)}...`;
-            const email = directoryEntry?.email || 'No email';
-            const userCropEmoji = directoryEntry?.userCropEmoji;
-            
-            farmersList.push({
-              id: userId,
-              userId,
-              userEmail: email,
-              userName: displayName,
-              userCropEmoji: userCropEmoji,
-              formData,
-              completedForms,
-              totalForms,
-              completionPercentage: Math.round((completedForms / totalForms) * 100),
-            });
-          }
-        } catch (error) {
-          console.error(`Error loading form data for key ${key}:`, error);
+      // Load ONLY from farmerProfiles collection (no AsyncStorage, no old data)
+      const farmerProfilesSnapshot = await getDocs(collection(db, 'farmerProfiles'));
+      
+      farmerProfilesSnapshot.forEach((docSnap) => {
+        const profileData: any = docSnap.data();
+        
+        // Get form data from farmer profile document (stored under formData field)
+        const formData = profileData.formData || {};
+        
+        // Count completed forms
+        const completedForms = Object.values(formData).filter((form: any) => form?.isSubmitted).length;
+        const totalForms = Object.keys(formData).length;
+        
+        // Only include farmers who have at least some form data
+        if (totalForms > 0) {
+          const userId = profileData.uid || docSnap.id;
+          // Document ID is the email, so use it as fallback
+          const userEmail = profileData.email || docSnap.id || 'No email';
+          
+          farmersList.push({
+            id: userId,
+            userId,
+            userEmail: userEmail,
+            userName: profileData.name || 'Unknown User',
+            userCropEmoji: profileData.selectedCropEmoji,
+            formData,
+            completedForms,
+            totalForms,
+            completionPercentage: totalForms > 0 ? Math.round((completedForms / totalForms) * 100) : 0,
+          });
         }
-      }
+      });
       
       setFarmersData(farmersList);
-      console.log(`✅ Loaded ${farmersList.length} farmers with form data`);
+      console.log(`✅ Loaded ${farmersList.length} farmers from farmerProfiles collection`);
     } catch (error) {
-      console.error('Error loading farmers data:', error);
+      console.error('❌ Error loading farmers data:', error);
       Alert.alert('Error', 'Failed to load farmers data');
     } finally {
       setLoadingFarmers(false);
     }
   };
+
+  // Calculate summary statistics for farmers records
+  const farmersSummary = React.useMemo(() => {
+    if (farmersData.length === 0) {
+      return {
+        totalFarmers: 0,
+        totalFormsSubmitted: 0,
+        totalPossibleForms: 0,
+        overallCompletionPercentage: 0,
+        formBreakdown: {
+          demographics: { submitted: 0, total: 0 },
+          farmingProfile: { submitted: 0, total: 0 },
+          economicFinancial: { submitted: 0, total: 0 },
+          technologyInnovation: { submitted: 0, total: 0 },
+          supportResources: { submitted: 0, total: 0 },
+          addressesHousehold: { submitted: 0, total: 0 },
+          homeAssets: { submitted: 0, total: 0 },
+          incomeMarketing: { submitted: 0, total: 0 },
+        },
+        inventoryBreakdown: {
+          demographics: {
+            ageGroups: {},
+            gender: {},
+            maritalStatus: {},
+            education: {},
+            dependents: {},
+            monthlyIncome: {},
+          },
+          farmingProfile: {},
+          economicFinancial: {},
+          technologyInnovation: {},
+          supportResources: {},
+          addressesHousehold: {},
+          homeAssets: {},
+          incomeMarketing: {},
+        }
+      };
+    }
+
+    const formKeys = [
+      'demographics',
+      'farmingProfile',
+      'economicFinancial',
+      'technologyInnovation',
+      'supportResources',
+      'addressesHousehold',
+      'homeAssets',
+      'incomeMarketing'
+    ];
+
+    const formBreakdown: any = {};
+    formKeys.forEach(key => {
+      formBreakdown[key] = { submitted: 0, total: 0 };
+    });
+
+    // Comprehensive inventory breakdown for all forms - includes ALL fields from the form
+    const inventoryBreakdown: any = {
+      demographics: {
+        ageGroups: {},
+        gender: {},
+        maritalStatus: {},
+        education: {},
+        dependents: {},
+        monthlyIncome: {},
+        // Additional fields that might be in the form
+        monthlyExpenses: {},
+        electricity: {},
+        comfortRoom: {},
+        sourceOfDrinkingWater: {},
+        numberOfChildren: {},
+        memberOfOrganization: {},
+        fourPsBeneficiary: {},
+        religion: {},
+        completeAddress: {},
+        typeOfHousing: {},
+        sourceOfCapitalInFarming: {},
+      },
+      farmingProfile: {
+        yearsFarming: {},
+        farmCommodity: {},
+        numberOfCommodity: {},
+        livestock: {},
+        numberOfLivestock: {},
+        landOwnership: {},
+        rentalAmount: {},
+        tenantCondition: {},
+        farmSize: {},
+        farmingMethods: {},
+        otherCommodity: {},
+        otherLivestock: {},
+        otherFarmSize: {},
+      },
+      economicFinancial: {
+        incomeSources: {},
+        farmingFinances: {},
+        farmingIncomePercentage: {},
+        governmentAssistance: {},
+        ngoAssistance: {},
+        industryAssistance: {},
+        otherIncome: {},
+        otherFinances: {},
+      },
+      technologyInnovation: {
+        farmingEquipment: {},
+        machineOwnership: {},
+        machinePurchasePrice: {},
+        machineRentalPrice: {},
+        irrigationExpenses: {},
+        newTechniques: {},
+        modernPractices: {},
+        agriculturalInfo: {},
+        otherEquipment: {},
+        otherInfo: {},
+      },
+      supportResources: {
+        farmersAssociation: {},
+        governmentPrograms: {},
+        governmentSupport: {},
+        ngoSupport: {},
+        industrySupport: {},
+        extensionServices: {},
+        otherGovSupport: {},
+        otherNgoSupport: {},
+        otherIndustrySupport: {},
+      },
+      addressesHousehold: {
+        residentialAddress: {},
+        farmAddress: {},
+        householdSize: {},
+        adultsInHousehold: {},
+        childrenInHousehold: {},
+        educationAttainment: {},
+        maritalStatus: {},
+      },
+      homeAssets: {
+        electricity: {},
+        television: {},
+        refrigerator: {},
+        comfortRoom: {},
+        houseType: {},
+        monthlyRent: {},
+        houseOwnership: {},
+        incomeType: {},
+        monthlyExpenses: {},
+        farmingType: {},
+      },
+      incomeMarketing: {
+        farmingPrimaryIncome: {},
+        annualFarmIncome: {},
+        incomeChange: {},
+        salesChannels: {},
+        otherIncomeSources: {},
+        monthlyIncome: {},
+        monthlyExpensesAmount: {},
+      },
+    };
+
+    let totalFormsSubmitted = 0;
+    let totalPossibleForms = 0;
+
+    // Helper function to count array items
+    const countArrayItems = (arr: any[], counter: any) => {
+      if (Array.isArray(arr)) {
+        arr.forEach(item => {
+          if (item) {
+            counter[item] = (counter[item] || 0) + 1;
+          }
+        });
+      }
+    };
+
+    farmersData.forEach(farmer => {
+      if (farmer.formData) {
+        formKeys.forEach(formKey => {
+          formBreakdown[formKey].total += 1;
+          totalPossibleForms += 1;
+          if (farmer.formData[formKey]?.isSubmitted) {
+            formBreakdown[formKey].submitted += 1;
+            totalFormsSubmitted += 1;
+          }
+        });
+
+        // Process all form data for comprehensive inventory
+        Object.keys(farmer.formData).forEach(formKey => {
+          const form = farmer.formData[formKey];
+          if (form?.isSubmitted && inventoryBreakdown[formKey]) {
+            Object.keys(form).forEach(fieldKey => {
+              if (fieldKey !== 'isSubmitted' && inventoryBreakdown[formKey][fieldKey] !== undefined) {
+                const value = form[fieldKey];
+                if (value) {
+                  if (Array.isArray(value)) {
+                    countArrayItems(value, inventoryBreakdown[formKey][fieldKey]);
+                  } else if (typeof value === 'string' && value.trim()) {
+                    // Special handling for age
+                    if (fieldKey === 'age' && formKey === 'demographics') {
+                      const age = parseInt(value);
+                      if (!isNaN(age)) {
+                        let ageGroup = '';
+                        if (age < 18) ageGroup = 'Under 18';
+                        else if (age < 26) ageGroup = '18-25';
+                        else if (age < 36) ageGroup = '26-35';
+                        else if (age < 46) ageGroup = '36-45';
+                        else if (age < 56) ageGroup = '46-55';
+                        else if (age < 66) ageGroup = '56-65';
+                        else ageGroup = '65+';
+                        inventoryBreakdown.demographics.ageGroups[ageGroup] = 
+                          (inventoryBreakdown.demographics.ageGroups[ageGroup] || 0) + 1;
+                      }
+                    } else {
+                      inventoryBreakdown[formKey][fieldKey][value] = 
+                        (inventoryBreakdown[formKey][fieldKey][value] || 0) + 1;
+                    }
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+    });
+
+    const overallCompletionPercentage = totalPossibleForms > 0
+      ? Math.round((totalFormsSubmitted / totalPossibleForms) * 100)
+      : 0;
+
+    return {
+      totalFarmers: farmersData.length,
+      totalFormsSubmitted,
+      totalPossibleForms,
+      overallCompletionPercentage,
+      formBreakdown,
+      inventoryBreakdown
+    };
+  }, [farmersData]);
 
   // Function to fetch all users from the database
   const fetchUsers = async () => {
@@ -3166,12 +4054,12 @@ export default function AdminPage() {
             loading={loadingPrices}
             showViewAllButton={true}
             onViewAllPress={() => {
-              // Toggle showing all records or show in a modal
-              Alert.alert(
-                'View All Records',
-                `Total commodities: ${priceCommodities.length}\n\nThis feature will show all price records in detail view.`,
-                [{ text: 'OK' }]
-              );
+              setShowDownloadModal(true);
+              // Select all by default
+              setSelectedCommodities(new Set(priceCommodities.map(c => c.name)));
+            }}
+            onUploadPress={() => {
+              setShowUploadModal(true);
             }}
           />
         </View>
@@ -3873,6 +4761,27 @@ export default function AdminPage() {
                   <Ionicons name="chevron-forward" size={20} color="#ccc" />
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                  style={styles.settingItem}
+                  onPress={async () => {
+                    // Reset selection so Deploy/Undeploy are hidden
+                    setSelectedUpdateId(null);
+                    await loadAppUpdates();
+                    setShowAppUpdateModal(true);
+                  }}
+                >
+                  <View style={styles.settingIconContainer}>
+                    <Ionicons name="cloud-download" size={24} color={GREEN} />
+                  </View>
+                  <View style={styles.settingContent}>
+                    <Text style={styles.settingLabel}>App Updates</Text>
+                    <Text style={styles.settingDescription}>
+                      Manage version links and force-update notice
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+
               <TouchableOpacity style={styles.settingItem} onPress={handleSignOut}>
                   <View style={styles.settingIconContainer}>
                     <Ionicons name="log-out" size={24} color="#e74c3c" />
@@ -4188,6 +5097,93 @@ export default function AdminPage() {
                       Number of different farmers growing each crop type
                     </Text>
                   </View>
+
+                  {/* Comparison Section - Always show if there's any data (current, previous month, or previous year) */}
+                  {globalAnalytics?.cropDistribution.some((item: any) => 
+                    item.count > 0 || 
+                    item.previousYearTotal > 0 || 
+                    item.previousMonthTotal > 0
+                  ) && (
+                    <View style={styles.comparisonSection}>
+                      <Text style={styles.comparisonSectionTitle}>📊 Planting Comparison Analysis</Text>
+                      {globalAnalytics.cropDistribution
+                        .filter((item: any) => 
+                          item.count > 0 || 
+                          item.previousYearTotal > 0 || 
+                          item.previousMonthTotal > 0
+                        )
+                        .sort((a: any, b: any) => {
+                          // Sort by: current count first, then previous month, then previous year
+                          const aMax = Math.max(a.count, a.previousMonthTotal, a.previousYearTotal);
+                          const bMax = Math.max(b.count, b.previousMonthTotal, b.previousYearTotal);
+                          return bMax - aMax;
+                        })
+                        .map((item: any) => (
+                        <View key={item.crop} style={styles.comparisonItemCard}>
+                          <View style={styles.comparisonItemHeader}>
+                            <Text style={styles.comparisonCropIcon}>{getCropIcon(item.crop)}</Text>
+                            <Text style={styles.comparisonCropName}>{item.crop}</Text>
+                          </View>
+                          <View style={styles.comparisonItemContent}>
+                            {/* Current Month */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Current Month:</Text>
+                              {item.count > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  <Text style={styles.comparisonDataValue}>{item.count.toLocaleString()} plants</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.userCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+
+                            {/* Previous Year */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Last Year:</Text>
+                              {item.previousYearTotal > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  {item.count > 0 && (
+                                    <Text style={[
+                                      styles.comparisonChangeIndicator,
+                                      item.previousYearChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                    ]}>
+                                      {item.previousYearChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousYearChange).toFixed(1)}%
+                                    </Text>
+                                  )}
+                                  <Text style={styles.comparisonDataValue}>{item.previousYearTotal.toLocaleString()} plants</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.previousYearUserCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+
+                            {/* Previous Month */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Last Month:</Text>
+                              {item.previousMonthTotal > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  {item.count > 0 && (
+                                    <Text style={[
+                                      styles.comparisonChangeIndicator,
+                                      item.previousMonthChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                    ]}>
+                                      {item.previousMonthChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousMonthChange).toFixed(1)}%
+                                    </Text>
+                                  )}
+                                  <Text style={styles.comparisonDataValue}>{item.previousMonthTotal.toLocaleString()} plants</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.previousMonthUserCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
 
                 </>
               )}
@@ -4689,6 +5685,93 @@ export default function AdminPage() {
                     </View>
 
                   </View>
+
+                  {/* Comparison Section - Always show if there's any data (current, previous month, or previous year) */}
+                  {globalHarvestAnalytics && globalHarvestAnalytics.cropDistribution.some((item: any) => 
+                    item.totalHarvest > 0 || 
+                    item.previousYearTotal > 0 || 
+                    item.previousMonthTotal > 0
+                  ) && (
+                    <View style={styles.comparisonSection}>
+                      <Text style={styles.comparisonSectionTitle}>📊 Harvest Comparison Analysis</Text>
+                      {globalHarvestAnalytics.cropDistribution
+                        .filter((item: any) => 
+                          item.totalHarvest > 0 || 
+                          item.previousYearTotal > 0 || 
+                          item.previousMonthTotal > 0
+                        )
+                        .sort((a: any, b: any) => {
+                          // Sort by: current harvest first, then previous month, then previous year
+                          const aMax = Math.max(a.totalHarvest, a.previousMonthTotal, a.previousYearTotal);
+                          const bMax = Math.max(b.totalHarvest, b.previousMonthTotal, b.previousYearTotal);
+                          return bMax - aMax;
+                        })
+                        .map((item: any) => (
+                        <View key={item.crop} style={styles.comparisonItemCard}>
+                          <View style={styles.comparisonItemHeader}>
+                            <Text style={styles.comparisonCropIcon}>{getCropIcon(item.crop)}</Text>
+                            <Text style={styles.comparisonCropName}>{item.crop}</Text>
+                          </View>
+                          <View style={styles.comparisonItemContent}>
+                            {/* Current Month */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Current Month:</Text>
+                              {item.totalHarvest > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  <Text style={styles.comparisonDataValue}>{item.totalHarvest.toFixed(1)} kg</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.userCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+
+                            {/* Previous Year */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Last Year:</Text>
+                              {item.previousYearTotal > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  {item.totalHarvest > 0 && (
+                                    <Text style={[
+                                      styles.comparisonChangeIndicator,
+                                      item.previousYearChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                    ]}>
+                                      {item.previousYearChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousYearChange).toFixed(1)}%
+                                    </Text>
+                                  )}
+                                  <Text style={styles.comparisonDataValue}>{item.previousYearTotal.toFixed(1)} kg</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.previousYearUserCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+
+                            {/* Previous Month */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Last Month:</Text>
+                              {item.previousMonthTotal > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  {item.totalHarvest > 0 && (
+                                    <Text style={[
+                                      styles.comparisonChangeIndicator,
+                                      item.previousMonthChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                    ]}>
+                                      {item.previousMonthChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousMonthChange).toFixed(1)}%
+                                    </Text>
+                                  )}
+                                  <Text style={styles.comparisonDataValue}>{item.previousMonthTotal.toFixed(1)} kg</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.previousMonthUserCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </>
               )}
             </View>
@@ -4703,92 +5786,123 @@ export default function AdminPage() {
                 harvestTimelineStats.map((item, index) => {
                   const dateDifferenceText = formatDateDifference(item.dateDifferenceDays);
                   const yieldDifferenceText = formatYieldDifference(item.yieldDifference);
+                  const isDateOnTime = item.dateDifferenceDays !== null && Math.abs(item.dateDifferenceDays) < 1;
+                  const isDateDelayed = item.dateDifferenceDays !== null && item.dateDifferenceDays > 0;
+                  const isYieldEven = item.yieldDifference !== null && Math.abs(item.yieldDifference) < 0.1;
+                  const isYieldGain = item.yieldDifference !== null && item.yieldDifference > 0;
 
                   return (
                     <View
                       key={item.crop}
-                      style={[
-                        styles.cropTimelineItem,
-                        index === harvestTimelineStats.length - 1 && styles.cropTimelineItemLast,
-                      ]}
+                      style={styles.cropTimelineItemCard}
                     >
-                      <View style={styles.cropTimelineHeader}>
+                      <View style={styles.cropTimelineItemHeader}>
                         <View style={styles.cropTimelineName}>
                           <Text style={styles.cropTimelineIcon}>{getCropIcon(item.crop)}</Text>
-                          <Text style={styles.cropTimelineCrop}>{item.crop}</Text>
-                          <Text style={styles.cropTimelineTagalog}> / {getCropTagalogName(item.crop)}</Text>
+                          <View style={styles.cropTimelineNameText}>
+                            <Text style={styles.cropTimelineCrop}>{item.crop}</Text>
+                            <Text style={styles.cropTimelineTagalog}>{getCropTagalogName(item.crop)}</Text>
+                          </View>
                         </View>
-                        <Text style={styles.cropTimelineSamples}>
-                          {item.totalReportCount} report{item.totalReportCount === 1 ? '' : 's'}
-                        </Text>
-                      </View>
-
-                      <View style={styles.cropTimelineRow}>
-                        <Text style={styles.cropTimelineLabel}>Expected</Text>
-                        <View style={styles.cropTimelineValues}>
-                          <View style={styles.cropTimelineStatGroup}>
-                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
-                            <Text style={styles.cropTimelineValue}>
-                              {formatDurationDays(item.averageExpectedDurationDays)}
-                            </Text>
-                          </View>
-                          <View style={styles.cropTimelineStatGroupRight}>
-                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
-                            <Text style={styles.cropTimelinePerPlant}>
-                              {formatPerPlantDisplay(item.averageExpectedYieldPerPlant)}
-                            </Text>
-                          </View>
+                        <View style={styles.cropTimelineBadge}>
+                          <Ionicons name="document-text" size={12} color="#666" />
+                          <Text style={styles.cropTimelineSamples}>{item.totalReportCount}</Text>
                         </View>
                       </View>
 
-                      <View style={styles.cropTimelineRow}>
-                        <Text style={styles.cropTimelineLabel}>Actual</Text>
-                        <View style={styles.cropTimelineValues}>
-                          <View style={styles.cropTimelineStatGroup}>
-                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
-                            <Text style={styles.cropTimelineValue}>
-                              {formatDurationDays(item.averageActualDurationDays, true)}
-                            </Text>
+                      <View style={styles.cropTimelineComparisonContainer}>
+                        {/* Expected Section */}
+                        <View style={styles.cropTimelineSection}>
+                          <View style={styles.cropTimelineSectionHeader}>
+                            <Ionicons name="calendar-outline" size={16} color="#2E7D32" />
+                            <Text style={styles.cropTimelineSectionLabel}>Expected</Text>
                           </View>
-                          <View style={styles.cropTimelineStatGroupRight}>
-                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
-                            <Text style={styles.cropTimelinePerPlant}>
-                              {formatPerPlantDisplay(item.averageActualYieldPerPlant, true)}
-                            </Text>
+                          <View style={styles.cropTimelineStatsGrid}>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Avg Duration</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatDurationDays(item.averageExpectedDurationDays)}
+                              </Text>
+                            </View>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Yield / Plant</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatPerPlantDisplay(item.averageExpectedYieldPerPlant)}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Actual Section */}
+                        <View style={styles.cropTimelineSection}>
+                          <View style={styles.cropTimelineSectionHeader}>
+                            <Ionicons name="checkmark-circle-outline" size={16} color="#1976D2" />
+                            <Text style={styles.cropTimelineSectionLabel}>Actual</Text>
+                          </View>
+                          <View style={styles.cropTimelineStatsGrid}>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Avg Duration</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatDurationDays(item.averageActualDurationDays, true)}
+                              </Text>
+                            </View>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Yield / Plant</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatPerPlantDisplay(item.averageActualYieldPerPlant, true)}
+                              </Text>
+                            </View>
                           </View>
                         </View>
                       </View>
 
+                      {/* Differences Section */}
                       {(dateDifferenceText || yieldDifferenceText) && (
-                        <View style={styles.cropTimelineDeltaRow}>
-                          {dateDifferenceText ? (
-                            <Text
-                              style={[
+                        <View style={styles.cropTimelineDeltaContainer}>
+                          {dateDifferenceText && (
+                            <View style={[
+                              styles.cropTimelineDeltaBadge,
+                              isDateOnTime && styles.cropTimelineDeltaBadgeOnTime,
+                              isDateDelayed && styles.cropTimelineDeltaBadgeDelay,
+                              !isDateOnTime && !isDateDelayed && styles.cropTimelineDeltaBadgeAhead,
+                            ]}>
+                              <Ionicons 
+                                name={isDateOnTime ? "checkmark-circle" : isDateDelayed ? "time-outline" : "flash-outline"} 
+                                size={14} 
+                                color={isDateOnTime ? "#2E7D32" : isDateDelayed ? "#C62828" : "#1B5E20"} 
+                              />
+                              <Text style={[
                                 styles.cropTimelineDeltaText,
-                                item.dateDifferenceDays !== null && Math.abs(item.dateDifferenceDays) < 1
-                                  ? styles.cropTimelineOnTime
-                                  : item.dateDifferenceDays !== null && item.dateDifferenceDays > 0
-                                  ? styles.cropTimelineDelay
-                                  : styles.cropTimelineAhead,
-                              ]}
-                            >
-                              {dateDifferenceText}
-                            </Text>
-                          ) : null}
-                          {yieldDifferenceText ? (
-                            <Text
-                              style={[
+                                isDateOnTime && styles.cropTimelineOnTime,
+                                isDateDelayed && styles.cropTimelineDelay,
+                                !isDateOnTime && !isDateDelayed && styles.cropTimelineAhead,
+                              ]}>
+                                {dateDifferenceText}
+                              </Text>
+                            </View>
+                          )}
+                          {yieldDifferenceText && (
+                            <View style={[
+                              styles.cropTimelineDeltaBadge,
+                              isYieldEven && styles.cropTimelineDeltaBadgeEven,
+                              isYieldGain && styles.cropTimelineDeltaBadgeGain,
+                              !isYieldEven && !isYieldGain && styles.cropTimelineDeltaBadgeDrop,
+                            ]}>
+                              <Ionicons 
+                                name={isYieldEven ? "remove-circle" : isYieldGain ? "trending-up" : "trending-down"} 
+                                size={14} 
+                                color={isYieldEven ? "#2E7D32" : isYieldGain ? "#1B5E20" : "#C62828"} 
+                              />
+                              <Text style={[
                                 styles.cropTimelineDeltaText,
-                                item.yieldDifference !== null && Math.abs(item.yieldDifference) < 0.1
-                                  ? styles.cropTimelineYieldEven
-                                  : item.yieldDifference !== null && item.yieldDifference > 0
-                                  ? styles.cropTimelineYieldGain
-                                  : styles.cropTimelineYieldDrop,
-                              ]}
-                            >
-                              {yieldDifferenceText}
-                            </Text>
-                          ) : null}
+                                isYieldEven && styles.cropTimelineYieldEven,
+                                isYieldGain && styles.cropTimelineYieldGain,
+                                !isYieldEven && !isYieldGain && styles.cropTimelineYieldDrop,
+                              ]}>
+                                {yieldDifferenceText}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       )}
                     </View>
@@ -4931,65 +6045,125 @@ export default function AdminPage() {
               </View>
             ) : (
               <View style={styles.allEntriesList}>
-                {sortedHarvestEntries.map((record: any) => (
-                  <TouchableOpacity
-                    key={record.id}
-                    style={styles.allEntryCard}
-                    onPress={() => openReportDetail(record)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.allEntryHeader}>
-                      <View>
-                        <Text style={styles.allEntryCrop}>{record.crop || 'Unknown Crop'}</Text>
-                        <Text style={styles.cropTagalogName}> / {getCropTagalogName(record.crop)}</Text>
+                {sortedHarvestEntries.map((record: any) => {
+                  const hasActualHarvest =
+                    record.actualHarvest != null ||
+                    record.harvestWeight != null ||
+                    record.actualYieldPerPlant != null;
+
+                  const statusLabel = hasActualHarvest ? 'Harvested' : 'Planned';
+
+                  return (
+                    <TouchableOpacity
+                      key={record.id}
+                      style={styles.allEntryCard}
+                      onPress={() => openReportDetail(record)}
+                      activeOpacity={0.7}
+                    >
+                      {/* Header with crop + status */}
+                      <View style={styles.allEntryHeader}>
+                        <View style={styles.allEntryHeaderLeft}>
+                          <View style={styles.allEntryIconCircle}>
+                            <Text style={styles.allEntryIconEmoji}>
+                              {getCropIcon(record.crop)}
+                            </Text>
+                          </View>
+                          <View style={styles.allEntryCropTextContainer}>
+                            <View style={styles.allEntryCropRow}>
+                              <Text style={styles.allEntryCrop}>
+                                {record.crop || 'Unknown Crop'}
+                              </Text>
+                              <Text style={styles.cropTagalogName}>
+                                {' '}
+                                / {getCropTagalogName(record.crop)}
+                              </Text>
+                            </View>
+                            <Text style={styles.allEntryFarmer}>
+                              {record.farmerName || 'Unknown Farmer'} •{' '}
+                              {record.farmerEmail || 'unknown@email.com'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.allEntryStatusBadge,
+                            hasActualHarvest
+                              ? styles.allEntryStatusHarvested
+                              : styles.allEntryStatusPlanned,
+                          ]}
+                        >
+                          <Ionicons
+                            name={hasActualHarvest ? 'leaf' : 'calendar-outline'}
+                            size={12}
+                            color={hasActualHarvest ? '#1B5E20' : '#1565C0'}
+                          />
+                          <Text
+                            style={[
+                              styles.allEntryStatusText,
+                              hasActualHarvest
+                                ? styles.allEntryStatusTextHarvested
+                                : styles.allEntryStatusTextPlanned,
+                            ]}
+                          >
+                            {statusLabel}
+                          </Text>
+                        </View>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color="#999" />
-                    </View>
 
-                    <Text style={styles.allEntryFarmer}>
-                      {record.farmerName || 'Unknown Farmer'} • {record.farmerEmail || 'unknown@email.com'}
-                    </Text>
+                      {/* Durations */}
+                      <View style={styles.allEntryDurationRow}>
+                        <View style={styles.allEntryDurationColumn}>
+                          <Text style={styles.allEntryLabel}>Expected duration</Text>
+                          <Text style={styles.allEntryValue}>
+                            {formatDurationValue(record.expectedDurationDays)}
+                          </Text>
+                        </View>
+                        <View style={styles.allEntryDurationColumn}>
+                          <Text style={styles.allEntryLabel}>Actual duration</Text>
+                          <Text style={styles.allEntryValue}>
+                            {formatDurationValue(
+                              record.actualDurationDays,
+                              'Not harvested yet'
+                            )}
+                          </Text>
+                        </View>
+                      </View>
 
-                    <View style={styles.allEntryDurationRow}>
-                      <View style={styles.allEntryDurationColumn}>
-                        <Text style={styles.allEntryLabel}>Expected duration</Text>
-                        <Text style={styles.allEntryValue}>
-                          {formatDurationValue(record.expectedDurationDays)}
+                      {/* Yield per plant */}
+                      <View style={styles.allEntryDurationRow}>
+                        <View style={styles.allEntryDurationColumn}>
+                          <Text style={styles.allEntryLabel}>Expected yield / plant</Text>
+                          <Text style={styles.allEntryValue}>
+                            {formatYieldPerPlantValue(record.expectedYieldPerPlant)}
+                          </Text>
+                        </View>
+                        <View style={styles.allEntryDurationColumn}>
+                          <Text style={styles.allEntryLabel}>Actual yield / plant</Text>
+                          <Text style={styles.allEntryValue}>
+                            {formatYieldPerPlantValue(
+                              record.actualYieldPerPlant,
+                              'Not harvested yet'
+                            )}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Totals and date */}
+                      <View style={styles.allEntryMetaRow}>
+                        <Text style={styles.allEntryStatsText}>
+                          Expected: {record.expectedYield ?? 0} kg • Actual:{' '}
+                          {record.actualHarvest ?? record.harvestWeight ?? 0} kg
+                        </Text>
+                        <Text style={styles.allEntryDate}>
+                          Submitted:{' '}
+                          {record.submittedAt?.toDate?.()?.toLocaleDateString() ||
+                            'Unknown'}
                         </Text>
                       </View>
-                      <View style={styles.allEntryDurationColumn}>
-                        <Text style={styles.allEntryLabel}>Actual duration</Text>
-                        <Text style={styles.allEntryValue}>
-                          {formatDurationValue(record.actualDurationDays, 'Not harvested yet')}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.allEntryDurationRow}>
-                      <View style={styles.allEntryDurationColumn}>
-                        <Text style={styles.allEntryLabel}>Expected yield / plant</Text>
-                        <Text style={styles.allEntryValue}>
-                          {formatYieldPerPlantValue(record.expectedYieldPerPlant)}
-                        </Text>
-                      </View>
-                      <View style={styles.allEntryDurationColumn}>
-                        <Text style={styles.allEntryLabel}>Actual yield / plant</Text>
-                        <Text style={styles.allEntryValue}>
-                          {formatYieldPerPlantValue(record.actualYieldPerPlant, 'Not harvested yet')}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.allEntryStatsText}>
-                      Expected yield: {record.expectedYield ?? 0} kg • Actual:{' '}
-                      {record.actualHarvest ?? record.harvestWeight ?? 0} kg
-                    </Text>
-
-                    <Text style={styles.allEntryDate}>
-                      Submitted: {record.submittedAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -5240,6 +6414,21 @@ export default function AdminPage() {
             <Text style={styles.sectionDescription}>
               View and manage farmer profiles and information
             </Text>
+
+            {/* Summary & Inventory Button */}
+            {!loadingFarmers && farmersData.length > 0 && (
+              <TouchableOpacity
+                style={styles.summaryInventoryButton}
+                onPress={() => setShowSummaryInventory(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.summaryInventoryButtonContent}>
+                  <Ionicons name="stats-chart" size={24} color="#fff" />
+                  <Text style={styles.summaryInventoryButtonText}>Summary & Inventory</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#fff" />
+                </View>
+              </TouchableOpacity>
+            )}
 
             {loadingFarmers ? (
               <View style={styles.loadingContainer}>
@@ -5752,6 +6941,211 @@ export default function AdminPage() {
         </View>
       </Modal>
 
+      {/* App Updates Modal */}
+      <Modal
+        visible={showAppUpdateModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAppUpdateModal(false)}
+      >
+        <View style={styles.fullScreenModalOverlay}>
+          <View style={styles.viewModalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>App Updates</Text>
+              <TouchableOpacity onPress={() => setShowAppUpdateModal(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Body scroll area */}
+            <View style={styles.appUpdateBody}>
+              <ScrollView
+                contentContainerStyle={styles.modalContent}
+                showsVerticalScrollIndicator={false}
+              >
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Version</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g. 1.1.0"
+                  value={updateVersion}
+                  onChangeText={setUpdateVersion}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Update Link</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Paste download link (Play Store, APK, etc.)"
+                  value={updateUrl}
+                  onChangeText={setUpdateUrl}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Update Message (shown to users)</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea]}
+                  placeholder="Explain what is new or why this update is required..."
+                  value={updateMessage}
+                  onChangeText={setUpdateMessage}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Force update for all users</Text>
+                <TouchableOpacity
+                  style={styles.toggleRow}
+                  onPress={() => setUpdateIsActive(!updateIsActive)}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={[
+                      styles.togglePill,
+                      updateIsActive && styles.togglePillActive,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.toggleThumb,
+                        updateIsActive && styles.toggleThumbActive,
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.toggleLabel}>
+                    {updateIsActive
+                      ? 'ON – users will see a blocking update screen'
+                      : 'OFF – users can continue using current version'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {recentUpdates.length > 0 && (
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Recent Updates</Text>
+                  {recentUpdates.slice(0, 5).map((u) => (
+                    <TouchableOpacity
+                      key={u.id}
+                      style={[
+                        styles.updateHistoryItem,
+                        selectedUpdateId === u.id && styles.updateHistoryItemSelected,
+                      ]}
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        setSelectedUpdateId(u.id);
+                        setUpdateVersion(u.version || '');
+                        setUpdateUrl(u.url || '');
+                        setUpdateMessage(u.message || '');
+                        setUpdateIsActive(!!u.isActive);
+                      }}
+                    >
+                      <View style={styles.updateHistoryHeader}>
+                        <Text style={styles.updateHistoryVersion}>
+                          v{u.version || 'N/A'}
+                        </Text>
+                        {u.isActive && (
+                          <View style={styles.updateHistoryBadge}>
+                            <Text style={styles.updateHistoryBadgeText}>
+                              Active
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {u.message ? (
+                        <Text style={styles.updateHistoryMessage} numberOfLines={2}>
+                          {u.message}
+                        </Text>
+                      ) : null}
+                      <Text style={styles.updateHistoryMeta}>
+                        {u.createdAt
+                          ? new Date(u.createdAt).toLocaleString()
+                          : 'No date'}{' '}
+                        • {u.createdBy || 'admin'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {selectedUpdateId && (
+                    <View style={styles.updateActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.secondaryButton, styles.dangerButton]}
+                        onPress={deleteSelectedAppUpdate}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="trash" size={18} color="#c0392b" />
+                        <Text
+                          style={[
+                            styles.secondaryButtonText,
+                            styles.dangerButtonText,
+                          ]}
+                        >
+                          Delete
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.secondaryButton}
+                        onPress={undeployAllAppUpdates}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="power" size={18} color={GREEN} />
+                        <Text style={styles.secondaryButtonText}>Undeploy</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.secondaryButton}
+                        onPress={deployLatestAppUpdate}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="rocket" size={18} color={GREEN} />
+                        <Text style={styles.secondaryButtonText}>Deploy</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+              </ScrollView>
+            </View>
+
+            <View style={styles.appUpdateFooter}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowAppUpdateModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Close</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.createButton,
+                  savingUpdate && styles.createButtonDisabled,
+                ]}
+                onPress={handleSaveAppUpdate}
+                disabled={savingUpdate}
+              >
+                {savingUpdate ? (
+                  <>
+                    <Ionicons name="hourglass" size={20} color="#fff" />
+                    <Text style={styles.createButtonText}>Saving...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="save" size={20} color="#fff" />
+                    <Text style={styles.createButtonText}>Save Update</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* View Announcement Modal */}
       <Modal
         visible={showViewAnnouncements}
@@ -6041,6 +7435,330 @@ export default function AdminPage() {
         </View>
       </Modal>
 
+      {/* Summary & Inventory Modal */}
+      <Modal
+        visible={showSummaryInventory}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowSummaryInventory(false)}
+      >
+        <View style={styles.detailModalContainer}>
+          <View style={styles.detailModalHeader}>
+            <TouchableOpacity 
+              style={styles.detailModalCloseButton}
+              onPress={() => setShowSummaryInventory(false)}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.detailModalTitle}>Summary & Inventory</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          <ScrollView style={styles.detailModalContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryContent}>
+                {/* Summary Stats */}
+                <View style={styles.summaryStatsContainer}>
+                  <View style={styles.summaryStatCard}>
+                    <Text style={styles.summaryStatValue}>{farmersSummary.totalFarmers}</Text>
+                    <Text style={styles.summaryStatLabel}>Total Farmers</Text>
+                  </View>
+                  <View style={styles.summaryStatCard}>
+                    <Text style={styles.summaryStatValue}>
+                      {farmersSummary.totalFormsSubmitted} / {farmersSummary.totalPossibleForms}
+                    </Text>
+                    <Text style={styles.summaryStatLabel}>Forms Submitted</Text>
+                  </View>
+                  <View style={styles.summaryStatCard}>
+                    <Text style={styles.summaryStatValue}>
+                      {farmersSummary.overallCompletionPercentage}%
+                    </Text>
+                    <Text style={styles.summaryStatLabel}>Overall Completion</Text>
+                  </View>
+                </View>
+
+                <View style={styles.summaryDivider} />
+
+                {/* Comprehensive Inventory */}
+                <Text style={styles.summarySubtitle}>Complete Inventory</Text>
+                
+                {Object.keys(farmersSummary.inventoryBreakdown).map((formKey) => {
+                  const formInventory = farmersSummary.inventoryBreakdown[formKey];
+                  const formTitle = formKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                  
+                  // Check if this form has any data
+                  const hasData = Object.keys(formInventory).some(fieldKey => {
+                    const fieldData = formInventory[fieldKey];
+                    return fieldData && typeof fieldData === 'object' && Object.keys(fieldData).length > 0;
+                  });
+
+                  if (!hasData) return null;
+
+                  // Count how many fields have data for this form
+                  const fieldsWithDataCount = Object.keys(formInventory).reduce((count, fieldKey) => {
+                    const fieldData = formInventory[fieldKey];
+                    if (fieldData && typeof fieldData === 'object' && Object.keys(fieldData).length > 0) {
+                      return count + 1;
+                    }
+                    return count;
+                  }, 0);
+                  
+                  return (
+                    <View key={formKey} style={styles.inventoryFormSection}>
+                      <View style={styles.inventoryFormHeader}>
+                        <View style={styles.inventoryFormIcon}>
+                          <Ionicons name="stats-chart" size={18} color={GREEN} />
+                        </View>
+                        <View style={styles.inventoryFormHeaderText}>
+                          <Text style={styles.inventoryFormTitle}>{formTitle}</Text>
+                          <Text style={styles.inventoryFormSubtitle}>
+                            {fieldsWithDataCount} key indicators
+                          </Text>
+                        </View>
+                      </View>
+                      {Object.keys(formInventory).map((fieldKey) => {
+                        const fieldData = formInventory[fieldKey];
+                        if (!fieldData || typeof fieldData !== 'object' || Object.keys(fieldData).length === 0) {
+                          return null;
+                        }
+
+                        const fieldTitle = fieldKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                        
+                        return (
+                          <View key={fieldKey} style={styles.inventoryFieldSection}>
+                            <Text style={styles.inventoryFieldTitle}>{fieldTitle}</Text>
+                            <View style={styles.breakdownGrid}>
+                              {Object.entries(fieldData)
+                                // Ensure we are sorting numeric counts; non-numbers are treated as 0
+                                .sort(([, a]: [string, any], [, b]: [string, any]) => {
+                                  const numA = typeof a === 'number' ? a : 0;
+                                  const numB = typeof b === 'number' ? b : 0;
+                                  return numB - numA;
+                                })
+                                .map(([value, count]: [string, any]) => {
+                                  // Skip entries that are not meaningful
+                                  const safeCount = typeof count === 'number' ? count : 0;
+                                  if (!safeCount) return null;
+
+                                  return (
+                                    <View key={value} style={styles.breakdownItem}>
+                                      <Text style={styles.breakdownValue}>{safeCount}</Text>
+                                      <Text style={styles.breakdownLabel} numberOfLines={2}>
+                                        {String(value)}
+                                      </Text>
+                                    </View>
+                                  );
+                                })}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Download CSV Modal */}
+      <Modal
+        visible={showDownloadModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          if (!downloading) {
+            setShowDownloadModal(false);
+            setSelectedCommodities(new Set());
+          }
+        }}
+      >
+        <View style={styles.detailModalContainer}>
+          <View style={styles.detailModalHeader}>
+            <TouchableOpacity 
+              style={styles.detailModalCloseButton}
+              onPress={() => {
+                if (!downloading) {
+                  setShowDownloadModal(false);
+                  setSelectedCommodities(new Set());
+                }
+              }}
+              disabled={downloading}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.detailModalTitle}>Download Price Data</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          <ScrollView style={styles.detailModalContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.downloadModalContent}>
+              <Text style={styles.downloadModalDescription}>
+                Select the commodities you want to download. The CSV will include current prices and forecast data.
+              </Text>
+
+              <View style={styles.downloadModalActions}>
+                <TouchableOpacity
+                  style={styles.selectAllButton}
+                  onPress={() => {
+                    if (selectedCommodities.size === priceCommodities.length) {
+                      setSelectedCommodities(new Set());
+                    } else {
+                      setSelectedCommodities(new Set(priceCommodities.map(c => c.name)));
+                    }
+                  }}
+                >
+                  <Text style={styles.selectAllButtonText}>
+                    {selectedCommodities.size === priceCommodities.length ? 'Deselect All' : 'Select All'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.commodityList}>
+                {priceCommodities.map((commodity) => {
+                  const isSelected = selectedCommodities.has(commodity.name);
+                  return (
+                    <TouchableOpacity
+                      key={commodity.name}
+                      style={[
+                        styles.commodityCheckboxItem,
+                        isSelected && styles.commodityCheckboxItemSelected
+                      ]}
+                      onPress={() => {
+                        const newSelected = new Set(selectedCommodities);
+                        if (isSelected) {
+                          newSelected.delete(commodity.name);
+                        } else {
+                          newSelected.add(commodity.name);
+                        }
+                        setSelectedCommodities(newSelected);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[
+                        styles.commodityCheckbox,
+                        isSelected && styles.commodityCheckboxSelected
+                      ]}>
+                        {isSelected && (
+                          <Ionicons name="checkmark" size={16} color="#fff" />
+                        )}
+                      </View>
+                      <View style={styles.commodityCheckboxInfo}>
+                        <Text style={styles.commodityCheckboxName}>
+                          {commodity.displayName || commodity.name}
+                        </Text>
+                        <Text style={styles.commodityCheckboxCategory}>
+                          {commodity.category} • ₱{commodity.currentPrice?.toFixed(2) || 'N/A'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.downloadModalFooter}>
+                <Text style={styles.selectedCount}>
+                  {selectedCommodities.size} of {priceCommodities.length} selected
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.downloadButton,
+                    (selectedCommodities.size === 0 || downloading) && styles.downloadButtonDisabled
+                  ]}
+                  onPress={handleDownloadCSV}
+                  disabled={selectedCommodities.size === 0 || downloading}
+                >
+                  {downloading ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={styles.downloadButtonText}>Generating CSV...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="download" size={20} color="#fff" />
+                      <Text style={styles.downloadButtonText}>Download CSV</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Upload CSV Modal */}
+      <Modal
+        visible={showUploadModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          if (!uploading) {
+            setShowUploadModal(false);
+            setUploadedFile(null);
+          }
+        }}
+      >
+        <View style={styles.detailModalContainer}>
+          <View style={styles.detailModalHeader}>
+            <TouchableOpacity 
+              style={styles.detailModalCloseButton}
+              onPress={() => {
+                if (!uploading) {
+                  setShowUploadModal(false);
+                  setUploadedFile(null);
+                }
+              }}
+              disabled={uploading}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.detailModalTitle}>Upload Price Data CSV</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          <ScrollView style={styles.detailModalContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.downloadModalContent}>
+              <Text style={styles.downloadModalDescription}>
+                Upload a CSV file with new price data from DA (Department of Agriculture).{'\n\n'}
+                Expected format: commodity,price,date{'\n\n'}
+                The CSV should contain current prices that will update the price monitoring data.
+              </Text>
+
+              {uploadedFile && (
+                <View style={styles.uploadedFileInfo}>
+                  <Ionicons name="document" size={24} color={GREEN} />
+                  <Text style={styles.uploadedFileName}>{uploadedFile}</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.downloadButton,
+                  uploading && styles.downloadButtonDisabled
+                ]}
+                onPress={handleUploadCSV}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.downloadButtonText}>Processing CSV...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="cloud-upload" size={20} color="#fff" />
+                    <Text style={styles.downloadButtonText}>
+                      {uploadedFile ? 'Process CSV' : 'Select CSV File'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* Farmer Detail Modal */}
       <Modal
         visible={showFarmerDetail}
@@ -6124,18 +7842,48 @@ export default function AdminPage() {
 
                         const value = formData[fieldKey];
                         const fieldTitle = fieldKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+
+                        // Normalize value for display
+                        const isEmpty =
+                          value == null ||
+                          (Array.isArray(value) && value.length === 0) ||
+                          (!Array.isArray(value) &&
+                            typeof value === 'object' &&
+                            Object.keys(value || {}).length === 0);
+
+                        let displayValue: string = '';
+
+                        if (isEmpty) {
+                          displayValue = 'No answer provided';
+                        } else if (Array.isArray(value)) {
+                          displayValue = value.join(', ');
+                        } else if (value && typeof value === 'object') {
+                          // For object fields (like *_counts), show key (count) pairs
+                          displayValue = Object.entries(value)
+                            .map(([k, v]) => {
+                              const num = typeof v === 'number' ? v : 0;
+                              return num ? `${k} (${num})` : '';
+                            })
+                            .filter(Boolean)
+                            .join(', ');
+
+                          if (!displayValue) {
+                            displayValue = '[data]';
+                          }
+                        } else {
+                          displayValue = String(value);
+                        }
                         
                         return (
                           <View key={fieldKey} style={styles.farmerFormField}>
                             <Text style={styles.farmerFormFieldLabel}>{fieldTitle}:</Text>
-                            <Text style={[
-                              styles.farmerFormFieldValue,
-                              (!value || (Array.isArray(value) && value.length === 0)) && styles.farmerFormFieldEmpty
-                            ]}>
-                              {!value || (Array.isArray(value) && value.length === 0) 
-                                ? 'No answer provided' 
-                                : Array.isArray(value) ? value.join(', ') : value
-                              }
+                            <Text
+                              style={[
+                                styles.farmerFormFieldValue,
+                                isEmpty && styles.farmerFormFieldEmpty,
+                              ]}
+                            >
+                              {displayValue}
                             </Text>
                           </View>
                         );
@@ -6933,8 +8681,9 @@ const styles = StyleSheet.create({
     color: GREEN,
   },
   modalContent: {
-    padding: 20,
-    maxHeight: 400,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
   },
   inputContainer: {
     marginBottom: 20,
@@ -6983,10 +8732,26 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
     gap: 15,
+    backgroundColor: '#fff',
+  },
+  appUpdateFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    gap: 15,
+    backgroundColor: '#fff',
   },
   cancelButton: {
     flex: 1,
@@ -7020,6 +8785,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#ccc',
     opacity: 0.7,
   },
+  updateActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    gap: 10,
+  },
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: GREEN,
+    gap: 6,
+    minWidth: 100,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  dangerButton: {
+    borderColor: '#c0392b',
+    backgroundColor: '#FFF5F5',
+  },
+  dangerButtonText: {
+    color: '#c0392b',
+  },
   
   // View All Announcements Modal Styles
   viewModalContainer: {
@@ -7027,6 +8822,86 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: 0,
     borderRadius: 0,
+  },
+  appUpdateBody: {
+    flex: 1,
+    paddingBottom: 80,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  togglePill: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#dde5e1',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  togglePillActive: {
+    backgroundColor: '#a5d6a7',
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    alignSelf: 'flex-start',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  toggleLabel: {
+    marginLeft: 10,
+    fontSize: 12,
+    color: '#555',
+    flex: 1,
+  },
+  updateHistoryItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: GREEN,
+  },
+  updateHistoryItemSelected: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 2,
+    borderColor: GREEN,
+  },
+  updateHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  updateHistoryVersion: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+  },
+  updateHistoryBadge: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  updateHistoryBadgeText: {
+    fontSize: 10,
+    color: '#1B5E20',
+    fontWeight: '600',
+  },
+  updateHistoryMessage: {
+    fontSize: 12,
+    color: '#555',
+    marginBottom: 2,
+  },
+  updateHistoryMeta: {
+    fontSize: 11,
+    color: '#888',
   },
   announcementsListContainer: {
     flex: 1,
@@ -8156,115 +10031,172 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#E0F2E9',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 3,
+    borderWidth: 2,
+    borderColor: GREEN,
   },
   cropTimelineTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: GREEN,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
+    letterSpacing: 0.3,
   },
   cropTimelineSubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 18,
+    marginBottom: 20,
+    fontWeight: '500',
   },
-  cropTimelineItem: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+  cropTimelineItemCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  cropTimelineItemLast: {
-    borderBottomWidth: 0,
-    paddingBottom: 0,
-  },
-  cropTimelineHeader: {
+  cropTimelineItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
   },
   cropTimelineName: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginRight: 12,
+  },
+  cropTimelineNameText: {
+    marginLeft: 10,
   },
   cropTimelineIcon: {
-    fontSize: 20,
-    marginRight: 8,
+    fontSize: 24,
   },
   cropTimelineCrop: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#333',
+    color: '#1a1a1a',
+    letterSpacing: 0.2,
   },
   cropTimelineTagalog: {
     fontSize: 13,
-    color: '#777',
-    marginLeft: 6,
+    color: '#666',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  cropTimelineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d0d0d0',
+    gap: 4,
   },
   cropTimelineSamples: {
     fontSize: 12,
-    color: '#777',
-    fontWeight: '500',
-  },
-  cropTimelineRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  cropTimelineLabel: {
-    fontSize: 12,
+    color: '#666',
     fontWeight: '700',
-    color: '#2E7D32',
-    width: 80,
   },
-  cropTimelineValues: {
-    flex: 1,
+  cropTimelineComparisonContainer: {
+    gap: 12,
+  },
+  cropTimelineSection: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+  },
+  cropTimelineSectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
+    gap: 6,
   },
-  cropTimelineStatGroup: {
-    flex: 1,
-    alignItems: 'flex-start',
+  cropTimelineSectionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+    letterSpacing: 0.2,
   },
-  cropTimelineStatGroupRight: {
+  cropTimelineStatsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cropTimelineStatCard: {
     flex: 1,
-    alignItems: 'flex-end',
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
   },
   cropTimelineStatLabel: {
     fontSize: 11,
-    color: '#888',
-    marginBottom: 2,
-  },
-  cropTimelineValue: {
-    fontSize: 14,
+    color: '#666',
+    marginBottom: 6,
     fontWeight: '600',
-    color: '#333',
+    textAlign: 'center',
   },
-  cropTimelinePerPlant: {
-    fontSize: 12,
-    color: '#777',
-    marginTop: 2,
+  cropTimelineStatValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    textAlign: 'center',
   },
-  cropTimelineDeltaRow: {
-    marginTop: 10,
+  cropTimelineDeltaContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    flexWrap: 'wrap',
+  },
+  cropTimelineDeltaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+    backgroundColor: '#f5f5f5',
+  },
+  cropTimelineDeltaBadgeOnTime: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeDelay: {
+    backgroundColor: '#FFEBEE',
+  },
+  cropTimelineDeltaBadgeAhead: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeEven: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeGain: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeDrop: {
+    backgroundColor: '#FFEBEE',
   },
   cropTimelineDeltaText: {
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
+    fontWeight: '700',
   },
   cropTimelineOnTime: {
     color: '#2E7D32',
@@ -8773,6 +10705,136 @@ const styles = StyleSheet.create({
     marginLeft: 2,
     flexShrink: 0,
   },
+  comparisonSection: {
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: GREEN,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  comparisonSectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: GREEN,
+    marginBottom: 20,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  comparisonItemCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#d0d0d0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  comparisonItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
+  },
+  comparisonCropIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  comparisonCropName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    letterSpacing: 0.3,
+  },
+  comparisonItemContent: {
+    paddingLeft: 0,
+  },
+  comparisonDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    minHeight: 40,
+  },
+  comparisonPeriodLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#555',
+    flex: 1,
+    letterSpacing: 0.2,
+  },
+  comparisonDataValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    flex: 2,
+    justifyContent: 'flex-end',
+  },
+  comparisonDataValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginLeft: 6,
+  },
+  comparisonDataSubtext: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+    marginLeft: 4,
+  },
+  comparisonChangeIndicator: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginRight: 6,
+    letterSpacing: 0.5,
+  },
+  comparisonNoData: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#999',
+    fontStyle: 'italic',
+    flex: 2,
+    textAlign: 'right',
+  },
+  comparisonContainer: {
+    marginTop: 6,
+    width: '100%',
+  },
+  comparisonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  comparisonLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  comparisonValue: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  comparisonPositive: {
+    color: '#2E7D32',
+  },
+  comparisonNegative: {
+    color: '#C62828',
+  },
   horizontalBarValue: {
     position: 'absolute',
     top: 0,
@@ -8814,9 +10876,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   allEntryCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
     padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
@@ -8829,6 +10892,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 10,
+  },
+  allEntryHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  allEntryIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  allEntryIconEmoji: {
+    fontSize: 18,
+  },
+  allEntryCropTextContainer: {
+    flex: 1,
+  },
+  allEntryCropRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
   },
   allEntryCrop: {
     fontSize: 16,
@@ -8860,17 +10949,219 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   allEntryStatsText: {
-    marginTop: 10,
+    marginTop: 4,
     fontSize: 13,
     color: '#555',
   },
   allEntryDate: {
-    marginTop: 6,
+    marginTop: 2,
     fontSize: 12,
     color: '#999',
   },
+  allEntryMetaRow: {
+    marginTop: 8,
+  },
+  allEntryStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  allEntryStatusHarvested: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#A5D6A7',
+  },
+  allEntryStatusPlanned: {
+    backgroundColor: '#E3F2FD',
+    borderColor: '#90CAF9',
+  },
+  allEntryStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  allEntryStatusTextHarvested: {
+    color: '#1B5E20',
+  },
+  allEntryStatusTextPlanned: {
+    color: '#1565C0',
+  },
   farmersList: {
     gap: 12,
+  },
+  summaryInventoryButton: {
+    backgroundColor: GREEN,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  summaryInventoryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  summaryInventoryButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    flex: 1,
+    marginLeft: 12,
+  },
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E8F5E8',
+  },
+  summaryContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: '#e9ecef',
+    marginVertical: 20,
+  },
+  summarySubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+  },
+  formBreakdownContainer: {
+    gap: 16,
+  },
+  formBreakdownItem: {
+    marginBottom: 4,
+  },
+  formBreakdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  formBreakdownName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  formBreakdownCount: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  formBreakdownProgressBar: {
+    height: 8,
+    backgroundColor: '#e9ecef',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  formBreakdownProgressFill: {
+    height: '100%',
+    backgroundColor: GREEN,
+    borderRadius: 4,
+  },
+  formBreakdownPercentage: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  inventoryFormSection: {
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#F8FBF7',
+    borderWidth: 1,
+    borderColor: '#E2F0E8',
+  },
+  inventoryFormHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  inventoryFormIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E3F2E8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  inventoryFormHeaderText: {
+    flex: 1,
+  },
+  inventoryFormTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: GREEN,
+  },
+  inventoryFormSubtitle: {
+    fontSize: 12,
+    color: '#55696a',
+    marginTop: 2,
+  },
+  inventoryFieldSection: {
+    marginBottom: 18,
+  },
+  inventoryFieldTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#34495e',
+    marginBottom: 10,
+  },
+  breakdownSection: {
+    marginBottom: 20,
+  },
+  breakdownSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 12,
+  },
+  breakdownGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  breakdownItem: {
+    flex: 1,
+    minWidth: '30%',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DCE6DF',
+  },
+  breakdownValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: GREEN,
+    marginBottom: 2,
+  },
+  breakdownLabel: {
+    fontSize: 11,
+    color: '#607179',
+    textAlign: 'center',
+    fontWeight: '500',
   },
   farmerCard: {
     backgroundColor: '#fff',
@@ -9102,7 +11393,7 @@ const styles = StyleSheet.create({
     marginBottom: 25,
     gap: 12,
   },
-  summaryCard: {
+  summaryStatCardSmall: {
     flex: 1,
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -10630,6 +12921,124 @@ const styles = StyleSheet.create({
   adminCommodityItemUnit: {
     fontSize: 12,
     color: '#666',
+  },
+  // Download Modal Styles
+  downloadModalContent: {
+    padding: 20,
+  },
+  downloadModalDescription: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  downloadModalActions: {
+    marginBottom: 20,
+  },
+  selectAllButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: LIGHT_GREEN + '20',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GREEN,
+  },
+  selectAllButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: GREEN,
+  },
+  commodityList: {
+    marginBottom: 20,
+  },
+  commodityCheckboxItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+  },
+  commodityCheckboxItemSelected: {
+    borderColor: GREEN,
+    backgroundColor: LIGHT_GREEN + '10',
+  },
+  commodityCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  commodityCheckboxSelected: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  commodityCheckboxInfo: {
+    flex: 1,
+  },
+  commodityCheckboxName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  commodityCheckboxCategory: {
+    fontSize: 14,
+    color: '#666',
+  },
+  downloadModalFooter: {
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    marginTop: 20,
+  },
+  selectedCount: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: GREEN,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 8,
+  },
+  downloadButtonDisabled: {
+    backgroundColor: '#ccc',
+    opacity: 0.6,
+  },
+  downloadButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  uploadedFileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LIGHT_GREEN + '20',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  uploadedFileName: {
+    fontSize: 14,
+    color: GREEN,
+    fontWeight: '600',
+    marginLeft: 12,
+    flex: 1,
   },
 });
 

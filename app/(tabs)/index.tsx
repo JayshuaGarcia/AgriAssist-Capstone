@@ -1,17 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import * as Updates from 'expo-updates';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, Dimensions, Image, Linking, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../../components/AnnouncementContext';
 import { useAuth } from '../../components/AuthContext';
 import { ForecastingCalendar } from '../../components/ForecastingCalendar';
 import { useNotification } from '../../components/NotificationContext';
+import { PriceMonitoringList } from '../../components/PriceMonitoringList';
 import { SlidingAnnouncement } from '../../components/SlidingAnnouncement';
 import { COMMODITY_CATEGORIES, COMMODITY_DATA, Commodity } from '../../constants/CommodityData';
 import { useNavigationBar } from '../../hooks/useNavigationBar';
 import { db } from '../../lib/firebase';
+import { CommodityPrice, getAllCommodities } from '../../services/csvPriceService';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -284,6 +287,11 @@ export default function HomeScreen() {
   // Configure navigation bar to be hidden (same as admin)
   useNavigationBar('hidden');
   const [activeNav, setActiveNav] = useState('home');
+  const [forcedUpdate, setForcedUpdate] = useState<{
+    version: string;
+    url: string;
+    message: string;
+  } | null>(null);
   
   // Redirect admin users to admin page
   useEffect(() => {
@@ -292,6 +300,70 @@ export default function HomeScreen() {
       router.replace('/admin');
     }
   }, [profile.role, router]);
+
+  // Load forced app update configuration (from admin Settings)
+  const loadForcedUpdate = useCallback(async () => {
+    if (profile.role === 'admin') {
+      console.log('ℹ️ Admin user detected, skipping forced update check');
+      return;
+    }
+
+    try {
+      console.log('🔄 Loading forced app update configuration...');
+      const snapshot = await getDocs(collection(db, 'appUpdates'));
+      const updates = snapshot.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      console.log(`📦 Found ${updates.length} app update(s) in database`);
+      const active = updates.find((u) => u.isActive);
+      
+      if (active) {
+        console.log('✅ Active update found:', {
+          id: active.id,
+          version: active.version,
+          url: active.url,
+          message: active.message,
+          isActive: active.isActive,
+        });
+        
+        if (active.url) {
+          setForcedUpdate({
+            version: active.version || '',
+            url: active.url,
+            message:
+              active.message ||
+              'A new version of AgriAssist is available. Please update to continue.',
+          });
+          console.log('✅ Forced update configured and will be shown to user');
+        } else {
+          console.log('⚠️ Active update found but missing URL, skipping');
+          setForcedUpdate(null);
+        }
+      } else {
+        console.log('ℹ️ No active update found');
+        setForcedUpdate(null);
+      }
+    } catch (error: any) {
+      console.error(
+        '❌ Firebase access failed when loading appUpdates:',
+        error
+      );
+      // If we cannot load config, do not force-block the user
+      setForcedUpdate(null);
+    }
+  }, [profile.role]);
+
+  useEffect(() => {
+    loadForcedUpdate();
+  }, [loadForcedUpdate]);
+
+  // Also refresh forced update whenever this screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      loadForcedUpdate();
+    }, [loadForcedUpdate])
+  );
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
   const [forecastDays, setForecastDays] = useState<ForecastDay[]>([]);
@@ -315,6 +387,8 @@ export default function HomeScreen() {
   // Admin-style price monitoring states
   const [pdfData, setPdfData] = useState<any[]>([]);
   const [categorizedData, setCategorizedData] = useState<any[]>([]);
+  const [priceCommodities, setPriceCommodities] = useState<CommodityPrice[]>([]);
+  const [loadingPrices, setLoadingPrices] = useState(false);
   
   // Forecasting calendar states
   const [forecastModalVisible, setForecastModalVisible] = useState(false);
@@ -334,9 +408,19 @@ export default function HomeScreen() {
 
   // Load messages for the current user
   const loadUserMessages = async () => {
-    if (!user?.uid) return;
+    if (!user?.uid) {
+      console.log('⚠️ Cannot load messages: user.uid is missing');
+      return;
+    }
+    
+    if (!user?.email) {
+      console.log('⚠️ Cannot load messages: user.email is missing');
+      return;
+    }
     
     try {
+      console.log('📬 Loading user messages for:', user.email);
+      
       // First, get the user's document ID from the users collection
       const usersQuery = query(
         collection(db, 'users'),
@@ -345,15 +429,19 @@ export default function HomeScreen() {
       const userSnapshot = await getDocs(usersQuery);
       
       if (userSnapshot.empty) {
-        console.log('No user document found for current user');
+        console.log('⚠️ No user document found for current user email:', user.email);
+        setUserMessages([]);
         return;
       }
       
       const userDoc = userSnapshot.docs[0];
       const userDocId = userDoc.id;
       
-      console.log('Current user UID:', user.uid);
-      console.log('Current user document ID:', userDocId);
+      console.log('✅ Found user document:', {
+        uid: user.uid,
+        docId: userDocId,
+        email: user.email
+      });
       
       // Query both sent and received messages
       const sentMessagesQuery = query(
@@ -366,6 +454,7 @@ export default function HomeScreen() {
         where('receiverId', '==', userDocId)
       );
       
+      console.log('🔍 Querying messages...');
       const [sentSnapshot, receivedSnapshot] = await Promise.all([
         getDocs(sentMessagesQuery),
         getDocs(receivedMessagesQuery)
@@ -381,8 +470,17 @@ export default function HomeScreen() {
         ...doc.data()
       }));
       
+      console.log(`📤 Found ${sentMessages.length} sent messages`);
+      console.log(`📥 Found ${receivedMessages.length} received messages`);
+      
       // Combine all messages
       const allMessages = [...sentMessages, ...receivedMessages];
+      
+      if (allMessages.length === 0) {
+        console.log('ℹ️ No messages found for this user');
+        setUserMessages([]);
+        return;
+      }
       
       // Group messages by contact (sender or receiver)
       const contactMap = new Map();
@@ -431,9 +529,17 @@ export default function HomeScreen() {
       const contacts = Array.from(contactMap.values())
         .sort((a, b) => (b.lastMessage.timestamp || 0) - (a.lastMessage.timestamp || 0));
       
+      console.log(`✅ Loaded ${contacts.length} contacts with messages`);
       setUserMessages(contacts);
-    } catch (error) {
-      console.error('Error loading messages:', error);
+    } catch (error: any) {
+      console.error('❌ Error loading messages:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      Alert.alert('Error', `Failed to load messages: ${error.message || 'Unknown error'}`);
+      setUserMessages([]);
     }
   };
 
@@ -1026,7 +1132,7 @@ export default function HomeScreen() {
         categories['Fish & Seafood'].push(item);
       } else if (commodityName.includes('beef') || commodityName.includes('pork') || commodityName.includes('carabeef')) {
         categories['Meat Products'].push(item);
-      } else if (commodityName.includes('chicken') || commodityName.includes('egg')) {
+      } else if (commodityName.includes('chicken') || commodityName.includes('egg') || commodityName.includes('duck') || commodityName.includes('poultry') || commodityName.includes('turkey') || commodityName.includes('quail')) {
         categories['Poultry & Eggs'].push(item);
       } else if (commodityName.includes('ampalaya') || commodityName.includes('eggplant') || commodityName.includes('tomato') || commodityName.includes('cabbage') || commodityName.includes('carrot') || commodityName.includes('lettuce') || commodityName.includes('pechay') || commodityName.includes('squash') || commodityName.includes('sitao') || commodityName.includes('chayote') || commodityName.includes('potato') || commodityName.includes('broccoli') || commodityName.includes('cauliflower') || commodityName.includes('celery') || commodityName.includes('bell pepper') || commodityName.includes('habichuelas') || commodityName.includes('baguio beans')) {
         categories['Vegetables'].push(item);
@@ -1066,54 +1172,24 @@ export default function HomeScreen() {
       .sort((a, b) => a.name.localeCompare(b.name));
   };
 
-  // Admin-style price monitoring functions
-  const loadPDFData = React.useCallback(async () => {
-    try {
-      console.log('🚀 USER PRICE MONITORING: Loading PDF data...');
-      setPriceLoading(true);
-      
-      // Load data from extracted PDF data
-      let allPDFData: any[] = [];
-      
-      try {
-        // Try to load from automated extracted data
-        const extractedData = require('../../data/extracted_pdf_data.json');
-        allPDFData = extractedData.map((item: any, index: number) => ({
-          id: (index + 1).toString(),
-          commodity: item.commodity || 'Unknown',
-          specification: item.specification || 'Not specified',
-          price: item.price || 0,
-          unit: item.unit || 'kg',
-          region: item.region || 'NCR',
-          date: item.date || '2025-10-18'
-        }));
-        console.log(`✅ USER PRICE MONITORING: Loaded ${allPDFData.length} commodities from automated PDF extraction`);
-      } catch (error) {
-        console.error('❌ USER PRICE MONITORING: Could not load extracted PDF data:', error);
-        Alert.alert('Error', 'Could not load PDF data. Please check your connection and try again.');
-        allPDFData = [];
-      }
-      
-      // Categorize the data
-      const categorized = categorizeData(allPDFData);
-      
-      setPdfData(allPDFData);
-      setCategorizedData(categorized);
-      console.log(`✅ USER PRICE MONITORING: Successfully loaded and categorized ${allPDFData.length} commodities`);
-      console.log(`📊 USER PRICE MONITORING: Categories: ${categorized.length} types`);
-    } catch (error) {
-      console.error('❌ USER PRICE MONITORING: Error loading PDF data:', error);
-    } finally {
-      setPriceLoading(false);
-    }
-  }, []);
-
-  // Load PDF data when price monitoring tab is active
+  // Load price data when price monitoring tab is active (same as admin)
   useEffect(() => {
-    if (activeNav === 'tutorial') {
-      loadPDFData();
+    async function loadPrices() {
+      if (activeNav === 'tutorial' && priceCommodities.length === 0) {
+        setLoadingPrices(true);
+        try {
+          const data = await getAllCommodities();
+          setPriceCommodities(data);
+          console.log(`✅ User: Loaded ${data.length} commodities for price monitoring`);
+        } catch (error) {
+          console.error('Error loading prices:', error);
+        } finally {
+          setLoadingPrices(false);
+        }
+      }
     }
-  }, [activeNav, loadPDFData]);
+    loadPrices();
+  }, [activeNav, priceCommodities.length]);
 
   useEffect(() => {
     if (forecastDays.length > 0 && selectedDateIndex < forecastDays.length) {
@@ -1566,6 +1642,39 @@ export default function HomeScreen() {
     </Modal>
   );
 
+  // If there is an active forced update and user is not admin, block the app with update screen
+  if (profile.role !== 'admin' && forcedUpdate) {
+    return (
+      <View style={styles.forceUpdateContainer}>
+        <View style={styles.forceUpdateCard}>
+          <View style={styles.forceUpdateIconCircle}>
+            <Ionicons name="cloud-download" size={32} color={GREEN} />
+          </View>
+          <Text style={styles.forceUpdateTitle}>Update Required</Text>
+          {forcedUpdate.version ? (
+            <Text style={styles.forceUpdateSubtitle}>
+              A newer version (v{forcedUpdate.version}) of AgriAssist is
+              available.
+            </Text>
+          ) : null}
+          <Text style={styles.forceUpdateMessage}>{forcedUpdate.message}</Text>
+
+          <TouchableOpacity
+            style={styles.forceUpdateButton}
+            activeOpacity={0.85}
+            onPress={() => Linking.openURL(forcedUpdate.url)}
+          >
+            <Text style={styles.forceUpdateButtonText}>Update App</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.forceUpdateNote}>
+            You need to install the latest version to continue using the app.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Top Green Border */}
@@ -1580,125 +1689,13 @@ export default function HomeScreen() {
       )}
       
       {activeNav === 'tutorial' ? (
-        // Price Monitoring - Admin-style interface without Manage PDF Data button
+        // Price Monitoring - Same as admin but without View All button
         <View style={styles.adminPriceMonitoringContainer}>
-          {/* Header */}
-          <View style={styles.adminPriceHeader}>
-            <Text style={styles.adminPriceHeaderTitle}>Price Monitoring</Text>
-          </View>
-
-          {/* Data Source Info */}
-          <View style={styles.adminDataSourceInfo}>
-            <Ionicons name="document-text" size={16} color={LIGHT_GREEN} />
-            <Text style={styles.adminDataSourceText}>
-              Data Source: DA Website (https://www.da.gov.ph/)
-            </Text>
-          </View>
-
-          {/* Search Bar */}
-          <View style={styles.adminPriceSearchContainer}>
-            <View style={styles.adminPriceSearchInputContainer}>
-              <Ionicons name="search" size={20} color="#666" style={styles.adminPriceSearchIcon} />
-              <TextInput
-                style={styles.adminPriceSearchInput}
-                placeholder="🔍 Search for a product..."
-                placeholderTextColor="#999"
-                value={priceSearchQuery}
-                onChangeText={setPriceSearchQuery}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {priceSearchQuery.length > 0 && (
-                <TouchableOpacity
-                  style={styles.adminPriceClearButton}
-                  onPress={() => setPriceSearchQuery('')}
-                >
-                  <Ionicons name="close-circle" size={20} color="#666" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* Filter Buttons */}
-          <View style={styles.adminPriceFilterButtonsContainer}>
-            <TouchableOpacity
-              style={[
-                styles.adminPriceFilterButton,
-                selectedCategory === null && styles.adminPriceFilterButtonActive
-              ]}
-              onPress={() => setSelectedCategory(null)}
-            >
-              <Ionicons 
-                name="apps" 
-                size={24} 
-                color={selectedCategory === null ? "#fff" : GREEN} 
-              />
-            </TouchableOpacity>
-            
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.adminCategoryScrollView}
-              contentContainerStyle={styles.adminCategoryScrollContent}
-            >
-              {categorizedData.map((category) => (
-                <TouchableOpacity
-                  key={category.name}
-                  style={[
-                    styles.adminCategoryFilterButton,
-                    selectedCategory === category.name && styles.adminCategoryFilterButtonActive
-                  ]}
-                  onPress={() => setSelectedCategory(selectedCategory === category.name ? null : category.name)}
-                >
-                  <Text style={styles.adminCategoryFilterEmoji}>{category.icon}</Text>
-                  <Text style={[
-                    styles.adminCategoryFilterText,
-                    selectedCategory === category.name && styles.adminCategoryFilterTextActive
-                  ]}>
-                    {category.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Categorized Data Display */}
-          {priceLoading ? (
-            <View style={styles.adminPriceLoadingContainer}>
-              <ActivityIndicator size="large" color={GREEN} />
-              <Text style={styles.adminPriceLoadingText}>🔄 Loading PDF data...</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredCategories}
-              renderItem={renderAdminCategorySection}
-              keyExtractor={(item) => item.name}
-              contentContainerStyle={[styles.adminCategoryList, { paddingBottom: 100 }]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={priceRefreshing}
-                  onRefresh={onPriceRefresh}
-                  colors={[GREEN]}
-                  tintColor={GREEN}
-                />
-              }
-              ListEmptyComponent={
-                <View style={styles.adminPriceEmptyState}>
-                  <Text style={styles.adminPriceEmptyEmoji}>🔍</Text>
-                  <Text style={styles.adminPriceEmptyTitle}>No data found</Text>
-                  <Text style={styles.adminPriceEmptySubtitle}>
-                    {priceSearchQuery.trim() 
-                      ? `No products found matching "${priceSearchQuery}"`
-                      : selectedCategory 
-                        ? `No data found in ${selectedCategory} category`
-                        : 'No PDF data available. Please check your connection.'
-                    }
-                  </Text>
-                </View>
-              }
-            />
-          )}
+          <PriceMonitoringList 
+            commodities={priceCommodities} 
+            loading={loadingPrices}
+            showViewAllButton={false}
+          />
         </View>
       ) : (
         // Home content - Use ScrollView
@@ -1805,20 +1802,6 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Requirements Section - Only show for non-admin users */}
-            {profile.role !== 'admin' && (
-              <View style={styles.quickAccessSection}>
-                <Text style={styles.quickAccessTitle}>Requirements</Text>
-                      <TouchableOpacity
-                  style={styles.quickAccessButton}
-                  onPress={() => router.push('/farmers')}
-                >
-                  <Ionicons name="document-text" size={24} color={GREEN} />
-                  <Text style={styles.quickAccessText}>Complete Farmers Form</Text>
-                  <Ionicons name="chevron-forward" size={20} color={GREEN} />
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
           </>
         )}
@@ -2352,7 +2335,10 @@ export default function HomeScreen() {
                 </View>
               )}
 
-              <TouchableOpacity style={styles.newMessageButton}>
+              <TouchableOpacity 
+                style={styles.newMessageButton}
+                onPress={() => router.push('/user-chat?contactId=admin&contactName=Admin&contactEmail=admin@agriassist.com')}
+              >
                 <Ionicons name="add-circle" size={24} color={GREEN} />
                 <Text style={styles.newMessageText}>Send New Message</Text>
               </TouchableOpacity>
@@ -2568,9 +2554,82 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
   },
+  forceUpdateContainer: {
+    flex: 1,
+    backgroundColor: '#f5f7f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  forceUpdateCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E8F5E8',
+  },
+  forceUpdateClose: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    padding: 4,
+  },
+  forceUpdateIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  forceUpdateTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: GREEN,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  forceUpdateSubtitle: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  forceUpdateMessage: {
+    fontSize: 13,
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  forceUpdateButton: {
+    width: '100%',
+    backgroundColor: GREEN,
+    borderRadius: 999,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  forceUpdateButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  forceUpdateNote: {
+    fontSize: 12,
+    color: '#777',
+    textAlign: 'center',
+  },
   homeContainer: {
     marginTop: 20,
-    paddingBottom: 120, // Increased padding to ensure Requirements section is fully visible above bottom navigation
+    paddingBottom: 80,
   },
   heroSection: {
     flexDirection: 'column',
@@ -4146,6 +4205,8 @@ const styles = StyleSheet.create({
   adminPriceMonitoringContainer: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+    marginBottom: 0,
+    paddingBottom: 0,
   },
   adminPriceHeader: {
     flexDirection: 'row',
@@ -4284,6 +4345,7 @@ const styles = StyleSheet.create({
   },
   adminCategoryList: {
     padding: 16,
+    paddingBottom: 20,
   },
   adminCategorySection: {
     marginBottom: 24,

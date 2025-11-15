@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { CommodityPrice, groupByCategory } from '../services/csvPriceService';
+import { CommodityPrice, ForecastRecord, groupByCategory } from '../services/csvPriceService';
 import { PriceDetailModal } from './PriceDetailModal';
 
 const GREEN = '#16543a';
@@ -20,6 +20,7 @@ interface PriceMonitoringListProps {
   loading?: boolean;
   showViewAllButton?: boolean;
   onViewAllPress?: () => void;
+  onUploadPress?: () => void;
 }
 
 export const PriceMonitoringList: React.FC<PriceMonitoringListProps> = ({
@@ -27,6 +28,7 @@ export const PriceMonitoringList: React.FC<PriceMonitoringListProps> = ({
   loading = false,
   showViewAllButton = false,
   onViewAllPress,
+  onUploadPress,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -97,38 +99,102 @@ export const PriceMonitoringList: React.FC<PriceMonitoringListProps> = ({
     setModalVisible(true);
   };
 
-  const renderCommodityItem = ({ item }: { item: CommodityPrice }) => (
-    <TouchableOpacity
-      style={styles.commodityCard}
-      onPress={() => handleCommodityPress(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.commodityContent}>
-        <View style={styles.commodityInfo}>
-          <Text style={styles.commodityName}>{item.displayName}</Text>
-          <Text style={styles.commodityCategory}>{item.category}</Text>
-        </View>
-        <View style={styles.priceContainer}>
-          <Text style={styles.commodityPrice}>{formatPrice(item.currentPrice)}</Text>
-          {item.trend && (
-            <View style={styles.trendContainer}>
-              <Ionicons
-                name={getTrendIcon(item.trend) as any}
-                size={16}
-                color={getTrendColor(item.trend)}
-              />
-              {item.changePercent !== undefined && item.changePercent !== 0 && (
-                <Text style={[styles.changeText, { color: getTrendColor(item.trend) }]}>
-                  {Math.abs(item.changePercent).toFixed(1)}%
-                </Text>
+  // Calculate next week and next month forecasts
+  const getForecastPrices = (item: CommodityPrice) => {
+    if (!item.forecastData || item.forecastData.length === 0) {
+      return { nextWeek: null, nextMonth: null };
+    }
+
+    const today = new Date();
+    const nextWeekDate = new Date(today);
+    nextWeekDate.setDate(today.getDate() + 7);
+    const nextMonthDate = new Date(today);
+    nextMonthDate.setDate(today.getDate() + 30);
+
+    // Find closest forecast dates
+    const findClosestForecast = (targetDate: Date) => {
+      let closest: ForecastRecord | null = null;
+      let minDiff = Infinity;
+
+      item.forecastData!.forEach(forecast => {
+        const forecastDate = new Date(forecast.date);
+        const diff = Math.abs(forecastDate.getTime() - targetDate.getTime());
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = forecast;
+        }
+      });
+
+      return closest?.forecast || null;
+    };
+
+    return {
+      nextWeek: findClosestForecast(nextWeekDate),
+      nextMonth: findClosestForecast(nextMonthDate),
+    };
+  };
+
+  const renderCommodityItem = ({ item }: { item: CommodityPrice }) => {
+    const forecasts = getForecastPrices(item);
+    const hasForecast = forecasts.nextWeek !== null || forecasts.nextMonth !== null;
+
+    return (
+      <TouchableOpacity
+        style={styles.commodityCard}
+        onPress={() => handleCommodityPress(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.commodityCardContent}>
+          <View style={styles.commodityContent}>
+            <View style={styles.commodityInfo}>
+              <Text style={styles.commodityName}>{item.displayName}</Text>
+              <Text style={styles.commodityCategory}>{item.category}</Text>
+            </View>
+            <View style={styles.priceContainer}>
+              <Text style={styles.commodityPrice}>{formatPrice(item.currentPrice)}</Text>
+              {item.trend && (
+                <View style={styles.trendContainer}>
+                  <Ionicons
+                    name={getTrendIcon(item.trend) as any}
+                    size={16}
+                    color={getTrendColor(item.trend)}
+                  />
+                  {item.changePercent !== undefined && item.changePercent !== 0 && (
+                    <Text style={[styles.changeText, { color: getTrendColor(item.trend) }]}>
+                      {Math.abs(item.changePercent).toFixed(1)}%
+                    </Text>
+                  )}
+                </View>
               )}
+            </View>
+          </View>
+
+          {/* Forecast Section */}
+          {hasForecast && (
+            <View style={styles.forecastContainer}>
+              <Text style={styles.forecastTitle}>📈 Forecast</Text>
+              <View style={styles.forecastGrid}>
+                {forecasts.nextWeek !== null && (
+                  <View style={styles.forecastItem}>
+                    <Text style={styles.forecastLabel}>Next Week</Text>
+                    <Text style={styles.forecastPrice}>₱{forecasts.nextWeek.toFixed(2)}</Text>
+                  </View>
+                )}
+                {forecasts.nextMonth !== null && (
+                  <View style={styles.forecastItem}>
+                    <Text style={styles.forecastLabel}>Next Month</Text>
+                    <Text style={styles.forecastPrice}>₱{forecasts.nextMonth.toFixed(2)}</Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
         </View>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color="#ccc" />
-    </TouchableOpacity>
-  );
+
+        <Ionicons name="chevron-forward" size={20} color="#ccc" style={styles.chevronIcon} />
+      </TouchableOpacity>
+    );
+  };
 
   const renderCategorySection = ({ item: category }: { item: string }) => {
     const categoryCommodities = filteredCategorized[category] || [];
@@ -174,14 +240,21 @@ export const PriceMonitoringList: React.FC<PriceMonitoringListProps> = ({
       {(showViewAllButton || categories.length > 0) && (
         <View style={styles.header}>
           <View style={styles.headerTop}>
+            {onUploadPress && (
+              <TouchableOpacity
+                style={styles.uploadButton}
+                onPress={onUploadPress}
+              >
+                <Ionicons name="add" size={24} color={GREEN} />
+              </TouchableOpacity>
+            )}
             <Text style={styles.headerTitle}>Price Monitoring</Text>
             {showViewAllButton && onViewAllPress && (
               <TouchableOpacity
                 style={styles.viewAllButton}
                 onPress={onViewAllPress}
               >
-                <Ionicons name="list" size={18} color={GREEN} />
-                <Text style={styles.viewAllText}>View All</Text>
+                <Ionicons name="download" size={20} color={GREEN} />
               </TouchableOpacity>
             )}
           </View>
@@ -205,34 +278,66 @@ export const PriceMonitoringList: React.FC<PriceMonitoringListProps> = ({
 
           {/* Category Filters */}
           {categories.length > 0 && (
-            <View style={styles.categoryFilter}>
-              <TouchableOpacity
-                style={[styles.categoryFilterButton, !selectedCategory && styles.activeFilterButton]}
-                onPress={() => setSelectedCategory(null)}
-              >
-                <Text style={[styles.categoryFilterText, !selectedCategory && styles.activeFilterText]}>
-                  All
-                </Text>
-              </TouchableOpacity>
-              {categories.map(category => (
+            <View style={styles.categoryFilterContainer}>
+              <View style={styles.categoryFilterRow}>
                 <TouchableOpacity
-                  key={category}
-                  style={[
-                    styles.categoryFilterButton,
-                    selectedCategory === category && styles.activeFilterButton,
-                  ]}
-                  onPress={() => setSelectedCategory(category)}
+                  style={[styles.categoryFilterButton, !selectedCategory && styles.activeFilterButton]}
+                  onPress={() => setSelectedCategory(null)}
                 >
-                  <Text
-                    style={[
-                      styles.categoryFilterText,
-                      selectedCategory === category && styles.activeFilterText,
-                    ]}
-                  >
-                    {category}
+                  <Text style={[styles.categoryFilterText, !selectedCategory && styles.activeFilterText]}>
+                    All
                   </Text>
                 </TouchableOpacity>
-              ))}
+                {categories.slice(0, 2).map(category => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryFilterButton,
+                      selectedCategory === category && styles.activeFilterButton,
+                    ]}
+                    onPress={() => setSelectedCategory(category)}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryFilterText,
+                        selectedCategory === category && styles.activeFilterText,
+                      ]}
+                    >
+                      {category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {categories.length > 2 && (
+                <View style={styles.categoryFilterRow}>
+                  {categories.slice(2, 5).map(category => (
+                    <TouchableOpacity
+                      key={category}
+                      style={[
+                        styles.categoryFilterButton,
+                        selectedCategory === category && styles.activeFilterButton,
+                      ]}
+                      onPress={() => setSelectedCategory(category)}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryFilterText,
+                          selectedCategory === category && styles.activeFilterText,
+                        ]}
+                      >
+                        {category}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {/* Fill empty slots if less than 3 in second row */}
+                  {categories.slice(2, 5).length < 3 && (
+                    <View style={[styles.categoryFilterButton, styles.categoryFilterButtonEmpty]} />
+                  )}
+                  {categories.slice(2, 5).length < 2 && (
+                    <View style={[styles.categoryFilterButton, styles.categoryFilterButtonEmpty]} />
+                  )}
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -243,7 +348,7 @@ export const PriceMonitoringList: React.FC<PriceMonitoringListProps> = ({
         data={categories}
         renderItem={renderCategorySection}
         keyExtractor={(item) => item}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 95 }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -285,25 +390,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    position: 'relative',
   },
   headerTitle: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
     fontSize: 20,
     fontWeight: '700',
     color: GREEN,
+    zIndex: 0,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: LIGHT_GREEN + '20',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    width: 44,
+    height: 44,
+    zIndex: 1,
   },
   viewAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: LIGHT_GREEN + '20',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 8,
-    gap: 6,
-  },
-  viewAllText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: GREEN,
+    width: 44,
+    height: 44,
+    zIndex: 1,
+    alignSelf: 'flex-end',
+    marginLeft: 'auto',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -322,33 +445,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
   },
-  categoryFilter: {
+  categoryFilterContainer: {
+    marginTop: 4,
+  },
+  categoryFilterRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 10,
   },
   categoryFilterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
     backgroundColor: '#f5f5f5',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#e0e0e0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  categoryFilterButtonEmpty: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
   activeFilterButton: {
     backgroundColor: GREEN,
     borderColor: GREEN,
   },
   categoryFilterText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#666',
+    textAlign: 'center',
   },
   activeFilterText: {
     color: '#fff',
   },
   listContent: {
     padding: 16,
+    paddingBottom: 20,
   },
   categorySection: {
     marginBottom: 24,
@@ -370,22 +507,30 @@ const styles = StyleSheet.create({
   },
   commodityCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 8,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: GREEN,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
-  commodityContent: {
+  commodityCardContent: {
     flex: 1,
+  },
+  commodityContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  chevronIcon: {
+    marginLeft: 8,
+    marginTop: 2,
   },
   commodityInfo: {
     flex: 1,
@@ -448,5 +593,41 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
   },
+  forecastContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  forecastTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#666',
+    marginBottom: 8,
+  },
+  forecastGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  forecastItem: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+  },
+  forecastLabel: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  forecastPrice: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: GREEN,
+  },
 });
+
 

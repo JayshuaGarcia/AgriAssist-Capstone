@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
 import { db } from '../../lib/firebase';
@@ -9,6 +11,7 @@ const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
 
 export default function ProfileInformationScreen() {
+  const router = useRouter();
   const { user } = useAuth();
   const [farmerData, setFarmerData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -18,6 +21,14 @@ export default function ProfileInformationScreen() {
     loadFarmerData();
   }, []);
 
+  // Reload data when screen comes into focus (after editing)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 Profile information screen focused - reloading data...');
+      loadFarmerData();
+    }, [])
+  );
+
   const loadFarmerData = async () => {
     try {
       setLoading(true);
@@ -26,11 +37,11 @@ export default function ProfileInformationScreen() {
         return;
       }
 
-      // Get user document from Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.email));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        setFarmerData(userData);
+      // Get farmer profile from farmerProfiles collection
+      const farmerProfileDoc = await getDoc(doc(db, 'farmerProfiles', user.email));
+      if (farmerProfileDoc.exists()) {
+        const profileData = farmerProfileDoc.data();
+        setFarmerData(profileData);
       } else {
         Alert.alert('No Data', 'No farmer information found for this account');
       }
@@ -49,6 +60,14 @@ export default function ProfileInformationScreen() {
     }));
   };
 
+  const handleEditForm = (sectionKey: string) => {
+    // Navigate to farmers screen and open the specific form section
+    // Store the section to open in AsyncStorage so farmers screen can read it
+    AsyncStorage.setItem('editFormSection', sectionKey).then(() => {
+      router.push('/(tabs)/farmers');
+    });
+  };
+
   const renderFormSection = (title: string, data: any, sectionKey: string) => {
     if (!data || Object.keys(data).length === 0) return null;
 
@@ -56,24 +75,33 @@ export default function ProfileInformationScreen() {
     
     return (
       <View style={styles.formSection} key={sectionKey}>
-        <TouchableOpacity 
-          style={styles.sectionHeader}
-          onPress={() => toggleSection(sectionKey)}
-        >
-          <Text style={styles.sectionTitle}>{title}</Text>
-          <Ionicons 
-            name={isExpanded ? "chevron-up" : "chevron-down"} 
-            size={20} 
-            color={GREEN} 
-          />
-        </TouchableOpacity>
+        <View style={styles.sectionHeader}>
+          <TouchableOpacity 
+            style={styles.sectionHeaderLeft}
+            onPress={() => toggleSection(sectionKey)}
+          >
+            <Text style={styles.sectionTitle}>{title}</Text>
+            <Ionicons 
+              name={isExpanded ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color={GREEN} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.editButton}
+            onPress={() => handleEditForm(sectionKey)}
+          >
+            <Ionicons name="create-outline" size={18} color={GREEN} />
+            <Text style={styles.editButtonText}>Edit</Text>
+          </TouchableOpacity>
+        </View>
         
         {isExpanded && (
           <View style={styles.sectionContent}>
             {Object.entries(data).map(([key, value]: [string, any]) => (
               <View style={styles.dataRow} key={key}>
                 <Text style={styles.dataLabel}>
-                  {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
+                  {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                 </Text>
                 <Text style={styles.dataValue}>
                   {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
@@ -127,21 +155,13 @@ export default function ProfileInformationScreen() {
             <Text style={styles.basicInfoTitle}>Basic Information</Text>
           </View>
           <View style={styles.basicInfoContent}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Name:</Text>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Name</Text>
               <Text style={styles.infoValue}>{farmerData.name || 'Not provided'}</Text>
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Email:</Text>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Email</Text>
               <Text style={styles.infoValue}>{farmerData.email || 'Not provided'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Role:</Text>
-              <Text style={styles.infoValue}>{farmerData.role || 'Not provided'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Location:</Text>
-              <Text style={styles.infoValue}>{farmerData.location || 'Not provided'}</Text>
             </View>
           </View>
         </View>
@@ -204,9 +224,9 @@ export default function ProfileInformationScreen() {
             </View>
             <View style={styles.additionalInfoContent}>
               {Object.entries(farmerData.additionalInfo).map(([key, value]: [string, any]) => (
-                <View style={styles.infoRow} key={key}>
+                <View style={styles.infoItem} key={key}>
                   <Text style={styles.infoLabel}>
-                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
+                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                   </Text>
                   <Text style={styles.infoValue}>
                     {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
@@ -278,45 +298,58 @@ const styles = StyleSheet.create({
   },
   basicInfoCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 2,
+    borderColor: GREEN,
   },
   basicInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
   },
   basicInfoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: GREEN,
     marginLeft: 8,
+    letterSpacing: 0.3,
   },
   basicInfoContent: {
-    gap: 12,
+    gap: 16,
   },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  infoItem: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   infoLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#666',
-    flex: 1,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   infoValue: {
-    fontSize: 14,
-    color: '#333',
-    flex: 2,
-    textAlign: 'right',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    textAlign: 'center',
   },
   formDataContainer: {
     marginBottom: 20,
@@ -342,57 +375,101 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: GREEN,
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#f0f8f4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GREEN,
+    gap: 4,
+  },
+  editButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
     color: GREEN,
   },
   sectionContent: {
     padding: 16,
   },
   dataRow: {
-    marginBottom: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   dataLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
   dataValue: {
-    fontSize: 14,
-    color: '#333',
-    lineHeight: 20,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    lineHeight: 22,
+    textAlign: 'center',
   },
   additionalInfoCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 2,
+    borderColor: GREEN,
   },
   additionalInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
   },
   additionalInfoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: GREEN,
     marginLeft: 8,
+    letterSpacing: 0.3,
   },
   additionalInfoContent: {
-    gap: 12,
+    gap: 16,
   },
 });
+
 
 
 

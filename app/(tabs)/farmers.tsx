@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as NavigationBar from 'expo-navigation-bar';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
@@ -27,17 +27,32 @@ const createInitialFormData = () => ({
     dependents: '',
     education: '',
     monthlyIncome: '',
+    householdExpenses: '',
+    drinkingWater: '',
+    numChildren: '',
+    organizationMember: '',
+    fourPsBeneficiary: '',
+    religion: '',
+    completeAddress: '',
+    housingType: '',
+    sourceOfCapital: '',
     isSubmitted: false
   },
   farmingProfile: {
     yearsFarming: '',
     farmCommodity: [] as string[],
+    commodityCounts: {} as { [key: string]: string },
     livestock: [] as string[],
+    livestockCounts: {} as { [key: string]: string },
     landOwnership: '',
+    rentalAmount: '',
+    tenantCondition: '',
     farmSize: '',
     farmingMethods: [] as string[],
     otherCommodity: '',
+    otherCommodityCount: '',
     otherLivestock: '',
+    otherLivestockCount: '',
     otherFarmSize: '',
     isSubmitted: false
   },
@@ -54,6 +69,10 @@ const createInitialFormData = () => ({
   },
   technologyInnovation: {
     farmingEquipment: [] as string[],
+    machineOwnership: '',
+    machinePurchasePrice: '',
+    machineRentalPrice: '',
+    irrigationExpenses: '',
     newTechniques: '',
     modernPractices: '',
     agriculturalInfo: [] as string[],
@@ -79,8 +98,6 @@ const createInitialFormData = () => ({
     householdSize: '',
     adultsInHousehold: '',
     childrenInHousehold: '',
-    educationAttainment: '',
-    maritalStatus: '',
     isSubmitted: false
   },
   homeAssets: {
@@ -94,16 +111,6 @@ const createInitialFormData = () => ({
     incomeType: '',
     monthlyExpenses: '',
     farmingType: '',
-    isSubmitted: false
-  },
-  farmingDemographics: {
-    farmSizeSqm: '',
-    landOwnership: '',
-    tenantEarnings: '',
-    rentalAmount: '',
-    cropsCultivated: [] as string[],
-    livestockRaised: [] as string[],
-    farmingExperience: '',
     isSubmitted: false
   },
   incomeMarketing: {
@@ -127,6 +134,9 @@ export default function FarmersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<FeatureButton | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [isEditingFromProfile, setIsEditingFromProfile] = useState(false);
+  const [pendingEditSection, setPendingEditSection] = useState<string | null>(null);
+  const [formDataLoaded, setFormDataLoaded] = useState(false);
   
   // Form state management
   const [formData, setFormData] = useState<FormDataState>(() => createInitialFormData());
@@ -149,25 +159,46 @@ export default function FarmersScreen() {
     }
   };
 
-  // Load form data from AsyncStorage (user-specific)
-  const loadFormDataFromStorage = async () => {
-    if (!user?.uid) {
-      console.log('❌ No user UID available, cannot load form data');
-      return;
+  // Load form data from farmerProfiles collection (Firebase only)
+  const loadFormDataFromStorage = async (): Promise<boolean> => {
+    if (!user?.email) {
+      console.log('❌ No user email available, cannot load form data');
+      setFormDataLoaded(true);
+      return false;
     }
     
     try {
-      const userKey = `farmerFormData_${user.uid}`;
-      const savedData = await AsyncStorage.getItem(userKey);
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        setFormData(parsedData);
-        console.log(`✅ Form data loaded from AsyncStorage for user: ${user.uid}`);
+      // Load from farmerProfiles collection ONLY
+      const farmerProfileDoc = await getDoc(doc(db, 'farmerProfiles', user.email));
+      if (farmerProfileDoc.exists()) {
+        const profileData = farmerProfileDoc.data();
+        const savedFormData = profileData.formData || {};
+        console.log(`📦 Loaded form data from farmerProfiles:`, savedFormData);
+        console.log(`📦 Demographics data:`, savedFormData.demographics);
+        
+        // Merge with initial form data to ensure all sections exist
+        const initialData = createInitialFormData();
+        const mergedData = { ...initialData, ...savedFormData };
+        // Also merge each section to ensure all fields exist
+        Object.keys(initialData).forEach(key => {
+          if (mergedData[key] && initialData[key as keyof FormDataState]) {
+            mergedData[key] = { ...initialData[key as keyof FormDataState], ...mergedData[key] };
+          }
+        });
+        setFormData(mergedData);
+        setFormDataLoaded(true);
+        console.log(`✅ Form data loaded and merged from farmerProfiles for user: ${user.email}`);
+        console.log(`✅ Merged demographics:`, mergedData.demographics);
+        return true;
       } else {
-        console.log(`ℹ️ No saved form data found for user: ${user.uid}`);
+        console.log(`ℹ️ No saved form data found in farmerProfiles for user: ${user.email}`);
+        setFormDataLoaded(true); // Still mark as loaded even if no data
+        return false;
       }
     } catch (error) {
-      console.error('❌ Error loading form data from AsyncStorage:', error);
+      console.error('❌ Error loading form data from farmerProfiles:', error);
+      setFormDataLoaded(true);
+      return false;
     }
   };
 
@@ -178,7 +209,7 @@ export default function FarmersScreen() {
         ...prev,
         [sectionId]: defaults[sectionId]
       };
-      saveFormDataToStorage(updated);
+      // No need to save to AsyncStorage - will be saved to Firebase on submit
       return updated;
     });
   };
@@ -217,6 +248,23 @@ export default function FarmersScreen() {
         }
         if (!hasSelection(data.livestock) && !isNonEmptyString(data.otherLivestock)) {
           return fail('Please select at least one livestock type or specify other.');
+        }
+        // If livestock types are selected, ensure each selected type has a count > 0
+        if (hasSelection(data.livestock)) {
+          for (const type of data.livestock) {
+            const rawCount = data.livestockCounts?.[type] ?? '';
+            const parsed = Number(rawCount);
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+              return fail(`Please enter a valid count greater than 0 for ${type} under Type of Livestock Raised.`);
+            }
+          }
+        }
+        // If "Other Livestock" is specified, ensure its count > 0 as well
+        if (isNonEmptyString(data.otherLivestock)) {
+          const otherParsed = Number(data.otherLivestockCount ?? '');
+          if (!Number.isFinite(otherParsed) || otherParsed <= 0) {
+            return fail('Please enter a valid count greater than 0 for Other Livestock.');
+          }
         }
         if (!isNonEmptyString(data.landOwnership)) return fail('Please select your land ownership status.');
         if (!isNonEmptyString(data.farmSize) && !isNonEmptyString(data.otherFarmSize)) {
@@ -305,12 +353,6 @@ export default function FarmersScreen() {
         if (!isNonEmptyString(data.childrenInHousehold)) {
           return fail('Please select the number of children in your household.');
         }
-        if (!isNonEmptyString(data.educationAttainment)) {
-          return fail('Please select your household\'s education attainment.');
-        }
-        if (!isNonEmptyString(data.maritalStatus)) {
-          return fail('Please select your marital status.');
-        }
         return { valid: true };
       }
       case 'homeAssets': {
@@ -325,31 +367,6 @@ export default function FarmersScreen() {
         if (!isNonEmptyString(data.incomeType)) return fail('Please select your income type.');
         if (!isNonEmptyString(data.monthlyExpenses)) return fail('Please select your monthly expenses range.');
         if (!isNonEmptyString(data.farmingType)) return fail('Please select your farming type.');
-        return { valid: true };
-      }
-      case 'farmingDemographics': {
-        const data = formData.farmingDemographics;
-        if (!isNonEmptyString(data.farmSizeSqm)) {
-          return fail('Please enter your farm size in square meters.');
-        }
-        if (!isNonEmptyString(data.landOwnership)) {
-          return fail('Please select your land ownership status.');
-        }
-        if (data.landOwnership === 'Tenant' && !isNonEmptyString(data.tenantEarnings)) {
-          return fail('Please describe how you earn as a tenant.');
-        }
-        if (data.landOwnership === 'Rental' && !isNonEmptyString(data.rentalAmount)) {
-          return fail('Please specify the rental amount you pay monthly.');
-        }
-        if (!hasSelection(data.cropsCultivated)) {
-          return fail('Please select at least one crop you cultivate.');
-        }
-        if (!hasSelection(data.livestockRaised)) {
-          return fail('Please select at least one type of livestock you raise.');
-        }
-        if (!isNonEmptyString(data.farmingExperience)) {
-          return fail('Please select your years of farming experience.');
-        }
         return { valid: true };
       }
       case 'incomeMarketing': {
@@ -382,11 +399,11 @@ export default function FarmersScreen() {
     }
   };
 
-  // Helper function to update form data and save to AsyncStorage
+  // Helper function to update form data (no AsyncStorage saving - only Firebase on submit)
   const updateFormData = async (updater: (prev: FormDataState) => FormDataState) => {
     const newFormData = updater(formData);
     setFormData(newFormData);
-    await saveFormDataToStorage(newFormData);
+    // No AsyncStorage saving - data will be saved to Firebase on submit
   };
 
   // Function to clear all form data (for testing)
@@ -460,11 +477,6 @@ export default function FarmersScreen() {
       icon: 'business'
     },
     {
-      id: 'farmingDemographics',
-      title: 'Farming-Specific Demographics',
-      icon: 'trending-up'
-    },
-    {
       id: 'incomeMarketing',
       title: 'Income and Marketing',
       icon: 'analytics'
@@ -475,12 +487,72 @@ export default function FarmersScreen() {
     NavigationBar.setVisibilityAsync('hidden').catch(() => {});
   }, []);
 
-  // Load form data from AsyncStorage when user changes
+  // Load form data from farmerProfiles collection when user changes
   useEffect(() => {
+    const loadDataAndCheckEdit = async () => {
+      if (!user?.uid) return;
+      
+      // First, load the form data
+      await loadFormDataFromStorage();
+      
+      // Then check if we need to open a specific form section (from Edit button)
+      try {
+        const editSection = await AsyncStorage.getItem('editFormSection');
+        if (editSection) {
+          // Store the section to open after data is loaded
+          setPendingEditSection(editSection);
+          // Clear the edit section flag
+          await AsyncStorage.removeItem('editFormSection');
+        }
+      } catch (error) {
+        console.error('Error checking edit form section:', error);
+      }
+    };
+    
     if (user?.uid) {
-      loadFormDataFromStorage();
+      loadDataAndCheckEdit();
     }
   }, [user?.uid]);
+
+  // Open the edit modal after form data is loaded
+  useEffect(() => {
+    if (pendingEditSection && formDataLoaded && formData) {
+      // Find the corresponding feature button
+      const feature = featureButtons.find(btn => btn.id === pendingEditSection);
+      if (feature) {
+        // Check if the section data exists in formData
+        const sectionData = formData[pendingEditSection as keyof FormDataState];
+        if (sectionData) {
+          console.log(`✅ Opening edit modal for ${pendingEditSection} with data:`, sectionData);
+          // Use requestAnimationFrame to ensure DOM is ready, then a small delay
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              setIsEditingFromProfile(true);
+              setSelectedFeature(feature);
+              // Set editing mode for the form (this makes it editable)
+              setEditingForm(pendingEditSection);
+              // Open modal
+              setModalVisible(true);
+              // Clear pending edit
+              setPendingEditSection(null);
+            }, 300);
+          });
+        } else {
+          console.log(`⚠️ Section data not found for ${pendingEditSection}, but opening anyway for new entry`);
+          // Open anyway - might be a new form
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              setIsEditingFromProfile(true);
+              setSelectedFeature(feature);
+              setEditingForm(pendingEditSection);
+              setModalVisible(true);
+              setPendingEditSection(null);
+            }, 300);
+          });
+        }
+      }
+    }
+  }, [pendingEditSection, formDataLoaded, formData]);
 
   useEffect(() => {
     if (Object.values(formData).filter(form => form.isSubmitted).length === 9) {
@@ -498,6 +570,7 @@ export default function FarmersScreen() {
     }
     setSelectedFeature(feature);
     setEditingForm(null); // Reset editing state when opening new form
+    setIsEditingFromProfile(false); // Reset flag when manually opening
     setModalVisible(true);
   };
 
@@ -529,55 +602,74 @@ export default function FarmersScreen() {
     }
 
     const sectionSnapshot = { ...(formData[typedFormId] as any) };
+    console.log('💾 Current form data before save:', formData[typedFormId]);
+    console.log('💾 Section snapshot:', sectionSnapshot);
 
     try {
-      // Update local state and save to AsyncStorage
-      await updateFormData(prev => ({
-        ...prev,
-        [typedFormId]: {
-          ...prev[typedFormId],
-          isSubmitted: true
-        }
-      }));
+      // Update local state and save to AsyncStorage - preserve ALL current field values
+      let updatedFormData: FormDataState;
+      await updateFormData(prev => {
+        updatedFormData = {
+          ...prev,
+          [typedFormId]: {
+            ...prev[typedFormId], // This preserves all current field values
+            isSubmitted: true
+          }
+        };
+        console.log('💾 Updated form data to save:', updatedFormData[typedFormId]);
+        return updatedFormData;
+      });
 
-
-      // Test: Try writing to a simple collection first
-      console.log('Testing write to test collection...');
-      try {
-        const testRef = doc(db, 'test', 'test-doc');
-        await setDoc(testRef, {
-          test: true,
-          timestamp: serverTimestamp(),
-          userId: user.uid
-        });
-        console.log('Test write successful!');
-      } catch (testError: any) {
-        console.error('Test write failed:', testError);
-        console.error('Test error code:', testError.code);
-        console.error('Test error message:', testError.message);
+      // Save to farmerProfiles collection
+      if (!user?.email) {
+        Alert.alert('Error', 'User email not found');
+        return;
       }
 
-      // Try using addDoc instead of setDoc
-      console.log('Trying addDoc approach...');
-      const farmersCollection = collection(db, 'farmers');
-      const formDataToSave = {
-        ...sectionSnapshot,
-        isSubmitted: true,
-        submittedAt: serverTimestamp(),
-        userId: user.uid,
-        userEmail: user.email,
-        userName: profile?.name ?? '',
-        formId: formId
+      console.log('📝 Saving form data to farmerProfiles collection...');
+      const farmerProfileRef = doc(db, 'farmerProfiles', user.email);
+      
+      // Get existing farmer profile to merge with
+      const existingProfileDoc = await getDoc(farmerProfileRef);
+      const existingData = existingProfileDoc.exists() ? existingProfileDoc.data() : {};
+      
+      // Prepare the farmer profile document
+      // Use ONLY the current formData (no AsyncStorage migration - clean start)
+      const farmerProfileData: any = {
+        ...existingData,
+        email: user.email, // Always use current user email
+        name: profile?.name || existingData.name || user?.displayName || user?.email?.split('@')[0] || 'User',
+        uid: user.uid,
+        updatedAt: serverTimestamp(),
+        // Save complete form data (all sections) - ONLY from current form state
+        formData: updatedFormData!
       };
+      
+      // Ensure email is set (document ID should match email)
+      if (!farmerProfileData.email && user.email) {
+        farmerProfileData.email = user.email;
+      }
 
-      console.log('Form data to save:', formDataToSave);
+      console.log('📝 Farmer profile data to save:', farmerProfileData);
+      console.log('📝 Form section to update:', typedFormId);
 
-      await addDoc(farmersCollection, formDataToSave);
-      console.log('addDoc successful!');
+      // Use setDoc with merge to update/create the farmer profile document
+      await setDoc(farmerProfileRef, farmerProfileData, { merge: true });
+      console.log('✅ Farmer profile saved successfully to farmerProfiles collection!');
 
       setEditingForm(null);
       console.log(`Form ${formId} submitted successfully to database!`);
-      Alert.alert('Success', 'Form submitted successfully!');
+      
+      // If editing from profile, close modal and go back
+      if (isEditingFromProfile) {
+        setModalVisible(false);
+        setIsEditingFromProfile(false);
+        Alert.alert('Success', 'Form updated successfully!', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+      } else {
+        Alert.alert('Success', 'Form submitted successfully!');
+      }
     } catch (error: any) {
       console.error('Error submitting form:', error);
       console.error('Error details:', error.message);
@@ -636,6 +728,12 @@ export default function FarmersScreen() {
     const isEditing = isFormEditing(formId);
     const canEdit = canEditForm(formId);
     const canSubmit = canSubmitForm(formId);
+    
+    // Debug logging
+    if (isEditing) {
+      console.log(`🔍 Rendering demographics form in EDIT mode:`, data);
+      console.log(`🔍 Age: "${data.age}", Gender: "${data.gender}", Marital Status: "${data.maritalStatus}"`);
+    }
 
     return (
       <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
@@ -815,6 +913,265 @@ export default function FarmersScreen() {
           </View>
         </View>
 
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Household Expenses (Monthly):</Text>
+          <View style={styles.radioGroup}>
+            {[
+              'Below ₱5,000', '₱5,001 – ₱10,000', '₱10,001 – ₱15,000',
+              '₱15,001 – ₱20,000', '₱20,001 – ₱25,000', '₱25,001 above'
+            ].map((option) => (
+              <TouchableOpacity 
+                key={option} 
+                style={[
+                  styles.radioButton, 
+                  data.householdExpenses === option && styles.radioButtonSelected,
+                  isSubmitted && !isEditing && styles.readOnlyRadioButton
+                ]}
+                onPress={() => {
+                  if (!isSubmitted || isEditing) {
+                    updateFormData(prev => ({
+                      ...prev,
+                      demographics: { ...prev.demographics, householdExpenses: option }
+                    }));
+                  }
+                }}
+                disabled={!canSubmit}
+              >
+                <Text style={[
+                  styles.radioText, 
+                  data.householdExpenses === option && styles.radioTextSelected,
+                  isSubmitted && !isEditing && styles.readOnlyText
+                ]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Source of Drinking Water:</Text>
+          <View style={styles.radioGroup}>
+            {['River', 'Lakes', 'Groundwater'].map((option) => (
+              <TouchableOpacity 
+                key={option} 
+                style={[
+                  styles.radioButton, 
+                  data.drinkingWater === option && styles.radioButtonSelected,
+                  isSubmitted && !isEditing && styles.readOnlyRadioButton
+                ]}
+                onPress={() => {
+                  if (!isSubmitted || isEditing) {
+                    updateFormData(prev => ({
+                      ...prev,
+                      demographics: { ...prev.demographics, drinkingWater: option }
+                    }));
+                  }
+                }}
+                disabled={!canSubmit}
+              >
+                <Text style={[
+                  styles.radioText, 
+                  data.drinkingWater === option && styles.radioTextSelected,
+                  isSubmitted && !isEditing && styles.readOnlyText
+                ]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput 
+            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput, { marginTop: 8 }]} 
+            placeholder="Other, please specify" 
+            value={data.drinkingWater && !['River', 'Lakes', 'Groundwater'].includes(data.drinkingWater) ? data.drinkingWater : ''}
+            onChangeText={(value) => {
+              updateFormData(prev => ({
+                ...prev,
+                demographics: { ...prev.demographics, drinkingWater: value }
+              }));
+            }}
+            editable={!isSubmitted || isEditing}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Number of Children:</Text>
+          <TextInput 
+            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+            placeholder="Enter number of children" 
+            keyboardType="numeric"
+            value={data.numChildren}
+            onChangeText={(value) => updateFormData(prev => ({
+              ...prev,
+              demographics: { ...prev.demographics, numChildren: value }
+            }))}
+            editable={!isSubmitted || isEditing}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Are you a member of any organization?</Text>
+          <View style={styles.radioGroup}>
+            {['Yes', 'No'].map((option) => (
+              <TouchableOpacity 
+                key={option} 
+                style={[
+                  styles.radioButton, 
+                  data.organizationMember === option && styles.radioButtonSelected,
+                  isSubmitted && !isEditing && styles.readOnlyRadioButton
+                ]}
+                onPress={() => {
+                  if (!isSubmitted || isEditing) {
+                    updateFormData(prev => ({
+                      ...prev,
+                      demographics: { ...prev.demographics, organizationMember: option }
+                    }));
+                  }
+                }}
+                disabled={!canSubmit}
+              >
+                <Text style={[
+                  styles.radioText, 
+                  data.organizationMember === option && styles.radioTextSelected,
+                  isSubmitted && !isEditing && styles.readOnlyText
+                ]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Are you a 4Ps beneficiary?</Text>
+          <View style={styles.radioGroup}>
+            {['Yes', 'No'].map((option) => (
+              <TouchableOpacity 
+                key={option} 
+                style={[
+                  styles.radioButton, 
+                  data.fourPsBeneficiary === option && styles.radioButtonSelected,
+                  isSubmitted && !isEditing && styles.readOnlyRadioButton
+                ]}
+                onPress={() => {
+                  if (!isSubmitted || isEditing) {
+                    updateFormData(prev => ({
+                      ...prev,
+                      demographics: { ...prev.demographics, fourPsBeneficiary: option }
+                    }));
+                  }
+                }}
+                disabled={!canSubmit}
+              >
+                <Text style={[
+                  styles.radioText, 
+                  data.fourPsBeneficiary === option && styles.radioTextSelected,
+                  isSubmitted && !isEditing && styles.readOnlyText
+                ]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Religion:</Text>
+          <TextInput 
+            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+            placeholder="Enter religion" 
+            value={data.religion}
+            onChangeText={(value) => updateFormData(prev => ({
+              ...prev,
+              demographics: { ...prev.demographics, religion: value }
+            }))}
+            editable={!isSubmitted || isEditing}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Complete Address:</Text>
+          <TextInput 
+            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+            placeholder="Enter complete address" 
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+            value={data.completeAddress}
+            onChangeText={(value) => updateFormData(prev => ({
+              ...prev,
+              demographics: { ...prev.demographics, completeAddress: value }
+            }))}
+            editable={!isSubmitted || isEditing}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Type of Housing:</Text>
+          <View style={styles.radioGroup}>
+            {['Fully Concrete', 'Half Concrete', 'Nepa House', 'Other'].map((option) => (
+              <TouchableOpacity 
+                key={option} 
+                style={[
+                  styles.radioButton, 
+                  data.housingType === option && styles.radioButtonSelected,
+                  isSubmitted && !isEditing && styles.readOnlyRadioButton
+                ]}
+                onPress={() => {
+                  if (!isSubmitted || isEditing) {
+                    updateFormData(prev => ({
+                      ...prev,
+                      demographics: { ...prev.demographics, housingType: option }
+                    }));
+                  }
+                }}
+                disabled={!canSubmit}
+              >
+                <Text style={[
+                  styles.radioText, 
+                  data.housingType === option && styles.radioTextSelected,
+                  isSubmitted && !isEditing && styles.readOnlyText
+                ]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Source of Capital in Farming:</Text>
+          <View style={styles.radioGroup}>
+            {['Personal Savings', 'Bank Loan', 'Cooperative Credit', 'Government Loan', 'NGO Support', 'Family/Friends', 'Money Lender'].map((option) => (
+              <TouchableOpacity 
+                key={option} 
+                style={[
+                  styles.radioButton, 
+                  data.sourceOfCapital === option && styles.radioButtonSelected,
+                  isSubmitted && !isEditing && styles.readOnlyRadioButton
+                ]}
+                onPress={() => {
+                  if (!isSubmitted || isEditing) {
+                    updateFormData(prev => ({
+                      ...prev,
+                      demographics: { ...prev.demographics, sourceOfCapital: option }
+                    }));
+                  }
+                }}
+                disabled={!canSubmit}
+              >
+                <Text style={[
+                  styles.radioText, 
+                  data.sourceOfCapital === option && styles.radioTextSelected,
+                  isSubmitted && !isEditing && styles.readOnlyText
+                ]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput 
+            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput, { marginTop: 8 }]} 
+            placeholder="Other, please specify" 
+            value={data.sourceOfCapital && !['Personal Savings', 'Bank Loan', 'Cooperative Credit', 'Government Loan', 'NGO Support', 'Family/Friends', 'Money Lender'].includes(data.sourceOfCapital) ? data.sourceOfCapital : ''}
+            onChangeText={(value) => {
+              updateFormData(prev => ({
+                ...prev,
+                demographics: { ...prev.demographics, sourceOfCapital: value }
+              }));
+            }}
+            editable={!isSubmitted || isEditing}
+          />
+        </View>
+
         {/* Form Actions */}
         <View style={styles.formActions}>
           {canEdit && (
@@ -894,12 +1251,12 @@ export default function FarmersScreen() {
                     const currentCommodities = [...data.farmCommodity];
                     if (currentCommodities.includes(option)) {
                       const filtered = currentCommodities.filter(item => item !== option);
-                      setFormData(prev => ({
+                      updateFormData(prev => ({
                         ...prev,
                         farmingProfile: { ...prev.farmingProfile, farmCommodity: filtered }
                       }));
                     } else {
-                      setFormData(prev => ({
+                      updateFormData(prev => ({
                         ...prev,
                         farmingProfile: { ...prev.farmingProfile, farmCommodity: [...currentCommodities, option] }
                       }));
@@ -928,7 +1285,7 @@ export default function FarmersScreen() {
             style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
             placeholder="Other, Please specify" 
             value={data.otherCommodity}
-            onChangeText={(value) => setFormData(prev => ({
+            onChangeText={(value) => updateFormData(prev => ({
               ...prev,
               farmingProfile: { ...prev.farmingProfile, otherCommodity: value }
             }))}
@@ -939,55 +1296,134 @@ export default function FarmersScreen() {
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Type of Livestock Raised:</Text>
           <View style={styles.checkboxGroup}>
-            {['Swine', 'Chicken', 'Small Ruminant', 'Large Ruminant'].map((option) => (
-              <TouchableOpacity 
-                key={option} 
-                style={styles.checkboxRow}
-                onPress={() => {
-                  if (!isSubmitted || isEditing) {
-                    const currentLivestock = [...data.livestock];
-                    if (currentLivestock.includes(option)) {
-                      const filtered = currentLivestock.filter(item => item !== option);
-                      setFormData(prev => ({
-                        ...prev,
-                        farmingProfile: { ...prev.farmingProfile, livestock: filtered }
-                      }));
-                    } else {
-                      setFormData(prev => ({
-                        ...prev,
-                        farmingProfile: { ...prev.farmingProfile, livestock: [...currentLivestock, option] }
-                      }));
-                    }
-                  }
-                }}
-                disabled={!canSubmit}
-              >
-                <View style={[
-                  styles.checkbox,
-                  data.livestock.includes(option) && styles.checkboxSelected,
-                  isSubmitted && !isEditing && styles.readOnlyCheckbox
-                ]}>
-                  {data.livestock.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={GREEN} />
+            {['Swine', 'Chicken', 'Pig', 'Carabao', 'Small Ruminant', 'Large Ruminant'].map((option) => {
+              const isSelected = data.livestock.includes(option);
+              const count = data.livestockCounts?.[option] || '';
+              
+              return (
+                <View key={option} style={styles.livestockItemContainer}>
+                  <TouchableOpacity 
+                    style={styles.checkboxRow}
+                    onPress={() => {
+                      if (!isSubmitted || isEditing) {
+                        const currentLivestock = [...data.livestock];
+                        const currentCounts = { ...(data.livestockCounts || {}) };
+                        
+                        if (currentLivestock.includes(option)) {
+                          const filtered = currentLivestock.filter(item => item !== option);
+                          delete currentCounts[option];
+                          updateFormData(prev => ({
+                            ...prev,
+                            farmingProfile: { 
+                              ...prev.farmingProfile, 
+                              livestock: filtered,
+                              livestockCounts: currentCounts
+                            }
+                          }));
+                        } else {
+                          updateFormData(prev => ({
+                            ...prev,
+                            farmingProfile: { 
+                              ...prev.farmingProfile, 
+                              livestock: [...currentLivestock, option],
+                              livestockCounts: { ...currentCounts, [option]: '' }
+                            }
+                          }));
+                        }
+                      }
+                    }}
+                    disabled={!canSubmit}
+                  >
+                    <View style={[
+                      styles.checkbox,
+                      isSelected && styles.checkboxSelected,
+                      isSubmitted && !isEditing && styles.readOnlyCheckbox
+                    ]}>
+                      {isSelected && (
+                        <Ionicons name="checkmark" size={16} color={GREEN} />
+                      )}
+                    </View>
+                    <Text style={[
+                      styles.checkboxText,
+                      isSubmitted && !isEditing && styles.readOnlyText
+                    ]}>{option}</Text>
+                  </TouchableOpacity>
+                  
+                  {isSelected && (
+                    <View style={styles.livestockCountContainer}>
+                      <Text style={styles.countLabel}>Count:</Text>
+                      <TextInput 
+                        style={[styles.countInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+                        placeholder="0" 
+                        keyboardType="numeric"
+                        value={count}
+                        onChangeText={(value) => {
+                          updateFormData(prev => ({
+                            ...prev,
+                            farmingProfile: { 
+                              ...prev.farmingProfile, 
+                              livestockCounts: { 
+                                ...(prev.farmingProfile.livestockCounts || {}), 
+                                [option]: value 
+                              }
+                            }
+                          }));
+                        }}
+                        editable={!isSubmitted || isEditing}
+                      />
+                    </View>
                   )}
                 </View>
-                <Text style={[
-                  styles.checkboxText,
-                  isSubmitted && !isEditing && styles.readOnlyText
-                ]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
-          <TextInput 
-            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
-            placeholder="Others, please specify" 
-            value={data.otherLivestock}
-            onChangeText={(value) => setFormData(prev => ({
-              ...prev,
-              farmingProfile: { ...prev.farmingProfile, otherLivestock: value }
-            }))}
-            editable={!isSubmitted || isEditing}
-          />
+          
+          {data.otherLivestock && (
+            <View style={styles.otherLivestockContainer}>
+              <Text style={styles.label}>Other Livestock:</Text>
+              <TextInput 
+                style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+                placeholder="Others, please specify" 
+                value={data.otherLivestock}
+                onChangeText={(value) => updateFormData(prev => ({
+                  ...prev,
+                  farmingProfile: { ...prev.farmingProfile, otherLivestock: value }
+                }))}
+                editable={!isSubmitted || isEditing}
+              />
+              <View style={styles.livestockCountContainer}>
+                <Text style={styles.countLabel}>Count:</Text>
+                <TextInput 
+                  style={[styles.countInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+                  placeholder="0" 
+                  keyboardType="numeric"
+                  value={data.otherLivestockCount || ''}
+                  onChangeText={(value) => updateFormData(prev => ({
+                    ...prev,
+                    farmingProfile: { ...prev.farmingProfile, otherLivestockCount: value }
+                  }))}
+                  editable={!isSubmitted || isEditing}
+                />
+              </View>
+            </View>
+          )}
+          
+          {!data.otherLivestock && (
+            <TextInput 
+              style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput, { marginTop: 8 }]} 
+              placeholder="Others, please specify" 
+              value={data.otherLivestock}
+              onChangeText={(value) => updateFormData(prev => ({
+                ...prev,
+                farmingProfile: { 
+                  ...prev.farmingProfile, 
+                  otherLivestock: value,
+                  otherLivestockCount: value ? (prev.farmingProfile.otherLivestockCount || '') : ''
+                }
+              }))}
+              editable={!isSubmitted || isEditing}
+            />
+          )}
         </View>
 
         <View style={styles.inputGroup}>
@@ -1020,6 +1456,42 @@ export default function FarmersScreen() {
             ))}
           </View>
         </View>
+
+        {data.landOwnership === 'Rental' && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>If rental, how much do you pay?</Text>
+            <TextInput 
+              style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+              placeholder="Enter rental amount" 
+              keyboardType="numeric"
+              value={data.rentalAmount}
+              onChangeText={(value) => updateFormData(prev => ({
+                ...prev,
+                farmingProfile: { ...prev.farmingProfile, rentalAmount: value }
+              }))}
+              editable={!isSubmitted || isEditing}
+            />
+          </View>
+        )}
+
+        {data.landOwnership === 'Tenant' && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>If tenant, what condition?</Text>
+            <TextInput 
+              style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+              placeholder="Enter tenant condition" 
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              value={data.tenantCondition}
+              onChangeText={(value) => updateFormData(prev => ({
+                ...prev,
+                farmingProfile: { ...prev.farmingProfile, tenantCondition: value }
+              }))}
+              editable={!isSubmitted || isEditing}
+            />
+          </View>
+        )}
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Size of Farm (in hectares):</Text>
@@ -1442,13 +1914,99 @@ export default function FarmersScreen() {
             style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
             placeholder="Other. Please specify" 
             value={data.otherEquipment}
-            onChangeText={(value) => setFormData(prev => ({
+            onChangeText={(value) => updateFormData(prev => ({
               ...prev,
               technologyInnovation: { ...prev.technologyInnovation, otherEquipment: value }
             }))}
             editable={!isSubmitted || isEditing}
           />
         </View>
+
+        {data.farmingEquipment.includes('Machinery') && (
+          <>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>If you use machine, is it owned or rented?</Text>
+              <View style={styles.radioGroup}>
+                {['Owned', 'Rented'].map((option) => (
+                  <TouchableOpacity 
+                    key={option} 
+                    style={[
+                      styles.radioButton, 
+                      data.machineOwnership === option && styles.radioButtonSelected,
+                      isSubmitted && !isEditing && styles.readOnlyRadioButton
+                    ]}
+                    onPress={() => {
+                      if (!isSubmitted || isEditing) {
+                        updateFormData(prev => ({
+                          ...prev,
+                          technologyInnovation: { ...prev.technologyInnovation, machineOwnership: option }
+                        }));
+                      }
+                    }}
+                    disabled={!canSubmit}
+                  >
+                    <Text style={[
+                      styles.radioText, 
+                      data.machineOwnership === option && styles.radioTextSelected,
+                      isSubmitted && !isEditing && styles.readOnlyText
+                    ]}>{option}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {data.machineOwnership === 'Owned' && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>If own, how much did you buy it?</Text>
+                <TextInput 
+                  style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+                  placeholder="Enter purchase price" 
+                  keyboardType="numeric"
+                  value={data.machinePurchasePrice}
+                  onChangeText={(value) => updateFormData(prev => ({
+                    ...prev,
+                    technologyInnovation: { ...prev.technologyInnovation, machinePurchasePrice: value }
+                  }))}
+                  editable={!isSubmitted || isEditing}
+                />
+              </View>
+            )}
+
+            {data.machineOwnership === 'Rented' && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>If rented, how much is the rental?</Text>
+                <TextInput 
+                  style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+                  placeholder="Enter rental price" 
+                  keyboardType="numeric"
+                  value={data.machineRentalPrice}
+                  onChangeText={(value) => updateFormData(prev => ({
+                    ...prev,
+                    technologyInnovation: { ...prev.technologyInnovation, machineRentalPrice: value }
+                  }))}
+                  editable={!isSubmitted || isEditing}
+                />
+              </View>
+            )}
+          </>
+        )}
+
+        {data.farmingEquipment.includes('Irrigation system') && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Irrigation Expenses:</Text>
+            <TextInput 
+              style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
+              placeholder="Enter irrigation expenses" 
+              keyboardType="numeric"
+              value={data.irrigationExpenses}
+              onChangeText={(value) => updateFormData(prev => ({
+                ...prev,
+                technologyInnovation: { ...prev.technologyInnovation, irrigationExpenses: value }
+              }))}
+              editable={!isSubmitted || isEditing}
+            />
+          </View>
+        )}
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Adoption of New Farming Techniques or Innovations:</Text>
@@ -2014,71 +2572,6 @@ export default function FarmersScreen() {
           </View>
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Education Attainment:</Text>
-          <View style={styles.radioGroup}>
-            {[
-              'No formal education', 'Elementary Undergraduate', 'Elementary Graduate',
-              'High school Undergraduate', 'High School Graduate', 'College Undergraduate',
-              'College Graduate', 'Vocational'
-            ].map((option) => (
-              <TouchableOpacity 
-                key={option} 
-                style={[
-                  styles.radioButton, 
-                  data.educationAttainment === option && styles.radioButtonSelected,
-                  isSubmitted && !isEditing && styles.readOnlyRadioButton
-                ]}
-                onPress={() => {
-                  if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
-                      ...prev,
-                      addressesHousehold: { ...prev.addressesHousehold, educationAttainment: option }
-                    }));
-                  }
-                }}
-                disabled={!canSubmit}
-              >
-                <Text style={[
-                  styles.radioText, 
-                  data.educationAttainment === option && styles.radioTextSelected,
-                  isSubmitted && !isEditing && styles.readOnlyText
-                ]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Marital Status:</Text>
-          <View style={styles.radioGroup}>
-            {['Single', 'Married', 'Separated', 'Widows', 'Other'].map((option) => (
-              <TouchableOpacity 
-                key={option} 
-                style={[
-                  styles.radioButton, 
-                  data.maritalStatus === option && styles.radioButtonSelected,
-                  isSubmitted && !isEditing && styles.readOnlyRadioButton
-                ]}
-                onPress={() => {
-                  if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
-                      ...prev,
-                      addressesHousehold: { ...prev.addressesHousehold, maritalStatus: option }
-                    }));
-                  }
-                }}
-                disabled={!canSubmit}
-              >
-                <Text style={[
-                  styles.radioText, 
-                  data.maritalStatus === option && styles.radioTextSelected,
-                  isSubmitted && !isEditing && styles.readOnlyText
-                ]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
 
         {/* Form Actions */}
         <View style={styles.formActions}>
@@ -2455,236 +2948,6 @@ export default function FarmersScreen() {
     );
   };
 
-  const renderFarmingDemographicsForm = () => {
-    const formId = 'farmingDemographics';
-    const data = formData.farmingDemographics;
-    const isSubmitted = isFormSubmitted(formId);
-    const isEditing = isFormEditing(formId);
-    const canEdit = canEditForm(formId);
-    const canSubmit = canSubmitForm(formId);
-
-    return (
-      <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Farm Size (sq.m.):</Text>
-          <TextInput 
-            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
-            placeholder="Enter farm size in square meters" 
-            keyboardType="numeric"
-            value={data.farmSizeSqm}
-            onChangeText={(value) => setFormData(prev => ({
-              ...prev,
-              farmingDemographics: { ...prev.farmingDemographics, farmSizeSqm: value }
-            }))}
-            editable={!isSubmitted || isEditing}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Land Ownership:</Text>
-          <View style={styles.radioGroup}>
-            {['Owner', 'Rental', 'Tenant', 'Other'].map((option) => (
-              <TouchableOpacity 
-                key={option} 
-                style={[
-                  styles.radioButton, 
-                  data.landOwnership === option && styles.radioButtonSelected,
-                  isSubmitted && !isEditing && styles.readOnlyRadioButton
-                ]}
-                onPress={() => {
-                  if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
-                      ...prev,
-                      farmingDemographics: { ...prev.farmingDemographics, landOwnership: option }
-                    }));
-                  }
-                }}
-                disabled={!canSubmit}
-              >
-                <Text style={[
-                  styles.radioText, 
-                  data.landOwnership === option && styles.radioTextSelected,
-                  isSubmitted && !isEditing && styles.readOnlyText
-                ]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>If Tenant, how you earn:</Text>
-          <TextInput 
-            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
-            placeholder="Enter details" 
-            value={data.tenantEarnings}
-            onChangeText={(value) => setFormData(prev => ({
-              ...prev,
-              farmingDemographics: { ...prev.farmingDemographics, tenantEarnings: value }
-            }))}
-            editable={!isSubmitted || isEditing}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>If Rental, how much you paid per month:</Text>
-          <TextInput 
-            style={[styles.textInput, isSubmitted && !isEditing && styles.readOnlyInput]} 
-            placeholder="Enter amount" 
-            keyboardType="numeric"
-            value={data.rentalAmount}
-            onChangeText={(value) => setFormData(prev => ({
-              ...prev,
-              farmingDemographics: { ...prev.farmingDemographics, rentalAmount: value }
-            }))}
-            editable={!isSubmitted || isEditing}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Type of Farming:</Text>
-          <View style={styles.checkboxGroup}>
-            {['Vegetable', 'Coconut', 'Rice', 'Corn', 'Other'].map((option) => (
-              <TouchableOpacity 
-                key={option} 
-                style={styles.checkboxRow}
-                onPress={() => {
-                  if (!isSubmitted || isEditing) {
-                    const currentCrops = [...data.cropsCultivated];
-                    if (currentCrops.includes(option)) {
-                      const filtered = currentCrops.filter(item => item !== option);
-                      setFormData(prev => ({
-                        ...prev,
-                        farmingDemographics: { ...prev.farmingDemographics, cropsCultivated: filtered }
-                      }));
-                    } else {
-                      setFormData(prev => ({
-                        ...prev,
-                        farmingDemographics: { ...prev.farmingDemographics, cropsCultivated: [...currentCrops, option] }
-                      }));
-                    }
-                  }
-                }}
-                disabled={!canSubmit}
-              >
-                <View style={[
-                  styles.checkbox,
-                  data.cropsCultivated.includes(option) && styles.checkboxSelected,
-                  isSubmitted && !isEditing && styles.readOnlyCheckbox
-                ]}>
-                  {data.cropsCultivated.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={GREEN} />
-                  )}
-                </View>
-                <Text style={[
-                  styles.checkboxText,
-                  isSubmitted && !isEditing && styles.readOnlyText
-                ]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>What types of livestock do you raise?</Text>
-          <View style={styles.checkboxGroup}>
-            {['Swine', 'Chicken', 'Large Ruminant', 'Small Ruminant', 'Other'].map((option) => (
-              <TouchableOpacity 
-                key={option} 
-                style={styles.checkboxRow}
-                onPress={() => {
-                  if (!isSubmitted || isEditing) {
-                    const currentLivestock = [...data.livestockRaised];
-                    if (currentLivestock.includes(option)) {
-                      const filtered = currentLivestock.filter(item => item !== option);
-                      setFormData(prev => ({
-                        ...prev,
-                        farmingDemographics: { ...prev.farmingDemographics, livestockRaised: filtered }
-                      }));
-                    } else {
-                      setFormData(prev => ({
-                        ...prev,
-                        farmingDemographics: { ...prev.farmingDemographics, livestockRaised: [...currentLivestock, option] }
-                      }));
-                    }
-                  }
-                }}
-                disabled={!canSubmit}
-              >
-                <View style={[
-                  styles.checkbox,
-                  data.livestockRaised.includes(option) && styles.checkboxSelected,
-                  isSubmitted && !isEditing && styles.readOnlyCheckbox
-                ]}>
-                  {data.livestockRaised.includes(option) && (
-                    <Ionicons name="checkmark" size={16} color={GREEN} />
-                  )}
-                </View>
-                <Text style={[
-                  styles.checkboxText,
-                  isSubmitted && !isEditing && styles.readOnlyText
-                ]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Years of Farming Experience:</Text>
-          <View style={styles.radioGroup}>
-            {['3 years below', '4 to 6 years', '7 to 9 years', '10 to 12 years', '13 years above'].map((option) => (
-              <TouchableOpacity 
-                key={option} 
-                style={[
-                  styles.radioButton, 
-                  data.farmingExperience === option && styles.radioButtonSelected,
-                  isSubmitted && !isEditing && styles.readOnlyRadioButton
-                ]}
-                onPress={() => {
-                  if (!isSubmitted || isEditing) {
-                    setFormData(prev => ({
-                      ...prev,
-                      farmingDemographics: { ...prev.farmingDemographics, farmingExperience: option }
-                    }));
-                  }
-                }}
-                disabled={!canSubmit}
-              >
-                <Text style={[
-                  styles.radioText, 
-                  data.farmingExperience === option && styles.radioTextSelected,
-                  isSubmitted && !isEditing && styles.readOnlyText
-                ]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Form Actions */}
-        <View style={styles.formActions}>
-          {canEdit && (
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => handleEditForm(formId)}
-            >
-              <Text style={styles.editButtonText}>Edit Form</Text>
-            </TouchableOpacity>
-          )}
-          
-          {canSubmit && (
-            <TouchableOpacity 
-              style={styles.submitButton}
-              onPress={() => handleSubmitForm(formId)}
-            >
-              <Text style={styles.submitButtonText}>
-                {isEditing ? 'Update Form' : 'Submit Form'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
-    );
-  };
-
   const renderIncomeMarketingForm = () => {
     const formId = 'incomeMarketing';
     const data = formData.incomeMarketing;
@@ -2971,8 +3234,6 @@ export default function FarmersScreen() {
         return renderAddressesHouseholdForm();
       case 'homeAssets':
         return renderHomeAssetsForm();
-      case 'farmingDemographics':
-        return renderFarmingDemographicsForm();
       case 'incomeMarketing':
         return renderIncomeMarketingForm();
       default:
@@ -3010,22 +3271,47 @@ export default function FarmersScreen() {
     );
   };
 
-  const allFormsCompleted = Object.values(formData).filter(form => form.isSubmitted).length === featureButtons.length;
+  const allFormsCompleted =
+    Object.values(formData).filter((form) => form.isSubmitted).length ===
+    featureButtons.length;
 
   useEffect(() => {
-    if (allFormsCompleted) {
-      if (modalVisible) {
-        setModalVisible(false); // Close the modal if open
-        setTimeout(() => {
-          router.replace('/'); // Redirect after modal is closed
-        }, 300); // Wait for modal close animation
-      } else {
-        setTimeout(() => {
-          router.replace('/(tabs)');
-        }, 2000); // Usual delay if no modal
+    if (!allFormsCompleted) return;
+
+    // Mark forms as completed locally so future logins can skip this screen
+    const markCompletedAndRedirect = async () => {
+      try {
+        if (user?.email) {
+          const completionKey = `farmerFormsCompleted_${user.email.toLowerCase()}`;
+          await AsyncStorage.setItem(completionKey, 'true');
+          console.log('✅ Marked farmer forms as completed in AsyncStorage');
+        }
+      } catch (e) {
+        console.error('❌ Error marking farmer forms as completed:', e);
       }
-    }
-  }, [allFormsCompleted, modalVisible]);
+
+      // Redirect away from the farmer form once everything is done
+      if (modalVisible) {
+        setModalVisible(false); // Close the modal if open, then go back to profile
+        setTimeout(() => {
+          if (isEditingFromProfile) {
+            router.back();
+          } else {
+            router.replace('/(tabs)');
+          }
+        }, 300);
+      } else {
+        router.replace('/(tabs)');
+      }
+    };
+
+    markCompletedAndRedirect();
+  }, [allFormsCompleted, modalVisible, user?.email, isEditingFromProfile, router]);
+
+  // If all forms are completed, don't render this screen's UI while we redirect.
+  if (allFormsCompleted) {
+    return <View style={{ flex: 1, backgroundColor: '#f8f9fa' }} />;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
@@ -3042,67 +3328,29 @@ export default function FarmersScreen() {
       }} />
       {/* Top Green Border */}
       <View style={{ height: 12, width: '100%', backgroundColor: '#16543a', shadowColor: 'transparent', elevation: 0 }} />
-      <View style={{ flex: 1, justifyContent: 'flex-start', alignItems: 'center', paddingTop: 32 }}>
-        <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#16543a', marginBottom: 12 }}>
-          Welcome {profile?.name || 'User'}!
-        </Text>
-        <Text style={{ fontSize: 16, color: '#333', marginBottom: 24 }}>
-          Please fill up the form below.
-        </Text>
-        
-        {/* Skip Button */}
-        <TouchableOpacity 
-          style={{
-            backgroundColor: '#16543a',
-            paddingHorizontal: 24,
-            paddingVertical: 12,
-            borderRadius: 20,
-            marginBottom: 20,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.2,
-            shadowRadius: 4,
-            elevation: 3
-          }}
-          onPress={() => {
-            Alert.alert(
-              'Skip Form',
-              'Are you sure you want to skip the form? You can always come back to fill it out later.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Skip', 
-                  style: 'destructive',
-                  onPress: () => router.replace('/(tabs)')
-                }
-              ]
-            );
-          }}
-          activeOpacity={0.8}
-        >
-          <Text style={{
-            color: '#fff',
-            fontSize: 16,
-            fontWeight: '600',
-            textAlign: 'center'
-          }}>
-            Skip Form
-          </Text>
-        </TouchableOpacity>
-        
-        {allFormsCompleted ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ fontSize: 22, color: '#16543a', fontWeight: 'bold', textAlign: 'center', marginTop: 40 }}>
-              🎉 Congratulations! You are now fully registered! 🎉
+      <View style={{ flex: 1, justifyContent: 'flex-start', alignItems: 'center', paddingTop: 24 }}>
+        {!allFormsCompleted && (
+          <>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#16543a', marginBottom: 8 }}>
+              Welcome {profile?.name || 'User'}!
             </Text>
-          </View>
-        ) : (
-          <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+            <Text style={{ fontSize: 16, color: '#333', marginBottom: 20, textAlign: 'center' }}>
+              Please fill up the form below.
+            </Text>
+          </>
+        )}
+
+        {!allFormsCompleted && !isEditingFromProfile ? (
+          <ScrollView
+            style={{ width: '100%' }}
+            contentContainerStyle={{ alignItems: 'center', paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={{ width: '90%' }}>
               {featureButtons.map(renderFeatureButton)}
             </View>
           </ScrollView>
-        )}
+        ) : null}
         {/* Modal for Forms (unchanged) */}
         <Modal
           animationType="slide"
@@ -3116,7 +3364,13 @@ export default function FarmersScreen() {
                 <Text style={styles.modalTitle}>{selectedFeature?.title}</Text>
                 <TouchableOpacity 
                   style={styles.closeButton}
-                  onPress={() => setModalVisible(false)}
+                  onPress={() => {
+                    setModalVisible(false);
+                    if (isEditingFromProfile) {
+                      setIsEditingFromProfile(false);
+                      router.back(); // Go back to profile information screen
+                    }
+                  }}
                 >
                   <Ionicons name="close" size={24} color={'#666'} />
                 </TouchableOpacity>
@@ -3343,6 +3597,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     flex: 1,
+  },
+  livestockItemContainer: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  livestockCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginLeft: 44, // Align with checkbox text
+    gap: 12,
+  },
+  countLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    minWidth: 50,
+  },
+  countInput: {
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: WHITE,
+    color: '#333',
+    minHeight: 44,
+    width: 120,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  otherLivestockContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
   },
   formPlaceholder: {
     flex: 1,

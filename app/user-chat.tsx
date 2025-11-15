@@ -154,10 +154,12 @@ export default function UserChatPage() {
     setSending(true);
     try {
       const messageData = {
-        senderId: userDocId, // User's ID
-        senderName: user?.displayName || 'User',
+        senderId: userDocId, // User's document ID
+        senderName: profile.name || user?.displayName || user?.email?.split('@')[0] || 'User',
+        senderEmail: user?.email || '',
         receiverId: 'admin',
         receiverEmail: 'admin@agriassist.com',
+        receiverName: 'Admin',
         content: newMessage.trim(),
         timestamp: Date.now(),
         createdAt: new Date().toISOString(),
@@ -167,6 +169,7 @@ export default function UserChatPage() {
 
       const docRef = await addDoc(collection(db, 'messages'), messageData);
       console.log('✅ Message sent with ID:', docRef.id);
+      console.log('📤 Message data:', { senderId: userDocId, senderName: messageData.senderName });
       
       // Add to local state immediately with the correct Firebase-generated ID
       setMessages(prev => [...prev, { ...messageData, id: docRef.id, type: 'sent' }]);
@@ -320,10 +323,6 @@ export default function UserChatPage() {
             <Text style={styles.contactEmail}>{contactEmail || 'admin@agriassist.com'}</Text>
           </View>
         </View>
-        
-        <TouchableOpacity style={styles.optionsButton}>
-          <Ionicons name="ellipsis-vertical" size={24} color={GREEN} />
-        </TouchableOpacity>
       </View>
 
       {/* Messages */}
@@ -483,9 +482,6 @@ const styles = StyleSheet.create({
   contactEmail: {
     fontSize: 12,
     color: '#666',
-  },
-  optionsButton: {
-    padding: 8,
   },
   messagesContainer: {
     flex: 1,

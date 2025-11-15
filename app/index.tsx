@@ -1,23 +1,52 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
+
+import { useAuth } from '../components/AuthContext';
 
 const GREEN = '#16543a';
 const BUTTON_GREEN = '#39796b';
 const BUTTON_RADIUS = 32;
 const { width } = Dimensions.get('window');
 
+const REMEMBER_ME_KEY = '@agriassist/rememberMe';
+
 export default function LandingScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   
   useEffect(() => {
-    // Add a small delay to ensure the router is ready
+    let isMounted = true;
+
+    const decideNavigation = async () => {
+      try {
+        const remember = await AsyncStorage.getItem(REMEMBER_ME_KEY);
+        if (!isMounted) return;
+
+        if (remember === 'true' && user) {
+          // If the user is already authenticated and chose Remember Me,
+          // send them directly to the main app.
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/login');
+        }
+      } catch (e) {
+        console.log('Error deciding initial navigation:', e);
+        router.replace('/login');
+      }
+    };
+
+    // Small delay to ensure router & context are ready
     const timer = setTimeout(() => {
-      router.replace('/login');
-    }, 100);
+      decideNavigation();
+    }, 150);
     
-    return () => clearTimeout(timer);
-  }, [router]);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [router, user]);
 
   // Return a minimal loading view instead of null
   return <View style={{ flex: 1, backgroundColor: '#fff' }} />;

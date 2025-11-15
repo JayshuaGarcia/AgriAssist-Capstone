@@ -53,7 +53,7 @@ export default function AboutScreen() {
           
           <View style={styles.contactInfo}>
             <Text style={styles.contactTitle}>Contact Information:</Text>
-            <Text style={styles.contactItem}>Email: support@agriassist.com</Text>
+            <Text style={styles.contactItem}>Email: agriassistme@gmail.com</Text>
             <Text style={styles.contactItem}>Phone: +63 (0) 123 456 7890</Text>
             <Text style={styles.contactItem}>Website: www.agriassist.com</Text>
           </View>

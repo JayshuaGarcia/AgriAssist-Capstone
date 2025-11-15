@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
 
@@ -51,7 +52,20 @@ export default function SignupScreen() {
 
     try {
       await signup(trimmedEmail, sanitizedPassword, trimmedName, 'Farmer', '');
-      router.replace('/farmers'); // Always go to farmer fill up form after signup
+
+      // New user: send them to Terms and Conditions first
+      try {
+        const key = `termsAccepted_${trimmedEmail.toLowerCase()}`;
+        await AsyncStorage.setItem(key, 'false');
+      } catch (e) {
+        console.log('Error initializing terms acceptance flag:', e);
+      }
+
+      router.replace(
+        `/terms-and-conditions?email=${encodeURIComponent(
+          trimmedEmail.toLowerCase()
+        )}`
+      );
     } catch (error: any) {
       setError(error?.message || 'Something went wrong while creating your account.');
     }
@@ -65,6 +79,7 @@ export default function SignupScreen() {
     >
       {/* Top green rounded rectangle */}
       <View style={styles.topGreen} />
+
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.container}>
           <View style={styles.logoImgContainer}>
@@ -110,12 +125,12 @@ export default function SignupScreen() {
             <TextInput
               style={[styles.input, styles.passwordInput, { 
                 textAlign: 'center', 
-                paddingLeft: 24, 
+                paddingLeft: 48, 
                 paddingRight: 48,
                 includeFontPadding: false,
                 textAlignVertical: 'center'
               }]}
-              placeholder="        Password"
+              placeholder="Password"
               placeholderTextColor={GREEN}
               value={password}
               onChangeText={setPassword}
@@ -139,12 +154,12 @@ export default function SignupScreen() {
             <TextInput
               style={[styles.input, styles.passwordInput, { 
                 textAlign: 'center', 
-                paddingLeft: 24, 
+                paddingLeft: 48, 
                 paddingRight: 48,
                 includeFontPadding: false,
                 textAlignVertical: 'center'
               }]}
-              placeholder="         Confirm Password"
+              placeholder="Confirm Password"
               placeholderTextColor={GREEN}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -186,6 +201,18 @@ export default function SignupScreen() {
               <Text style={styles.loginLink}>Login Here.</Text>
             </TouchableOpacity>
           </View>
+
+          {/* PUP Branding at the bottom of the screen content */}
+          <View style={styles.pupBrandingContainer}>
+            <Image
+              source={require('../assets/images/PUP LOGO.png')}
+              style={styles.pupLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.pupBrandingText}>
+              This project is made by BSIT 4 PUP Lopez Students
+            </Text>
+          </View>
         </View>
       </ScrollView>
       {/* Bottom green rounded rectangle */}
@@ -222,6 +249,23 @@ const styles = StyleSheet.create({
   logoImg: {
     width: '100%',
     height: '100%',
+  },
+  pupBrandingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  pupLogo: {
+    width: 20,
+    height: 20,
+    marginRight: 6,
+  },
+  pupBrandingText: {
+    fontSize: 12,
+    color: GREEN,
+    textAlign: 'center',
   },
   header: {
     fontSize: 32,

@@ -11,6 +11,8 @@ export default function ProfileAboutScreen() {
       <Text style={styles.info}>1.0.0</Text>
       <Text style={styles.sectionTitle}>Developer</Text>
       <Text style={styles.info}>AgriAssist Team</Text>
+      <Text style={styles.sectionTitle}>Contact Information</Text>
+      <Text style={styles.info}>Email: agriassistme@gmail.com</Text>
       <Text style={styles.sectionTitle}>Legal</Text>
       <Text style={styles.info}>This app is for informational purposes only. All data is provided as-is. © 2024 AgriAssist.</Text>
     </View>

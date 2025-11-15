@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert } from 'react-native';
+import { addDoc, collection } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const GREEN = '#16543a';
 const LIGHT_GREEN = '#74bfa3';
@@ -9,12 +11,47 @@ const LIGHT_GREEN = '#74bfa3';
 export default function HelpSupportScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = React.useState(false);
-  const [message, setMessage] = React.useState('');
+  const [message, setMessage] = useState('');
+  const [sendingFeedback, setSendingFeedback] = useState(false);
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 600);
   }, []);
+
+  // Send feedback to admin messages
+  const sendFeedback = async () => {
+    if (!message.trim()) {
+      Alert.alert('Error', 'Please enter your feedback message.');
+      return;
+    }
+
+    setSendingFeedback(true);
+    try {
+      const feedbackData = {
+        senderId: 'feedback',
+        senderName: 'feedback',
+        receiverId: 'admin',
+        receiverEmail: 'admin@agriassist.com',
+        content: message.trim(),
+        timestamp: Date.now(),
+        createdAt: new Date().toISOString(),
+        isRead: false,
+        type: 'feedback'
+      };
+
+      await addDoc(collection(db, 'messages'), feedbackData);
+      console.log('✅ Feedback sent successfully');
+      
+      Alert.alert('Success', 'Thank you for your feedback! It has been sent to the admin messages.');
+      setMessage('');
+    } catch (error) {
+      console.error('Error sending feedback:', error);
+      Alert.alert('Error', 'Failed to send feedback. Please try again.');
+    } finally {
+      setSendingFeedback(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
@@ -47,15 +84,15 @@ export default function HelpSupportScreen() {
             style={styles.textArea}
             multiline
           />
-          <TouchableOpacity style={[styles.submitButton, !message && styles.submitDisabled]} disabled={!message} onPress={() => {
-            const subject = encodeURIComponent('App Feedback/Support');
-            const body = encodeURIComponent(message);
-            const mailto = `mailto:support@agriassist.app?subject=${subject}&body=${body}`;
-            Linking.openURL(mailto).catch(() => {});
-            setMessage('');
-          }}>
+          <TouchableOpacity 
+            style={[styles.submitButton, (!message || sendingFeedback) && styles.submitDisabled]} 
+            disabled={!message || sendingFeedback} 
+            onPress={sendFeedback}
+          >
             <Ionicons name="paper-plane" size={18} color="#fff" />
-            <Text style={styles.submitText}>Submit</Text>
+            <Text style={styles.submitText}>
+              {sendingFeedback ? 'Sending...' : 'Submit'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

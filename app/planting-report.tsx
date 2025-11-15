@@ -294,81 +294,172 @@ export default function PlantingReportScreen() {
       // Get all planting reports from all users for global trends
       const allReportsQuery = query(collection(db, 'plantingReports'));
       const allReportsSnapshot = await getDocs(allReportsQuery);
-      let allReports = allReportsSnapshot.docs.map(doc => ({
+      const allReports = allReportsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
       }));
 
-      // Filter by selected month if provided
-      if (selectedMonth) {
-        const targetMonth = selectedMonth.getMonth() + 1; // 1-12
-        const targetYear = selectedMonth.getFullYear();
+      // Helper function to filter reports by month/year
+      const filterReportsByMonth = (reports: any[], month: number, year: number) => {
         const currentDate = new Date();
         const currentMonth = currentDate.getMonth() + 1;
         const currentYear = currentDate.getFullYear();
         
-        allReports = allReports.filter(report => {
+        return reports.filter(report => {
           // If report has month/year data, filter by it
           if (report.plantingMonth && report.plantingYear) {
-            return report.plantingMonth === targetMonth && report.plantingYear === targetYear;
+            return report.plantingMonth === month && report.plantingYear === year;
           }
           // If report doesn't have month/year data (old reports), only show for current month
-          else if (targetMonth === currentMonth && targetYear === currentYear) {
+          else if (month === currentMonth && year === currentYear) {
             return true; // Show old reports only for current month
           }
           return false; // Don't show old reports for other months
         });
-      }
+      };
 
-      // Get unique users
-      const uniqueUsers = [...new Set(allReports.map(report => report.userId))];
-      
-      // Calculate global crop distribution
-      const globalCropCounts: { [key: string]: number } = {};
-      const cropUserCounts: { [key: string]: Set<string> } = {};
-      
-      allReports.forEach(report => {
-        const plantCount = typeof report.plantCount === 'number' ? report.plantCount : parseInt(report.plantCount) || 0;
-        globalCropCounts[report.crop] = (globalCropCounts[report.crop] || 0) + plantCount;
+      // Helper function to calculate crop distribution
+      const calculateCropDistribution = (reports: any[]) => {
+        const cropCounts: { [key: string]: number } = {};
+        const cropUserCounts: { [key: string]: Set<string> } = {};
         
-        // Track unique users for each crop
-        if (!cropUserCounts[report.crop]) {
-          cropUserCounts[report.crop] = new Set();
-        }
-        cropUserCounts[report.crop].add(report.userId);
-      });
+        reports.forEach(report => {
+          const plantCount = typeof report.plantCount === 'number' ? report.plantCount : parseInt(report.plantCount) || 0;
+          cropCounts[report.crop] = (cropCounts[report.crop] || 0) + plantCount;
+          
+          // Track unique users for each crop
+          if (!cropUserCounts[report.crop]) {
+            cropUserCounts[report.crop] = new Set();
+          }
+          cropUserCounts[report.crop].add(report.userId);
+        });
 
-      const totalGlobalPlants = Object.values(globalCropCounts).reduce((sum, count) => sum + count, 0);
-      
-      // Find most popular crop
-      const mostPopularCrop = Object.keys(globalCropCounts).reduce((a, b) => 
-        globalCropCounts[a] > globalCropCounts[b] ? a : b, ''
-      );
+        return { cropCounts, cropUserCounts };
+      };
 
-      // Create color palette for crops
-      const colors = [
-        '#16543a', '#74bfa3', '#a8d5ba', '#c8e6c9', '#e8f5e8',
-        '#2E8B57', '#3CB371', '#20B2AA', '#48CAE4', '#90E0EF',
-        '#FF6B6B', '#FF8E53', '#FF6B35', '#F7931E', '#FFD23F'
-      ];
+      if (selectedMonth) {
+        const targetMonth = selectedMonth.getMonth() + 1; // 1-12
+        const targetYear = selectedMonth.getFullYear();
 
-      // Create distribution with colors
-      const cropDistribution = Object.entries(globalCropCounts)
-        .map(([crop, count], index) => ({
-          crop,
-          count,
-          userCount: cropUserCounts[crop] ? cropUserCounts[crop].size : 0,
-          percentage: totalGlobalPlants > 0 ? Math.round((count / totalGlobalPlants) * 100) : 0,
-          color: colors[index % colors.length]
-        }))
-        .sort((a, b) => b.count - a.count);
+        // Current month data
+        const currentReports = filterReportsByMonth(allReports, targetMonth, targetYear);
 
-      setGlobalAnalytics({
-        totalPlants: totalGlobalPlants,
-        totalUsers: uniqueUsers.length,
-        mostPopularCrop,
-        cropDistribution
-      });
+        // Previous year same month data
+        const previousYearMonth = targetMonth;
+        const previousYear = targetYear - 1;
+        const previousYearReports = filterReportsByMonth(allReports, previousYearMonth, previousYear);
+
+        // Previous month data
+        const previousMonthDate = new Date(targetYear, targetMonth - 2, 1); // targetMonth is 1-12, Date uses 0-11, so targetMonth - 2
+        const previousMonth = previousMonthDate.getMonth() + 1; // Convert back to 1-12
+        const previousMonthYear = previousMonthDate.getFullYear();
+        const previousMonthReports = filterReportsByMonth(allReports, previousMonth, previousMonthYear);
+
+        // Calculate distributions for each period
+        const current = calculateCropDistribution(currentReports);
+        const prevYear = calculateCropDistribution(previousYearReports);
+        const prevMonth = calculateCropDistribution(previousMonthReports);
+
+        // Get all unique crops from all three periods
+        const allCrops = new Set<string>();
+        Object.keys(current.cropCounts).forEach(crop => allCrops.add(crop));
+        Object.keys(prevYear.cropCounts).forEach(crop => allCrops.add(crop));
+        Object.keys(prevMonth.cropCounts).forEach(crop => allCrops.add(crop));
+
+        const totalGlobalPlants = Object.values(current.cropCounts).reduce((sum, count) => sum + count, 0);
+        const uniqueUsers = [...new Set(currentReports.map(report => report.userId))];
+        
+        // Find most popular crop
+        const mostPopularCrop = Object.keys(current.cropCounts).reduce((a, b) => 
+          current.cropCounts[a] > current.cropCounts[b] ? a : b, ''
+        );
+
+        // Create color palette for crops
+        const colors = [
+          '#16543a', '#74bfa3', '#a8d5ba', '#c8e6c9', '#e8f5e8',
+          '#2E8B57', '#3CB371', '#20B2AA', '#48CAE4', '#90E0EF',
+          '#FF6B6B', '#FF8E53', '#FF6B35', '#F7931E', '#FFD23F'
+        ];
+
+        // Create distribution with comparisons
+        const cropDistribution = Array.from(allCrops)
+          .map((crop, index) => {
+            const currentCount = current.cropCounts[crop] || 0;
+            const prevYearCount = prevYear.cropCounts[crop] || 0;
+            const prevMonthCount = prevMonth.cropCounts[crop] || 0;
+
+            const previousYearChange = prevYearCount > 0
+              ? ((currentCount - prevYearCount) / prevYearCount) * 100
+              : currentCount > 0 ? 100 : 0;
+
+            const previousMonthChange = prevMonthCount > 0
+              ? ((currentCount - prevMonthCount) / prevMonthCount) * 100
+              : currentCount > 0 ? 100 : 0;
+
+            return {
+              crop,
+              count: currentCount,
+              userCount: current.cropUserCounts[crop] ? current.cropUserCounts[crop].size : 0,
+              percentage: totalGlobalPlants > 0 ? Math.round((currentCount / totalGlobalPlants) * 100) : 0,
+              color: colors[index % colors.length],
+              previousYearTotal: prevYearCount,
+              previousYearUserCount: prevYear.cropUserCounts[crop] ? prevYear.cropUserCounts[crop].size : 0,
+              previousYearChange,
+              previousMonthTotal: prevMonthCount,
+              previousMonthUserCount: prevMonth.cropUserCounts[crop] ? prevMonth.cropUserCounts[crop].size : 0,
+              previousMonthChange,
+            };
+          })
+          .sort((a, b) => b.count - a.count);
+
+        setGlobalAnalytics({
+          totalPlants: totalGlobalPlants,
+          totalUsers: uniqueUsers.length,
+          mostPopularCrop,
+          cropDistribution
+        });
+      } else {
+        // If no month selected, use all reports (original behavior)
+        const uniqueUsers = [...new Set(allReports.map(report => report.userId))];
+        const { cropCounts, cropUserCounts } = calculateCropDistribution(allReports);
+        const totalGlobalPlants = Object.values(cropCounts).reduce((sum, count) => sum + count, 0);
+        
+        // Find most popular crop
+        const mostPopularCrop = Object.keys(cropCounts).reduce((a, b) => 
+          cropCounts[a] > cropCounts[b] ? a : b, ''
+        );
+
+        // Create color palette for crops
+        const colors = [
+          '#16543a', '#74bfa3', '#a8d5ba', '#c8e6c9', '#e8f5e8',
+          '#2E8B57', '#3CB371', '#20B2AA', '#48CAE4', '#90E0EF',
+          '#FF6B6B', '#FF8E53', '#FF6B35', '#F7931E', '#FFD23F'
+        ];
+
+        // Create distribution with colors
+        const cropDistribution = Object.entries(cropCounts)
+          .map(([crop, count], index) => ({
+            crop,
+            count,
+            userCount: cropUserCounts[crop] ? cropUserCounts[crop].size : 0,
+            percentage: totalGlobalPlants > 0 ? Math.round((count / totalGlobalPlants) * 100) : 0,
+            color: colors[index % colors.length],
+            previousYearTotal: 0,
+            previousYearUserCount: 0,
+            previousYearChange: 0,
+            previousMonthTotal: 0,
+            previousMonthUserCount: 0,
+            previousMonthChange: 0,
+          }))
+          .sort((a, b) => b.count - a.count);
+
+        setGlobalAnalytics({
+          totalPlants: totalGlobalPlants,
+          totalUsers: uniqueUsers.length,
+          mostPopularCrop,
+          cropDistribution
+        });
+      }
 
       // Animate the dashboard
       Animated.parallel([
@@ -1101,6 +1192,93 @@ export default function PlantingReportScreen() {
                               <Text style={styles.barChartDescription}>
                                 Number of different farmers growing each crop type
                               </Text>
+                            </View>
+                          )}
+
+                          {/* Comparison Section - Always show if there's any data (current, previous month, or previous year) */}
+                          {globalAnalytics.cropDistribution.some(item => 
+                            item.count > 0 || 
+                            item.previousYearTotal > 0 || 
+                            item.previousMonthTotal > 0
+                          ) && (
+                            <View style={styles.comparisonSection}>
+                              <Text style={styles.comparisonSectionTitle}>📊 Planting Comparison Analysis</Text>
+                              {globalAnalytics.cropDistribution
+                                .filter(item => 
+                                  item.count > 0 || 
+                                  item.previousYearTotal > 0 || 
+                                  item.previousMonthTotal > 0
+                                )
+                                .sort((a, b) => {
+                                  // Sort by: current count first, then previous month, then previous year
+                                  const aMax = Math.max(a.count, a.previousMonthTotal, a.previousYearTotal);
+                                  const bMax = Math.max(b.count, b.previousMonthTotal, b.previousYearTotal);
+                                  return bMax - aMax;
+                                })
+                                .map((item) => (
+                                <View key={item.crop} style={styles.comparisonItemCard}>
+                                  <View style={styles.comparisonItemHeader}>
+                                    <Text style={styles.comparisonCropIcon}>{getCropIcon(item.crop)}</Text>
+                                    <Text style={styles.comparisonCropName}>{item.crop}</Text>
+                                  </View>
+                                  <View style={styles.comparisonItemContent}>
+                                    {/* Current Month */}
+                                    <View style={styles.comparisonDataRow}>
+                                      <Text style={styles.comparisonPeriodLabel}>Current Month:</Text>
+                                      {item.count > 0 ? (
+                                        <View style={styles.comparisonDataValueContainer}>
+                                          <Text style={styles.comparisonDataValue}>{item.count.toLocaleString()} plants</Text>
+                                          <Text style={styles.comparisonDataSubtext}> ({item.userCount} farmers)</Text>
+                                        </View>
+                                      ) : (
+                                        <Text style={styles.comparisonNoData}>No data</Text>
+                                      )}
+                                    </View>
+
+                                    {/* Previous Year */}
+                                    <View style={styles.comparisonDataRow}>
+                                      <Text style={styles.comparisonPeriodLabel}>Last Year:</Text>
+                                      {item.previousYearTotal > 0 ? (
+                                        <View style={styles.comparisonDataValueContainer}>
+                                          {item.count > 0 && (
+                                            <Text style={[
+                                              styles.comparisonChangeIndicator,
+                                              item.previousYearChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                            ]}>
+                                              {item.previousYearChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousYearChange).toFixed(1)}%
+                                            </Text>
+                                          )}
+                                          <Text style={styles.comparisonDataValue}>{item.previousYearTotal.toLocaleString()} plants</Text>
+                                          <Text style={styles.comparisonDataSubtext}> ({item.previousYearUserCount} farmers)</Text>
+                                        </View>
+                                      ) : (
+                                        <Text style={styles.comparisonNoData}>No data</Text>
+                                      )}
+                                    </View>
+
+                                    {/* Previous Month */}
+                                    <View style={styles.comparisonDataRow}>
+                                      <Text style={styles.comparisonPeriodLabel}>Last Month:</Text>
+                                      {item.previousMonthTotal > 0 ? (
+                                        <View style={styles.comparisonDataValueContainer}>
+                                          {item.count > 0 && (
+                                            <Text style={[
+                                              styles.comparisonChangeIndicator,
+                                              item.previousMonthChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                            ]}>
+                                              {item.previousMonthChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousMonthChange).toFixed(1)}%
+                                            </Text>
+                                          )}
+                                          <Text style={styles.comparisonDataValue}>{item.previousMonthTotal.toLocaleString()} plants</Text>
+                                          <Text style={styles.comparisonDataSubtext}> ({item.previousMonthUserCount} farmers)</Text>
+                                        </View>
+                                      ) : (
+                                        <Text style={styles.comparisonNoData}>No data</Text>
+                                      )}
+                                    </View>
+                                  </View>
+                                </View>
+                              ))}
                             </View>
                           )}
                           
@@ -2516,6 +2694,118 @@ const styles = StyleSheet.create({
     color: '#AAA',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  comparisonSection: {
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: GREEN,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  comparisonSectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: GREEN,
+    marginBottom: 20,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  comparisonItemCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#d0d0d0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  comparisonItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
+  },
+  comparisonCropIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  comparisonCropName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    letterSpacing: 0.3,
+  },
+  comparisonItemContent: {
+    paddingLeft: 0,
+  },
+  comparisonDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    minHeight: 40,
+  },
+  comparisonPeriodLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#555',
+    flex: 1,
+    letterSpacing: 0.2,
+  },
+  comparisonDataValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    flex: 2,
+    justifyContent: 'flex-end',
+  },
+  comparisonDataValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginLeft: 6,
+  },
+  comparisonDataSubtext: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+    marginLeft: 4,
+  },
+  comparisonChangeIndicator: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginRight: 6,
+    letterSpacing: 0.5,
+  },
+  comparisonNoData: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#999',
+    fontStyle: 'italic',
+    flex: 2,
+    textAlign: 'right',
+  },
+  comparisonPositive: {
+    color: '#2E7D32',
+  },
+  comparisonNegative: {
+    color: '#C62828',
   },
   analyticsLoadingContainer: {
     padding: 40,

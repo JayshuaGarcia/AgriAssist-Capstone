@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../components/AuthContext';
 import { db } from '../lib/firebase';
@@ -21,86 +21,35 @@ export default function ProfileInformationScreen() {
     loadFarmerData();
   }, []);
 
+  // Reload data when screen comes into focus (after editing)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 Profile information screen focused - reloading data...');
+      loadFarmerData();
+    }, [])
+  );
+
   const loadFarmerData = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Loading farmer form data from AsyncStorage...');
+      console.log('🔄 Loading farmer form data from farmerProfiles collection...');
       
-      // Get all AsyncStorage keys (same method as admin)
-      const keys = await AsyncStorage.getAllKeys();
-      
-      // Filter keys that start with 'farmerFormData_'
-      const farmerFormKeys = keys.filter(key => key.startsWith('farmerFormData_'));
-      
-      console.log('Found farmer form keys:', farmerFormKeys);
-      
-      // Look for data with current user's UID first
-      const currentUserKey = `farmerFormData_${user?.uid}`;
-      let foundData = null;
-      
-      // Try current user's key first
-      if (farmerFormKeys.includes(currentUserKey)) {
-        const storedFormData = await AsyncStorage.getItem(currentUserKey);
-        if (storedFormData) {
-          foundData = JSON.parse(storedFormData);
-          console.log('Found form data for current user:', foundData);
-        }
-      }
-      
-      // If not found, try to find any data for this user (fallback)
-      if (!foundData && farmerFormKeys.length > 0) {
-        for (const key of farmerFormKeys) {
-          const storedFormData = await AsyncStorage.getItem(key);
-          if (storedFormData) {
-            const parsedData = JSON.parse(storedFormData);
-            // Check if this data belongs to current user by email
-            if (parsedData.userEmail === user?.email || parsedData.email === user?.email) {
-              foundData = parsedData;
-              console.log('Found form data for user by email:', foundData);
-              break;
-            }
-          }
-        }
-      }
-      
-      // If still not found, just take the first available data (for testing)
-      if (!foundData && farmerFormKeys.length > 0) {
-        const firstKey = farmerFormKeys[0];
-        const storedFormData = await AsyncStorage.getItem(firstKey);
-        if (storedFormData) {
-          foundData = JSON.parse(storedFormData);
-          console.log('Using first available form data:', foundData);
-        }
-      }
-      
-      if (foundData) {
-        // Combine with basic user info
-        const combinedData = {
-          name: user?.displayName || foundData.name || 'User',
-          email: user?.email || foundData.email || '',
-          role: 'Farmer',
-          location: foundData.location || '',
-          formData: foundData
-        };
-        
-        setFarmerData(combinedData);
-        console.log('✅ Form data loaded successfully');
+      // Load ONLY from farmerProfiles collection (no AsyncStorage, no old data)
+      if (!user?.email) {
+        console.log('No user email found');
+        setFarmerData(null);
         return;
       }
 
-      // Fallback: try to get user document from Firestore
-      if (user?.email) {
-        const userDoc = await getDoc(doc(db, 'users', user.email));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          console.log('User data loaded from Firebase:', userData);
-          setFarmerData(userData);
-          return;
-        }
+      const farmerProfileDoc = await getDoc(doc(db, 'farmerProfiles', user.email));
+      if (farmerProfileDoc.exists()) {
+        const profileData = farmerProfileDoc.data();
+        console.log('✅ Farmer profile data loaded from Firebase:', profileData);
+        setFarmerData(profileData);
+      } else {
+        console.log('No farmer profile found in farmerProfiles collection');
+        setFarmerData(null);
       }
-
-      console.log('No form data found in AsyncStorage or Firebase');
-      setFarmerData(null);
     } catch (error) {
       console.error('Error loading farmer data:', error);
       setFarmerData(null);
@@ -116,6 +65,14 @@ export default function ProfileInformationScreen() {
     }));
   };
 
+  const handleEditForm = (sectionKey: string) => {
+    // Navigate to farmers screen and open the specific form section
+    // Store the section to open in AsyncStorage so farmers screen can read it
+    AsyncStorage.setItem('editFormSection', sectionKey).then(() => {
+      router.push('/(tabs)/farmers');
+    });
+  };
+
   const renderFormSection = (title: string, data: any, sectionKey: string) => {
     if (!data || Object.keys(data).length === 0) return null;
     
@@ -123,6 +80,13 @@ export default function ProfileInformationScreen() {
       <View style={styles.formSection} key={sectionKey}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{title}</Text>
+          <TouchableOpacity 
+            style={styles.editButton}
+            onPress={() => handleEditForm(sectionKey)}
+          >
+            <Ionicons name="create-outline" size={18} color={GREEN} />
+            <Text style={styles.editButtonText}>Edit</Text>
+          </TouchableOpacity>
         </View>
         
         <View style={styles.sectionContent}>
@@ -134,18 +98,65 @@ export default function ProfileInformationScreen() {
             
             // Format the value for display
             let displayValue = '';
-            if (Array.isArray(value)) {
+            if (key === 'livestock' && Array.isArray(value) && data.livestockCounts) {
+              // Special handling for livestock with counts
+              const livestockWithCounts = value.map((livestock: string) => {
+                const count = data.livestockCounts[livestock];
+                return count ? `${livestock} (${count})` : livestock;
+              });
+              // Add other livestock with count if exists
+              if (data.otherLivestock) {
+                const otherCount = data.otherLivestockCount;
+                const otherDisplay = otherCount ? `${data.otherLivestock} (${otherCount})` : data.otherLivestock;
+                livestockWithCounts.push(otherDisplay);
+              }
+              displayValue = livestockWithCounts.length > 0 ? livestockWithCounts.join(', ') : 'Not specified';
+            } else if (key === 'farmCommodity' && Array.isArray(value) && data.commodityCounts) {
+              // Special handling for farm commodity with counts
+              const commodityWithCounts = value.map((commodity: string) => {
+                const count = data.commodityCounts[commodity];
+                return count ? `${commodity} (${count})` : commodity;
+              });
+              // Add other commodity with count if exists
+              if (data.otherCommodity) {
+                const otherCount = data.otherCommodityCount;
+                const otherDisplay = otherCount ? `${data.otherCommodity} (${otherCount})` : data.otherCommodity;
+                commodityWithCounts.push(otherDisplay);
+              }
+              displayValue = commodityWithCounts.length > 0 ? commodityWithCounts.join(', ') : 'Not specified';
+            } else if (key === 'otherLivestock' && data.otherLivestock) {
+              // Skip otherLivestock as it's shown with livestock
+              return null;
+            } else if (key === 'otherLivestockCount') {
+              // Skip otherLivestockCount as it's shown with otherLivestock
+              return null;
+            } else if (key === 'otherCommodity' && data.otherCommodity) {
+              // Skip otherCommodity as it's shown with farmCommodity
+              return null;
+            } else if (key === 'otherCommodityCount') {
+              // Skip otherCommodityCount as it's shown with otherCommodity
+              return null;
+            } else if (Array.isArray(value)) {
               displayValue = value.length > 0 ? value.join(', ') : 'Not specified';
             } else if (typeof value === 'object' && value !== null) {
+              // Skip livestockCounts and commodityCounts as they're displayed with their arrays
+              if (key === 'livestockCounts' || key === 'commodityCounts') {
+                return null;
+              }
               displayValue = JSON.stringify(value, null, 2);
             } else {
               displayValue = value || 'Not specified';
             }
             
+            // Skip livestockCounts and commodityCounts fields as they're shown with their arrays
+            if (key === 'livestockCounts' || key === 'commodityCounts') {
+              return null;
+            }
+            
             return (
               <View style={styles.dataRow} key={key}>
                 <Text style={styles.dataLabel}>
-                  {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
+                  {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                 </Text>
                 <Text style={[styles.dataValue, !value || value === '' ? styles.emptyValue : null]}>
                   {displayValue}
@@ -223,21 +234,13 @@ export default function ProfileInformationScreen() {
             <Text style={styles.basicInfoTitle}>Basic Information</Text>
           </View>
           <View style={styles.basicInfoContent}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Name:</Text>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Name</Text>
               <Text style={styles.infoValue}>{farmerData.name || 'Not provided'}</Text>
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Email:</Text>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Email</Text>
               <Text style={styles.infoValue}>{farmerData.email || 'Not provided'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Role:</Text>
-              <Text style={styles.infoValue}>{farmerData.role || 'Not provided'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Location:</Text>
-              <Text style={styles.infoValue}>{farmerData.location || 'Not provided'}</Text>
             </View>
           </View>
         </View>
@@ -312,9 +315,9 @@ export default function ProfileInformationScreen() {
             </View>
             <View style={styles.additionalInfoContent}>
               {Object.entries(farmerData.additionalInfo).map(([key, value]: [string, any]) => (
-                <View style={styles.infoRow} key={key}>
+                <View style={styles.infoItem} key={key}>
                   <Text style={styles.infoLabel}>
-                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
+                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                   </Text>
                   <Text style={styles.infoValue}>
                     {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
@@ -396,45 +399,58 @@ const styles = StyleSheet.create({
   },
   basicInfoCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 2,
+    borderColor: GREEN,
   },
   basicInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
   },
   basicInfoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: GREEN,
     marginLeft: 8,
+    letterSpacing: 0.3,
   },
   basicInfoContent: {
-    gap: 12,
+    gap: 16,
   },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  infoItem: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   infoLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#666',
-    flex: 1,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   infoValue: {
-    fontSize: 14,
-    color: '#333',
-    flex: 2,
-    textAlign: 'right',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    textAlign: 'center',
   },
   formDataContainer: {
     marginBottom: 20,
@@ -457,34 +473,63 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: GREEN,
-    textAlign: 'center',
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#f0f8f4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GREEN,
+    gap: 4,
+  },
+  editButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: GREEN,
   },
   sectionContent: {
     padding: 16,
   },
   dataRow: {
-    marginBottom: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   dataLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
   dataValue: {
-    fontSize: 14,
-    color: '#333',
-    lineHeight: 20,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    lineHeight: 22,
+    textAlign: 'center',
   },
   emptyValue: {
     color: '#999',
@@ -492,28 +537,35 @@ const styles = StyleSheet.create({
   },
   additionalInfoCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 2,
+    borderColor: GREEN,
   },
   additionalInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
   },
   additionalInfoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: GREEN,
     marginLeft: 8,
+    letterSpacing: 0.3,
   },
   additionalInfoContent: {
-    gap: 12,
+    gap: 16,
   },
   registerButton: {
     flexDirection: 'row',

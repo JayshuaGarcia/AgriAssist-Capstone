@@ -24,6 +24,29 @@ type CropTimelineStats = {
   yieldDifference: number | null;
 };
 
+type GlobalHarvestDistributionItem = {
+  crop: string;
+  count: number;
+  userCount: number;
+  totalHarvest: number;
+  percentage: number;
+  color: string;
+  previousYearTotal: number;
+  previousYearUserCount: number;
+  previousYearChange: number;
+  previousMonthTotal: number;
+  previousMonthUserCount: number;
+  previousMonthChange: number;
+};
+
+type GlobalAnalytics = {
+  totalHarvested: number;
+  totalUsers: number;
+  mostPopularCrop: string;
+  harvestDistribution: GlobalHarvestDistributionItem[];
+  cropTimeline: CropTimelineStats[];
+};
+
 const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const coerceNumber = (value: any): number | null => {
@@ -339,11 +362,11 @@ export default function HarvestReportScreen() {
   });
 
   // Global analytics data
-  const [globalAnalytics, setGlobalAnalytics] = useState({
+  const [globalAnalytics, setGlobalAnalytics] = useState<GlobalAnalytics>({
     totalHarvested: 0,
     totalUsers: 0,
     mostPopularCrop: '',
-    harvestDistribution: [] as { crop: string; count: number; userCount: number; totalHarvest: number; percentage: number; color: string }[],
+    harvestDistribution: [] as GlobalHarvestDistributionItem[],
     cropTimeline: [] as CropTimelineStats[],
   });
 
@@ -789,6 +812,7 @@ export default function HarvestReportScreen() {
       const targetMonth = month.getMonth();
       const targetYear = month.getFullYear();
 
+      // Current month data
       const filteredReports = harvestedReports.filter(report => {
         const actualDateMs = extractActualHarvestDateMs(report);
         if (actualDateMs === null) return false;
@@ -796,7 +820,32 @@ export default function HarvestReportScreen() {
         return actualDate.getMonth() === targetMonth && actualDate.getFullYear() === targetYear;
       });
 
-      const globalSummary = calculateGlobalHarvestAnalytics(filteredReports);
+      // Previous year same month data
+      const previousYearMonth = targetMonth;
+      const previousYear = targetYear - 1;
+      const filteredPreviousYearReports = harvestedReports.filter(report => {
+        const actualDateMs = extractActualHarvestDateMs(report);
+        if (actualDateMs === null) return false;
+        const actualDate = new Date(actualDateMs);
+        return actualDate.getMonth() === previousYearMonth && actualDate.getFullYear() === previousYear;
+      });
+
+      // Previous month data
+      const previousMonthDate = new Date(targetYear, targetMonth - 1, 1);
+      const previousMonth = previousMonthDate.getMonth();
+      const previousMonthYear = previousMonthDate.getFullYear();
+      const filteredPreviousMonthReports = harvestedReports.filter(report => {
+        const actualDateMs = extractActualHarvestDateMs(report);
+        if (actualDateMs === null) return false;
+        const actualDate = new Date(actualDateMs);
+        return actualDate.getMonth() === previousMonth && actualDate.getFullYear() === previousMonthYear;
+      });
+
+      const globalSummary = calculateGlobalHarvestAnalytics(
+        filteredReports,
+        filteredPreviousYearReports,
+        filteredPreviousMonthReports
+      );
       const cropTimeline = buildCropTimeline(allPlantingReports, enrichedAllReports.filter(isReportHarvested));
 
       setGlobalAnalytics({
@@ -812,8 +861,10 @@ export default function HarvestReportScreen() {
         month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
         ':',
         filteredReports.length,
-        'records. Global timeline crops:',
-        cropTimeline.length
+        'records. Previous year:',
+        filteredPreviousYearReports.length,
+        'Previous month:',
+        filteredPreviousMonthReports.length
       );
     } catch (error) {
       console.error('Error loading global harvest analytics:', error);
@@ -822,61 +873,101 @@ export default function HarvestReportScreen() {
     }
   };
 
-  const calculateGlobalHarvestAnalytics = (reports: any[]) => {
-    if (reports.length === 0) {
+  const calculateGlobalHarvestAnalytics = (
+    reports: any[],
+    previousYearReports: any[] = [],
+    previousMonthReports: any[] = []
+  ) => {
+    // Helper function to calculate harvest data for a set of reports
+    const calculateHarvestData = (reportList: any[]) => {
+      const cropMap = new Map<
+        string,
+        { count: number; totalHarvest: number; users: Set<string> }
+      >();
+
+      reportList.forEach(report => {
+        const crop = report.crop || 'Unspecified Crop';
+        const harvest = extractActualHarvestKg(report) || 0;
+        const userEmail = report.userEmail || report.farmerEmail || 'unknown';
+
+        if (!cropMap.has(crop)) {
+          cropMap.set(crop, {
+            count: 0,
+            totalHarvest: 0,
+            users: new Set<string>(),
+          });
+        }
+
+        const entry = cropMap.get(crop)!;
+        entry.count += 1;
+        entry.totalHarvest += harvest;
+        entry.users.add(userEmail);
+      });
+
+      return cropMap;
+    };
+
+    // Calculate current month data
+    const currentCropMap = calculateHarvestData(reports);
+    const previousYearCropMap = calculateHarvestData(previousYearReports);
+    const previousMonthCropMap = calculateHarvestData(previousMonthReports);
+
+    // Get all unique crops from current, previous year, and previous month
+    // This ensures we include crops even if they only have previous month/year data
+    const allCrops = new Set<string>();
+    currentCropMap.forEach((_, crop) => allCrops.add(crop));
+    previousYearCropMap.forEach((_, crop) => allCrops.add(crop));
+    previousMonthCropMap.forEach((_, crop) => allCrops.add(crop));
+
+    // If no crops at all, return empty
+    if (allCrops.size === 0) {
       return {
         totalHarvested: 0,
         totalUsers: 0,
         mostPopularCrop: '',
-        harvestDistribution: [] as {
-          crop: string;
-          count: number;
-          userCount: number;
-          totalHarvest: number;
-          percentage: number;
-          color: string;
-        }[],
+        harvestDistribution: [] as GlobalHarvestDistributionItem[],
       };
     }
 
     let totalHarvested = 0;
     const uniqueUsers = new Set<string>();
-    const cropHarvestMap = new Map<
-      string,
-      { count: number; totalHarvest: number; users: Set<string> }
-    >();
 
     reports.forEach(report => {
-      const crop = report.crop || 'Unspecified Crop';
       const harvest = extractActualHarvestKg(report) || 0;
       const userEmail = report.userEmail || report.farmerEmail || 'unknown';
-
       totalHarvested += harvest;
       uniqueUsers.add(userEmail);
-
-      if (!cropHarvestMap.has(crop)) {
-        cropHarvestMap.set(crop, {
-          count: 0,
-          totalHarvest: 0,
-          users: new Set<string>(),
-        });
-      }
-
-      const entry = cropHarvestMap.get(crop)!;
-      entry.count += 1;
-      entry.totalHarvest += harvest;
-      entry.users.add(userEmail);
     });
 
-    const harvestDistribution = Array.from(cropHarvestMap.entries())
-      .map(([crop, data]) => ({
-        crop,
-        count: data.count,
-        userCount: data.users.size,
-        totalHarvest: data.totalHarvest,
-        percentage: totalHarvested > 0 ? (data.totalHarvest / totalHarvested) * 100 : 0,
-        color: getCropColor(crop),
-      }))
+    const harvestDistribution = Array.from(allCrops)
+      .map(crop => {
+        const current = currentCropMap.get(crop) || { count: 0, totalHarvest: 0, users: new Set<string>() };
+        const prevYear = previousYearCropMap.get(crop) || { count: 0, totalHarvest: 0, users: new Set<string>() };
+        const prevMonth = previousMonthCropMap.get(crop) || { count: 0, totalHarvest: 0, users: new Set<string>() };
+
+        const previousYearChange = prevYear.totalHarvest > 0
+          ? ((current.totalHarvest - prevYear.totalHarvest) / prevYear.totalHarvest) * 100
+          : current.totalHarvest > 0 ? 100 : 0;
+
+        const previousMonthChange = prevMonth.totalHarvest > 0
+          ? ((current.totalHarvest - prevMonth.totalHarvest) / prevMonth.totalHarvest) * 100
+          : current.totalHarvest > 0 ? 100 : 0;
+
+        return {
+          crop,
+          count: current.count,
+          userCount: current.users.size,
+          totalHarvest: current.totalHarvest,
+          percentage: totalHarvested > 0 ? (current.totalHarvest / totalHarvested) * 100 : 0,
+          color: getCropColor(crop),
+          previousYearTotal: prevYear.totalHarvest,
+          previousYearUserCount: prevYear.users.size,
+          previousYearChange,
+          previousMonthTotal: prevMonth.totalHarvest,
+          previousMonthUserCount: prevMonth.users.size,
+          previousMonthChange,
+        };
+      })
       .sort((a, b) => b.totalHarvest - a.totalHarvest);
 
     const mostPopularCrop = harvestDistribution.length > 0 ? harvestDistribution[0].crop : '';
@@ -1266,6 +1357,93 @@ export default function HarvestReportScreen() {
                       <Text style={styles.notesText}>Number of different farmers harvesting each crop type</Text>
                     </View>
                   </View>
+
+                  {/* Comparison Section - Always show if there's any data (current, previous month, or previous year) */}
+                  {globalAnalytics.harvestDistribution.some(item => 
+                    item.totalHarvest > 0 || 
+                    item.previousYearTotal > 0 || 
+                    item.previousMonthTotal > 0
+                  ) && (
+                    <View style={styles.comparisonSection}>
+                      <Text style={styles.comparisonSectionTitle}>📊 Harvest Comparison Analysis</Text>
+                      {globalAnalytics.harvestDistribution
+                        .filter(item => 
+                          item.totalHarvest > 0 || 
+                          item.previousYearTotal > 0 || 
+                          item.previousMonthTotal > 0
+                        )
+                        .sort((a, b) => {
+                          // Sort by: current harvest first, then previous month, then previous year
+                          const aMax = Math.max(a.totalHarvest, a.previousMonthTotal, a.previousYearTotal);
+                          const bMax = Math.max(b.totalHarvest, b.previousMonthTotal, b.previousYearTotal);
+                          return bMax - aMax;
+                        })
+                        .map((item) => (
+                        <View key={item.crop} style={styles.comparisonItemCard}>
+                          <View style={styles.comparisonItemHeader}>
+                            <Text style={styles.comparisonCropIcon}>{getCropIcon(item.crop)}</Text>
+                            <Text style={styles.comparisonCropName}>{item.crop}</Text>
+                          </View>
+                          <View style={styles.comparisonItemContent}>
+                            {/* Current Month */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Current Month:</Text>
+                              {item.totalHarvest > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  <Text style={styles.comparisonDataValue}>{item.totalHarvest.toFixed(1)} kg</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.userCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+
+                            {/* Previous Year */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Last Year:</Text>
+                              {item.previousYearTotal > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  {item.totalHarvest > 0 && (
+                                    <Text style={[
+                                      styles.comparisonChangeIndicator,
+                                      item.previousYearChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                    ]}>
+                                      {item.previousYearChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousYearChange).toFixed(1)}%
+                                    </Text>
+                                  )}
+                                  <Text style={styles.comparisonDataValue}>{item.previousYearTotal.toFixed(1)} kg</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.previousYearUserCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+
+                            {/* Previous Month */}
+                            <View style={styles.comparisonDataRow}>
+                              <Text style={styles.comparisonPeriodLabel}>Last Month:</Text>
+                              {item.previousMonthTotal > 0 ? (
+                                <View style={styles.comparisonDataValueContainer}>
+                                  {item.totalHarvest > 0 && (
+                                    <Text style={[
+                                      styles.comparisonChangeIndicator,
+                                      item.previousMonthChange >= 0 ? styles.comparisonPositive : styles.comparisonNegative
+                                    ]}>
+                                      {item.previousMonthChange >= 0 ? '↑' : '↓'} {Math.abs(item.previousMonthChange).toFixed(1)}%
+                                    </Text>
+                                  )}
+                                  <Text style={styles.comparisonDataValue}>{item.previousMonthTotal.toFixed(1)} kg</Text>
+                                  <Text style={styles.comparisonDataSubtext}> ({item.previousMonthUserCount} farmers)</Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.comparisonNoData}>No data</Text>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </>
               )}
             </View>
@@ -1281,92 +1459,123 @@ export default function HarvestReportScreen() {
                 globalAnalytics.cropTimeline.map((item, index) => {
                   const dateDifferenceText = formatDateDifference(item.dateDifferenceDays);
                   const yieldDifferenceText = formatYieldDifference(item.yieldDifference);
+                  const isDateOnTime = item.dateDifferenceDays !== null && Math.abs(item.dateDifferenceDays) < 1;
+                  const isDateDelayed = item.dateDifferenceDays !== null && item.dateDifferenceDays > 0;
+                  const isYieldEven = item.yieldDifference !== null && Math.abs(item.yieldDifference) < 0.1;
+                  const isYieldGain = item.yieldDifference !== null && item.yieldDifference > 0;
 
                   return (
                     <View
                       key={item.crop}
-                      style={[
-                        styles.cropTimelineItem,
-                        index === globalAnalytics.cropTimeline.length - 1 && styles.cropTimelineItemLast,
-                      ]}
+                      style={styles.cropTimelineItemCard}
                     >
-                      <View style={styles.cropTimelineHeader}>
+                      <View style={styles.cropTimelineItemHeader}>
                         <View style={styles.cropTimelineName}>
                           <Text style={styles.cropTimelineIcon}>{getCropIcon(item.crop)}</Text>
-                          <Text style={styles.cropTimelineCrop}>{item.crop}</Text>
-                          <Text style={styles.cropTimelineTagalog}> / {getCropTagalogName(item.crop)}</Text>
+                          <View style={styles.cropTimelineNameText}>
+                            <Text style={styles.cropTimelineCrop}>{item.crop}</Text>
+                            <Text style={styles.cropTimelineTagalog}>{getCropTagalogName(item.crop)}</Text>
+                          </View>
                         </View>
-                        <Text style={styles.cropTimelineSamples}>
-                          {item.totalReportCount} reports
-                        </Text>
-                      </View>
-
-                      <View style={styles.cropTimelineRow}>
-                        <Text style={styles.cropTimelineLabel}>Expected</Text>
-                        <View style={styles.cropTimelineValues}>
-                          <View style={styles.cropTimelineStatGroup}>
-                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
-                            <Text style={styles.cropTimelineValue}>
-                              {formatDurationDays(item.averageExpectedDurationDays)}
-                            </Text>
-                          </View>
-                          <View style={styles.cropTimelineStatGroupRight}>
-                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
-                            <Text style={styles.cropTimelinePerPlant}>
-                              {formatPerPlantDisplay(item.averageExpectedYieldPerPlant)}
-                            </Text>
-                          </View>
+                        <View style={styles.cropTimelineBadge}>
+                          <Ionicons name="document-text" size={12} color="#666" />
+                          <Text style={styles.cropTimelineSamples}>{item.totalReportCount}</Text>
                         </View>
                       </View>
 
-                      <View style={styles.cropTimelineRow}>
-                        <Text style={styles.cropTimelineLabel}>Actual</Text>
-                        <View style={styles.cropTimelineValues}>
-                          <View style={styles.cropTimelineStatGroup}>
-                            <Text style={styles.cropTimelineStatLabel}>Avg duration</Text>
-                            <Text style={styles.cropTimelineValue}>
-                              {formatDurationDays(item.averageActualDurationDays, true)}
-                            </Text>
+                      <View style={styles.cropTimelineComparisonContainer}>
+                        {/* Expected Section */}
+                        <View style={styles.cropTimelineSection}>
+                          <View style={styles.cropTimelineSectionHeader}>
+                            <Ionicons name="calendar-outline" size={16} color="#2E7D32" />
+                            <Text style={styles.cropTimelineSectionLabel}>Expected</Text>
                           </View>
-                          <View style={styles.cropTimelineStatGroupRight}>
-                            <Text style={styles.cropTimelineStatLabel}>Yield / plant</Text>
-                            <Text style={styles.cropTimelinePerPlant}>
-                              {formatPerPlantDisplay(item.averageActualYieldPerPlant, true)}
-                            </Text>
+                          <View style={styles.cropTimelineStatsGrid}>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Avg Duration</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatDurationDays(item.averageExpectedDurationDays)}
+                              </Text>
+                            </View>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Yield / Plant</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatPerPlantDisplay(item.averageExpectedYieldPerPlant)}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Actual Section */}
+                        <View style={styles.cropTimelineSection}>
+                          <View style={styles.cropTimelineSectionHeader}>
+                            <Ionicons name="checkmark-circle-outline" size={16} color="#1976D2" />
+                            <Text style={styles.cropTimelineSectionLabel}>Actual</Text>
+                          </View>
+                          <View style={styles.cropTimelineStatsGrid}>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Avg Duration</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatDurationDays(item.averageActualDurationDays, true)}
+                              </Text>
+                            </View>
+                            <View style={styles.cropTimelineStatCard}>
+                              <Text style={styles.cropTimelineStatLabel}>Yield / Plant</Text>
+                              <Text style={styles.cropTimelineStatValue}>
+                                {formatPerPlantDisplay(item.averageActualYieldPerPlant, true)}
+                              </Text>
+                            </View>
                           </View>
                         </View>
                       </View>
 
+                      {/* Differences Section */}
                       {(dateDifferenceText || yieldDifferenceText) && (
-                        <View style={styles.cropTimelineDeltaRow}>
-                          {dateDifferenceText ? (
-                            <Text
-                              style={[
+                        <View style={styles.cropTimelineDeltaContainer}>
+                          {dateDifferenceText && (
+                            <View style={[
+                              styles.cropTimelineDeltaBadge,
+                              isDateOnTime && styles.cropTimelineDeltaBadgeOnTime,
+                              isDateDelayed && styles.cropTimelineDeltaBadgeDelay,
+                              !isDateOnTime && !isDateDelayed && styles.cropTimelineDeltaBadgeAhead,
+                            ]}>
+                              <Ionicons 
+                                name={isDateOnTime ? "checkmark-circle" : isDateDelayed ? "time-outline" : "flash-outline"} 
+                                size={14} 
+                                color={isDateOnTime ? "#2E7D32" : isDateDelayed ? "#C62828" : "#1B5E20"} 
+                              />
+                              <Text style={[
                                 styles.cropTimelineDeltaText,
-                                item.dateDifferenceDays !== null && Math.abs(item.dateDifferenceDays) < 1
-                                  ? styles.cropTimelineOnTime
-                                  : item.dateDifferenceDays !== null && item.dateDifferenceDays > 0
-                                  ? styles.cropTimelineDelay
-                                  : styles.cropTimelineAhead,
-                              ]}
-                            >
-                              {dateDifferenceText}
-                            </Text>
-                          ) : null}
-                          {yieldDifferenceText ? (
-                            <Text
-                              style={[
+                                isDateOnTime && styles.cropTimelineOnTime,
+                                isDateDelayed && styles.cropTimelineDelay,
+                                !isDateOnTime && !isDateDelayed && styles.cropTimelineAhead,
+                              ]}>
+                                {dateDifferenceText}
+                              </Text>
+                            </View>
+                          )}
+                          {yieldDifferenceText && (
+                            <View style={[
+                              styles.cropTimelineDeltaBadge,
+                              isYieldEven && styles.cropTimelineDeltaBadgeEven,
+                              isYieldGain && styles.cropTimelineDeltaBadgeGain,
+                              !isYieldEven && !isYieldGain && styles.cropTimelineDeltaBadgeDrop,
+                            ]}>
+                              <Ionicons 
+                                name={isYieldEven ? "remove-circle" : isYieldGain ? "trending-up" : "trending-down"} 
+                                size={14} 
+                                color={isYieldEven ? "#2E7D32" : isYieldGain ? "#1B5E20" : "#C62828"} 
+                              />
+                              <Text style={[
                                 styles.cropTimelineDeltaText,
-                                item.yieldDifference !== null && Math.abs(item.yieldDifference) < 0.1
-                                  ? styles.cropTimelineYieldEven
-                                  : item.yieldDifference !== null && item.yieldDifference > 0
-                                  ? styles.cropTimelineYieldGain
-                                  : styles.cropTimelineYieldDrop,
-                              ]}
-                            >
-                              {yieldDifferenceText}
-                            </Text>
-                          ) : null}
+                                isYieldEven && styles.cropTimelineYieldEven,
+                                isYieldGain && styles.cropTimelineYieldGain,
+                                !isYieldEven && !isYieldGain && styles.cropTimelineYieldDrop,
+                              ]}>
+                                {yieldDifferenceText}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       )}
                     </View>
@@ -1752,6 +1961,136 @@ const styles = StyleSheet.create({
     color: '#666',
     fontStyle: 'italic',
   },
+  comparisonSection: {
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: GREEN,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  comparisonSectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: GREEN,
+    marginBottom: 20,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  comparisonItemCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#d0d0d0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  comparisonItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
+  },
+  comparisonCropIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  comparisonCropName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    letterSpacing: 0.3,
+  },
+  comparisonItemContent: {
+    paddingLeft: 0,
+  },
+  comparisonDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    minHeight: 40,
+  },
+  comparisonPeriodLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#555',
+    flex: 1,
+    letterSpacing: 0.2,
+  },
+  comparisonDataValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    flex: 2,
+    justifyContent: 'flex-end',
+  },
+  comparisonDataValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginLeft: 6,
+  },
+  comparisonDataSubtext: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+    marginLeft: 4,
+  },
+  comparisonChangeIndicator: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginRight: 6,
+    letterSpacing: 0.5,
+  },
+  comparisonNoData: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#999',
+    fontStyle: 'italic',
+    flex: 2,
+    textAlign: 'right',
+  },
+  comparisonContainer: {
+    marginTop: 6,
+    width: '100%',
+  },
+  comparisonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  comparisonLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  comparisonValue: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  comparisonPositive: {
+    color: '#2E7D32',
+  },
+  comparisonNegative: {
+    color: '#C62828',
+  },
   percentageContainer: {
     width: 60,
     alignItems: 'flex-end',
@@ -1828,114 +2167,167 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 3,
-    borderWidth: 1,
-    borderColor: '#E0F2E9',
+    borderWidth: 2,
+    borderColor: GREEN,
   },
   cropTimelineTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: GREEN,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
+    letterSpacing: 0.3,
   },
   cropTimelineSubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 18,
+    marginBottom: 20,
+    fontWeight: '500',
   },
-  cropTimelineItem: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+  cropTimelineItemCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  cropTimelineItemLast: {
-    borderBottomWidth: 0,
-    paddingBottom: 0,
-  },
-  cropTimelineHeader: {
+  cropTimelineItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e8e8e8',
   },
   cropTimelineName: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginRight: 12,
+  },
+  cropTimelineNameText: {
+    marginLeft: 10,
   },
   cropTimelineIcon: {
-    fontSize: 20,
-    marginRight: 8,
+    fontSize: 24,
   },
   cropTimelineCrop: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#333',
+    color: '#1a1a1a',
+    letterSpacing: 0.2,
   },
   cropTimelineTagalog: {
     fontSize: 13,
-    color: '#777',
-    marginLeft: 6,
+    color: '#666',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  cropTimelineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d0d0d0',
+    gap: 4,
   },
   cropTimelineSamples: {
     fontSize: 12,
-    color: '#777',
-    fontWeight: '500',
-  },
-  cropTimelineRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  cropTimelineLabel: {
-    fontSize: 12,
+    color: '#666',
     fontWeight: '700',
-    color: '#2E7D32',
-    width: 80,
   },
-  cropTimelineValues: {
-    flex: 1,
+  cropTimelineComparisonContainer: {
+    gap: 12,
+  },
+  cropTimelineSection: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+  },
+  cropTimelineSectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
+    gap: 6,
   },
-  cropTimelineStatGroup: {
-    flex: 1,
-    alignItems: 'flex-start',
+  cropTimelineSectionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+    letterSpacing: 0.2,
   },
-  cropTimelineStatGroupRight: {
+  cropTimelineStatsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cropTimelineStatCard: {
     flex: 1,
-    alignItems: 'flex-end',
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
   },
   cropTimelineStatLabel: {
     fontSize: 11,
-    color: '#888',
-    marginBottom: 2,
-  },
-  cropTimelineValue: {
-    fontSize: 14,
+    color: '#666',
+    marginBottom: 6,
     fontWeight: '600',
-    color: '#333',
+    textAlign: 'center',
   },
-  cropTimelineSecondary: {
-    fontSize: 13,
-    color: '#555',
+  cropTimelineStatValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    textAlign: 'center',
   },
-  cropTimelinePerPlant: {
-    fontSize: 12,
-    color: '#777',
-    marginTop: 2,
+  cropTimelineDeltaContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    flexWrap: 'wrap',
   },
-  cropTimelineDeltaRow: {
-    marginTop: 10,
+  cropTimelineDeltaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+    backgroundColor: '#f5f5f5',
+  },
+  cropTimelineDeltaBadgeOnTime: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeDelay: {
+    backgroundColor: '#FFEBEE',
+  },
+  cropTimelineDeltaBadgeAhead: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeEven: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeGain: {
+    backgroundColor: '#E8F5E9',
+  },
+  cropTimelineDeltaBadgeDrop: {
+    backgroundColor: '#FFEBEE',
   },
   cropTimelineDeltaText: {
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
+    fontWeight: '700',
   },
   cropTimelineOnTime: {
     color: '#2E7D32',

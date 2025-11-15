@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Dimensions,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { CommodityPrice } from '../services/csvPriceService';
@@ -197,7 +197,7 @@ export const PriceDetailModal: React.FC<PriceDetailModalProps> = ({
       }
     });
 
-    // Decide which value to plot for each month (same rules as the table)
+    // Decide which value to plot for each month - ALWAYS show all 12 months
     const currentDate = new Date();
     const selectedYearNum = parseInt(selectedYear);
     const currentYearNum = currentDate.getFullYear();
@@ -206,6 +206,7 @@ export const PriceDetailModal: React.FC<PriceDetailModalProps> = ({
     const labels: string[] = [];
     const values: number[] = [];
 
+    // Always include all 12 months (Jan-Dec)
     for (let month = 0; month < 12; month++) {
       const histPrice = monthlyHistorical[month];
       const forePrice = monthlyForecast[month];
@@ -227,24 +228,9 @@ export const PriceDetailModal: React.FC<PriceDetailModalProps> = ({
         price = histPrice || null;
       }
 
-      // Only add points where we actually have data
-      if (price && price > 0) {
-        labels.push(MONTH_NAMES[month]);
-        values.push(price);
-      }
-    }
-
-    // If there is no data at all, return an empty dataset
-    if (labels.length === 0 || values.length === 0) {
-      return {
-        labels: [],
-        datasets: [{
-          data: [] as number[],
-          // Always green on the chart (user requested single color)
-          color: (opacity = 1) => `rgba(22, 84, 58, ${opacity})`,
-          strokeWidth: 3,
-        }],
-      };
+      // Always add all months, use 0 for months without data
+      labels.push(MONTH_NAMES[month]);
+      values.push(price && price > 0 ? price : 0);
     }
 
     return {
@@ -276,6 +262,15 @@ export const PriceDetailModal: React.FC<PriceDetailModalProps> = ({
       r: '4',
       strokeWidth: '2',
       stroke: GREEN,
+    },
+    propsForLabels: {
+      fontSize: 10,
+    },
+    propsForVerticalLabels: {
+      fontSize: 10,
+    },
+    propsForHorizontalLabels: {
+      fontSize: 10,
     },
     // Note: react-native-chart-kit doesn't support label rotation directly
     // Labels will be abbreviated month names (Jan, Feb, etc.) to fit

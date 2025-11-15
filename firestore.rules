@@ -1,7 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow all read and write access for testing
+    // TEMP DEV RULES:
+    // Your app's Firebase Auth SDK is currently NOT working (auth is undefined,
+    // using REST fallback), so Firestore requests are unauthenticated.
+    // That means any rules that depend on request.auth will fail.
+    //
+    // To keep your app working while we finish the Auth setup, we allow
+    // full read/write access to all documents.
+    //
+    // IMPORTANT: This is okay for LOCAL DEVELOPMENT ONLY.
+    // Before you publish the app, switch back to stricter rules from
+    // FIRESTORE_RULES_BACKUP_STRICT.md.
+
     match /{document=**} {
       allow read, write: if true;
     }
