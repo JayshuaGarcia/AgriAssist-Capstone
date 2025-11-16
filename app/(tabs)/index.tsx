@@ -1175,21 +1175,21 @@ export default function HomeScreen() {
   // Load price data when price monitoring tab is active (same as admin)
   useEffect(() => {
     async function loadPrices() {
-      if (activeNav === 'tutorial' && priceCommodities.length === 0) {
-        setLoadingPrices(true);
-        try {
-          const data = await getAllCommodities();
-          setPriceCommodities(data);
-          console.log(`✅ User: Loaded ${data.length} commodities for price monitoring`);
-        } catch (error) {
-          console.error('Error loading prices:', error);
-        } finally {
-          setLoadingPrices(false);
-        }
+      if (activeNav !== 'tutorial') return;
+
+      setLoadingPrices(true);
+      try {
+        const data = await getAllCommodities();
+        setPriceCommodities(data);
+        console.log(`✅ User: Loaded ${data.length} commodities for price monitoring`);
+      } catch (error) {
+        console.error('Error loading prices:', error);
+      } finally {
+        setLoadingPrices(false);
       }
     }
     loadPrices();
-  }, [activeNav, priceCommodities.length]);
+  }, [activeNav]);
 
   useEffect(() => {
     if (forecastDays.length > 0 && selectedDateIndex < forecastDays.length) {

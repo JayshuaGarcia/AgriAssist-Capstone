@@ -262,6 +262,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Use Firebase Auth for regular users
       const cred = await FirebaseAuthService.signIn(email, password);
+
+      // After sign-in, check if this account still exists in Firestore and is not blocked
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '==', email)
+      );
+      const userSnapshot = await getDocs(usersQuery);
+
+      if (userSnapshot.empty) {
+        // Treat missing user doc as deleted by admin – sign out and prevent login
+        await FirebaseAuthService.signOut();
+        throw new Error('This account has been removed by the administrator.');
+      }
+
+      const userDoc = userSnapshot.docs[0];
+      const userData = userDoc.data();
+
+      if (userData.isBlocked) {
+        // Blocked account – sign out and show message
+        await FirebaseAuthService.signOut();
+        throw new Error('This account has been blocked by the administrator.');
+      }
+
       const userProfile = await loadUserProfile(email, role);
       setUser({ uid: cred.user.uid, email: cred.user.email, displayName: userProfile.name || email.split('@')[0] });
       setProfile(userProfile);
@@ -285,6 +308,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Create Firebase Auth account
       const cred = await FirebaseAuthService.signUp(email, password);
       setUser({ uid: cred.user.uid, email: cred.user.email, displayName: name });
+
+      // Ensure there is a Firestore user document for this account so that:
+      // - Admin User Management can see it
+      // - Login checks (deleted / blocked) have something to read
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '==', email)
+      );
+      const userSnapshot = await getDocs(usersQuery);
+
+      if (userSnapshot.empty) {
+        await addDoc(collection(db, 'users'), {
+          email,
+          name,
+          role,
+          location: 'Philippines',
+          profileImage: '',
+          selectedCropIcon: 'rice',
+          selectedCropEmoji: '🌱',
+          selectedCropName: 'Seedling',
+          phone: '',
+          backupEmail: '',
+          approved: false,
+          barangay,
+          isBlocked: false,
+          createdAt: new Date(),
+        });
+      }
+
       const userProfile = await loadUserProfile(email, role);
       setProfile({ ...userProfile, name, role, barangay });
       

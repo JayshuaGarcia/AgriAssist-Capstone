@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAnnouncements } from '../components/AnnouncementContext';
@@ -17,6 +18,7 @@ import { SlidingAnnouncement } from '../components/SlidingAnnouncement';
 import { Commodity, COMMODITY_DATA } from '../constants/CommodityData';
 import { useNavigationBar } from '../hooks/useNavigationBar';
 import { useCategories, useCommodityManagement } from '../hooks/useOfflineCommodities';
+import { formatDateToISO } from '../lib/dateUtils';
 import { db } from '../lib/firebase';
 import { CommodityPrice, getAllCommodities } from '../services/csvPriceService';
 import { convertToUnifiedFormat } from '../types/UnifiedReportFormat';
@@ -214,6 +216,11 @@ export default function AdminPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [showEditPricesModal, setShowEditPricesModal] = useState(false);
+  const [editedPrices, setEditedPrices] = useState<{ [commodity: string]: string }>({});
+  const [savingPriceEdits, setSavingPriceEdits] = useState(false);
+  const [editPricesDate, setEditPricesDate] = useState<Date>(new Date());
+  const [showEditPricesDatePicker, setShowEditPricesDatePicker] = useState(false);
   
   // Forecasting calendar states
   const [forecastModalVisible, setForecastModalVisible] = useState(false);
@@ -1015,6 +1022,141 @@ export default function AdminPage() {
       Alert.alert('Error', `Failed to upload CSV: ${error.message || 'Unknown error'}`);
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Open modal to manually edit all current prices in price monitoring
+  const handleOpenEditPrices = () => {
+    const initial: { [commodity: string]: string } = {};
+    // Use the internal commodity key (folder name) so it matches cleaned.json keys
+    priceCommodities.forEach((commodity) => {
+      initial[commodity.name] = commodity.currentPrice.toFixed(2);
+    });
+    setEditedPrices(initial);
+    setEditPricesDate(new Date());
+    setShowEditPricesModal(true);
+  };
+
+  // Save manually edited prices into AsyncStorage (same mechanism as CSV upload)
+  const handleSaveEditedPrices = async () => {
+    try {
+      if (!priceCommodities || priceCommodities.length === 0) {
+        Alert.alert('No Data', 'There are no commodities to edit.');
+        return;
+      }
+
+      // Use selected edit date (default today, can be adjusted to previous dates)
+      // IMPORTANT: use local date (YYYY-MM-DD) to avoid timezone shifting the day
+      const selectedDateStr = formatDateToISO(editPricesDate);
+      const priceUpdates: { [commodity: string]: { price: number; date: string } } = {};
+
+      let processedCount = 0;
+      priceCommodities.forEach((commodity) => {
+        // Use the internal name (e.g., "Banana _Lakatan_") as the update key
+        const key = commodity.name;
+        const rawValue = editedPrices[key];
+        if (!rawValue) return;
+
+        const parsed = parseFloat(rawValue.replace(/,/g, ''));
+        if (!isNaN(parsed) && parsed > 0 && parsed !== commodity.currentPrice) {
+          priceUpdates[key] = { price: parsed, date: selectedDateStr };
+          processedCount++;
+        }
+      });
+
+      if (processedCount === 0) {
+        Alert.alert('No Changes', 'No price changes were detected.');
+        return;
+      }
+
+      const commodityList = Object.keys(priceUpdates).slice(0, 10).join(', ');
+      const moreCount = Object.keys(priceUpdates).length - 10;
+      const previewText =
+        moreCount > 0 ? `${commodityList}... and ${moreCount} more` : commodityList;
+
+      Alert.alert(
+        'Confirm Price Updates',
+        `You updated ${Object.keys(priceUpdates).length} commodities:\n\n${previewText}\n\n` +
+          'This will update the current prices in price monitoring. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Update',
+            onPress: async () => {
+              try {
+                setSavingPriceEdits(true);
+
+                const priceUpdatesKey = 'price_updates_' + selectedDateStr;
+                await AsyncStorage.setItem(priceUpdatesKey, JSON.stringify(priceUpdates));
+                await AsyncStorage.setItem('last_price_update_date', selectedDateStr);
+                await AsyncStorage.setItem('last_price_updates_count', processedCount.toString());
+
+                // Also save updates to Firestore so all users/devices see the new prices
+                try {
+                  const updates = Object.entries(priceUpdates);
+                  for (const [commodityName, update] of updates) {
+                    const ref = doc(db, 'price_overrides', commodityName);
+                    await setDoc(
+                      ref,
+                      {
+                        price: update.price,
+                        date: update.date,
+                        updatedAt: serverTimestamp(),
+                      },
+                      { merge: true }
+                    );
+                  }
+                } catch (cloudError: any) {
+                  console.error('Error saving price overrides to Firestore:', cloudError);
+                }
+
+                // Generate a CSV file with the updated prices so it can be used
+                // to permanently update the source CSV/JSON data outside the app.
+                try {
+                  const updatedCommodityData = priceCommodities.map(c => {
+                    const update = priceUpdates[c.name];
+                    if (update) {
+                      return {
+                        ...c,
+                        currentPrice: update.price,
+                        currentDate: update.date,
+                      };
+                    }
+                    return c;
+                  });
+
+                  const csvContent = generateCSV(updatedCommodityData);
+                  const fileName = `price_updates_${selectedDateStr}.csv`;
+
+                  const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+                  if (cacheDir) {
+                    const fileUri = cacheDir + fileName;
+                    await FileSystem.writeAsStringAsync(fileUri, csvContent);
+                    console.log('✅ Exported updated prices CSV to:', fileUri);
+                  }
+                } catch (csvError: any) {
+                  console.error('Error generating export CSV for price updates:', csvError);
+                }
+
+                // Reload price data so the list reflects the new values
+                const data = await getAllCommodities();
+                setPriceCommodities(data);
+
+                Alert.alert('Success', 'Prices have been updated.');
+                setShowEditPricesModal(false);
+              } catch (error: any) {
+                console.error('Error saving price edits:', error);
+                Alert.alert('Error', `Failed to save price edits: ${error.message}`);
+              } finally {
+                setSavingPriceEdits(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error preparing price edits:', error);
+      Alert.alert('Error', `Failed to prepare price updates: ${error.message}`);
     }
   };
 
@@ -3756,8 +3898,8 @@ export default function AdminPage() {
     }
   };
 
-  // Delete user
-  const deleteUser = async (userId: string, userName: string) => {
+  // Delete user (and all their reports)
+  const deleteUser = async (userId: string, userName: string, userEmail: string) => {
     Alert.alert(
       'Delete User',
       `Are you sure you want to permanently delete "${userName}"? This action cannot be undone and will remove all user data including records and messages.`,
@@ -3772,11 +3914,47 @@ export default function AdminPage() {
               const userRef = doc(db, 'users', userId);
               await deleteDoc(userRef);
 
+              // Also delete all plantingReports and harvestReports for this user
+              try {
+                const plantingSnap = await getDocs(
+                  // plantingReports.userId stores the user's email, not Firestore doc ID
+                  query(collection(db, 'plantingReports'), where('userId', '==', userEmail))
+                );
+                for (const d of plantingSnap.docs) {
+                  await deleteDoc(doc(db, 'plantingReports', d.id));
+                }
+
+                const harvestSnap = await getDocs(
+                  // harvestReports.userId also uses the user's email
+                  query(collection(db, 'harvestReports'), where('userId', '==', userEmail))
+                );
+                for (const d of harvestSnap.docs) {
+                  await deleteDoc(doc(db, 'harvestReports', d.id));
+                }
+
+                // Also delete farmer profile records for this user (farmers records)
+                try {
+                  const farmerProfilesSnap = await getDocs(
+                    query(
+                      collection(db, 'farmerProfiles'),
+                      where('email', '==', userEmail)
+                    )
+                  );
+                  for (const d of farmerProfilesSnap.docs) {
+                    await deleteDoc(doc(db, 'farmerProfiles', d.id));
+                  }
+                } catch (farmerError) {
+                  console.error('Error deleting farmerProfiles for user:', farmerError);
+                }
+              } catch (reportsError) {
+                console.error('Error deleting user reports:', reportsError);
+              }
+
               // Update local state
               setUserManagementUsers(prev => prev.filter(user => user.id !== userId));
               setFilteredUserManagementUsers(prev => prev.filter(user => user.id !== userId));
 
-              Alert.alert('Success', 'User has been deleted successfully.');
+              Alert.alert('Success', 'User and all related reports have been deleted successfully.');
             } catch (error) {
               console.error('Error deleting user:', error);
               Alert.alert('Error', 'Failed to delete user. Please try again.');
@@ -4058,9 +4236,7 @@ export default function AdminPage() {
               // Select all by default
               setSelectedCommodities(new Set(priceCommodities.map(c => c.name)));
             }}
-            onUploadPress={() => {
-              setShowUploadModal(true);
-            }}
+            onUploadPress={handleOpenEditPrices}
           />
         </View>
       )}
@@ -4642,7 +4818,7 @@ export default function AdminPage() {
                       
                       <TouchableOpacity 
                         style={styles.userManagementActionButton}
-                        onPress={() => deleteUser(user.id, user.displayName)}
+                        onPress={() => deleteUser(user.id, user.displayName, user.email)}
                       >
                         <Ionicons name="trash" size={16} color="#fff" />
                         <Text style={styles.userManagementActionText}>Delete</Text>
@@ -7758,6 +7934,133 @@ export default function AdminPage() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Edit Prices Modal - manual editing for all commodities in price monitoring */}
+      <Modal
+        visible={showEditPricesModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          if (!savingPriceEdits) {
+            setShowEditPricesModal(false);
+          }
+        }}
+      >
+        <View style={styles.detailModalContainer}>
+          <View style={styles.detailModalHeader}>
+            <TouchableOpacity
+              style={styles.detailModalCloseButton}
+              onPress={() => {
+                if (!savingPriceEdits) {
+                  setShowEditPricesModal(false);
+                }
+              }}
+              disabled={savingPriceEdits}
+            >
+              <Ionicons name="close" size={24} color={GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.detailModalTitle}>Edit Product Prices</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView style={styles.detailModalContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.downloadModalContent}>
+              <Text style={styles.downloadModalDescription}>
+                Update the current price for each commodity. These changes will immediately apply
+                to the price monitoring data used across the app.
+              </Text>
+
+              {/* Date selector for price updates */}
+              <View style={styles.editPriceDateRow}>
+                <Text style={styles.editPriceDateLabel}>Price date</Text>
+                <TouchableOpacity
+                  style={styles.editPriceDateButton}
+                  onPress={() => setShowEditPricesDatePicker(true)}
+                  disabled={savingPriceEdits}
+                >
+                  <Ionicons name="calendar" size={18} color={GREEN} />
+                  <Text style={styles.editPriceDateText}>
+                    {editPricesDate.toLocaleDateString('en-PH', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {priceCommodities.map((commodity) => (
+                <View key={commodity.name} style={styles.editPriceRow}>
+                  <View style={styles.editPriceInfo}>
+                    <Text style={styles.editPriceName}>{commodity.displayName}</Text>
+                    <Text style={styles.editPriceCategory}>{commodity.category}</Text>
+                  </View>
+                  <View style={styles.editPriceInputContainer}>
+                    <Text style={styles.editPriceCurrency}>₱</Text>
+                    <TextInput
+                      style={styles.editPriceInput}
+                      keyboardType="numeric"
+                      value={
+                        editedPrices[commodity.name] ??
+                        commodity.currentPrice.toFixed(2)
+                      }
+                      onChangeText={(text) => {
+                        setEditedPrices((prev) => ({
+                          ...prev,
+                          [commodity.name]: text,
+                        }));
+                      }}
+                      placeholder="0.00"
+                    />
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.downloadModalFooter}>
+                <Text style={styles.selectedCount}>
+                  {priceCommodities.length} commodities loaded
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.downloadButton,
+                    savingPriceEdits && styles.downloadButtonDisabled,
+                  ]}
+                  onPress={handleSaveEditedPrices}
+                  disabled={savingPriceEdits}
+                >
+                  {savingPriceEdits ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={styles.downloadButtonText}>Saving prices...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="save" size={20} color="#fff" />
+                      <Text style={styles.downloadButtonText}>Save Prices</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Date picker for edit prices (current date, can adjust to previous only) */}
+      {showEditPricesDatePicker && (
+        <DateTimePicker
+          value={editPricesDate}
+          mode="date"
+          display="default"
+          maximumDate={new Date()}
+          onChange={(event, selectedDate) => {
+            setShowEditPricesDatePicker(false);
+            if (selectedDate) {
+              setEditPricesDate(selectedDate);
+            }
+          }}
+        />
+      )}
 
       {/* Farmer Detail Modal */}
       <Modal
@@ -12921,6 +13224,80 @@ const styles = StyleSheet.create({
   adminCommodityItemUnit: {
     fontSize: 12,
     color: '#666',
+  },
+  // Edit Prices Modal Styles
+  editPriceDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  editPriceDateLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  editPriceDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: GREEN,
+    backgroundColor: '#fff',
+    gap: 6,
+  },
+  editPriceDateText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: GREEN,
+  },
+  editPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  editPriceInfo: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  editPriceName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  editPriceCategory: {
+    fontSize: 12,
+    color: '#777',
+  },
+  editPriceInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    minWidth: 110,
+  },
+  editPriceCurrency: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: GREEN,
+    marginRight: 4,
+  },
+  editPriceInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
   },
   // Download Modal Styles
   downloadModalContent: {

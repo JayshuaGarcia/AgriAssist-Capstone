@@ -211,27 +211,29 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
           
-          {/* Remember Me */}
-          <TouchableOpacity
-            style={styles.rememberMeContainer}
-            onPress={() => setRememberMe(!rememberMe)}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={rememberMe ? 'checkbox' : 'square-outline'}
-              size={22}
-              color={GREEN}
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.rememberMeText}>Remember me</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.forgotPasswordLink}
-            onPress={handleForgotPassword}
-          >
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
+          {/* Remember Me + Forgot Password in one row */}
+          <View style={styles.rememberForgotRow}>
+            <TouchableOpacity
+              style={styles.rememberMeContainer}
+              onPress={() => setRememberMe(!rememberMe)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={rememberMe ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={GREEN}
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.rememberMeText}>Remember me</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.forgotPasswordLink}
+              onPress={handleForgotPassword}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
 
           {error ? (
             <Text style={styles.errorText}>{error}</Text>
@@ -280,11 +282,17 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
   },
+  rememberForgotRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    marginBottom: 18, // extra space above the Login button
+  },
   rememberMeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    marginBottom: 10,
     marginLeft: 8,
   },
   rememberMeText: {
@@ -374,8 +382,8 @@ const styles = StyleSheet.create({
     marginTop: -10, // raised higher for better alignment
   },
   forgotPasswordLink: {
-    alignSelf: 'flex-end',
-    marginBottom: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   forgotPasswordText: {
     color: GREEN,

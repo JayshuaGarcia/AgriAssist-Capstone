@@ -1,7 +1,8 @@
 /**
  * Service to load and manage price data from CSV files
  */
-
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 export interface PriceRecord {
   date: string;
   price: number;
@@ -117,6 +118,9 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
     // @ts-ignore - Dynamic require
     let cleanedData = require('../data/prices/json/cleaned.json');
     
+    // Track a direct override for this specific commodity (for "current price" and "as of" date)
+    let latestOverride: { date: string; price: number } | null = null;
+
     // Check for uploaded price updates in AsyncStorage
     try {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -127,11 +131,27 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
         if (priceUpdatesJson) {
           const priceUpdates = JSON.parse(priceUpdatesJson);
           
+          // Helper to normalize commodity names so different formats still match
+          const normalizeName = (value: string) =>
+            value
+              ?.replace(/_/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .toLowerCase();
+
           // Apply updates to cleanedData
           Object.keys(priceUpdates).forEach(commodityName => {
+            const searchNormalized = normalizeName(commodityName);
+            if (!searchNormalized) {
+              return;
+            }
+
             const matchingKey = Object.keys(cleanedData).find(key => {
-              const normalized = key.replace(/_/g, ' ').toLowerCase();
-              const searchNormalized = commodityName.toLowerCase();
+              const normalized = normalizeName(key);
+              if (!normalized) return false;
+              // Prefer exact normalized match
+              if (normalized === searchNormalized) return true;
+              // Fallback: allow partial matches in either direction
               return normalized.includes(searchNormalized) || searchNormalized.includes(normalized);
             });
 
@@ -156,6 +176,14 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
                   a.date.localeCompare(b.date)
                 );
               }
+
+              // If this update is for the commodity we're currently loading, remember it as a direct override
+              if (matchingKey === commodityFolder) {
+                latestOverride = {
+                  date: update.date,
+                  price: update.price,
+                };
+              }
             }
           });
         }
@@ -163,6 +191,24 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
     } catch (storageError) {
       // Ignore storage errors, use original data
       console.log('No price updates in storage, using original data');
+    }
+
+    // Also check Firestore for shared price overrides so all users/devices
+    // see the same latest price and "as of" date for this commodity.
+    try {
+      const overrideRef = doc(db, 'price_overrides', commodityFolder);
+      const overrideSnap = await getDoc(overrideRef);
+      if (overrideSnap.exists()) {
+        const data: any = overrideSnap.data();
+        if (data && typeof data.price === 'number' && typeof data.date === 'string') {
+          latestOverride = {
+            date: data.date,
+            price: data.price,
+          };
+        }
+      }
+    } catch (firestoreError) {
+      console.log('No Firestore price override for', commodityFolder, firestoreError);
     }
     
     if (!cleanedData || !cleanedData[commodityFolder]) {
@@ -201,7 +247,17 @@ async function loadLatestPrice(commodityFolder: string): Promise<CommodityPrice 
     if (records.length === 0) return null;
 
     // Get the latest price
-    const latestRecord = records[records.length - 1];
+    let latestRecord = records[records.length - 1];
+
+    // If we have a manual override for this commodity, use that as the "current" record
+    // even if its date is earlier than the last historical entry – this ensures
+    // the "As of" date in the UI matches the admin-selected date.
+    if (latestOverride) {
+      latestRecord = {
+        date: latestOverride.date,
+        price: latestOverride.price,
+      };
+    }
     
     // Calculate trend
     let trend: 'up' | 'down' | 'stable' = 'stable';
